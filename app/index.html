@@ -6,6 +6,7 @@
 <title>周瑟夫的外脑</title>
 <meta name="description" content="个人每日上下文浏览器">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 :root {
   --bg: #ffffff;
@@ -20,7 +21,6 @@
   --accent: #2eaadc;
   --accent-light: #e8f4f8;
 
-  /* 角色色板 — Notion 柔和风 */
   --role-ai: #529cca;
   --role-ai-bg: #e8f4f8;
   --role-merchant: #d9730d;
@@ -52,31 +52,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── 布局 ───────────────────────────────── */
-.app {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  min-height: 100vh;
-}
+.app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
 
-/* ── 侧边栏 ─────────────────────────────── */
+/* ── 侧边栏 ── */
 .sidebar {
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
-  padding: 20px 12px;
-  overflow-y: auto;
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
+  background: var(--bg-sidebar); border-right: 1px solid var(--border);
+  padding: 20px 12px; overflow-y: auto; position: sticky; top: 0; height: 100vh;
+  display: flex; flex-direction: column;
 }
-
 .logo { padding: 4px 8px; margin-bottom: 2px; }
-.logo-title { font-family: var(--font-serif); font-size: 15px; font-weight: 700; color: var(--text); }
+.logo-title { font-family: var(--font-serif); font-size: 15px; font-weight: 700; }
 .logo-sub { font-size: 11px; color: var(--text-light); margin-top: 1px; }
-
-/* 搜索 */
 .search-box { padding: 0 4px; margin: 12px 0; }
 .search-box input {
   width: 100%; padding: 6px 10px; background: var(--bg);
@@ -85,18 +71,14 @@ body {
   outline: none; transition: border var(--transition), box-shadow var(--transition);
 }
 .search-box input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
-
-/* 统计与分布 */
 .stats { padding: 8px 12px; font-size: 12px; color: var(--text-secondary); display: flex; gap: 12px; }
 .stat-item { display: flex; align-items: center; gap: 3px; }
 .stat-num { font-weight: 600; color: var(--text); }
-
 .mini-role-bar { display: flex; height: 3px; border-radius: 2px; overflow: hidden; margin: 4px 12px 8px; gap: 1px; }
 .mini-role-bar div { height: 100%; min-width: 3px; border-radius: 1px; }
 .role-legend-mini { padding: 0 12px 8px; display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .role-legend-mini span { font-size: 10px; color: var(--text-light); display: flex; align-items: center; gap: 3px; }
 .role-legend-mini .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
-
 .divider { height: 1px; background: var(--border); margin: 4px 12px 8px; }
 .section-label { font-size: 11px; font-weight: 600; color: var(--text-light); padding: 4px 12px; text-transform: uppercase; }
 .date-list { flex: 1; overflow-y: auto; margin-top: 4px; }
@@ -110,18 +92,14 @@ body {
 .date-item .icon { font-size: 14px; opacity: 0.6; }
 .date-item .meta { margin-left: auto; font-size: 11px; color: var(--text-light); }
 
-/* ── 主内容区 ────────────────────────────── */
+/* ── 主内容区 ── */
 .main { max-width: 900px; margin: 0 auto; padding: 40px 48px 80px; width: 100%; }
-
 .page-header { margin-bottom: 32px; }
 .page-icon { font-size: 36px; margin-bottom: 8px; }
-.page-title { font-family: var(--font-serif); font-size: 32px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.page-title { font-family: var(--font-serif); font-size: 32px; font-weight: 700; line-height: 1.2; }
 .page-meta { font-size: 13px; color: var(--text-light); margin-top: 6px; display: flex; gap: 16px; }
 
-/* 视图切换 Tabs */
-.view-tabs {
-  display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 8px;
-}
+.view-tabs { display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
 .view-tab {
   padding: 6px 16px; border: none; background: transparent; color: var(--text-secondary);
   font-size: 14px; font-weight: 500; cursor: pointer; border-radius: var(--radius);
@@ -129,11 +107,9 @@ body {
 }
 .view-tab:hover { background: var(--bg-hover); color: var(--text); }
 .view-tab.active { background: var(--bg-active); color: var(--text); font-weight: 600; }
-
 .view-content { display: none; }
 .view-content.active { display: block; }
 
-/* 角色筛选标签 */
 .role-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 24px; }
 .role-tag {
   display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;
@@ -143,35 +119,20 @@ body {
 .role-tag:hover { opacity: 1; }
 .role-tag.active { opacity: 1; font-weight: 600; }
 
-/* 摘要块 */
 .callout { background: var(--bg-hover); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 28px; display: flex; gap: 12px; }
 .callout-icon { font-size: 20px; flex-shrink: 0; }
 .callout-body { font-size: 14px; color: var(--text); flex: 1; }
 
-/* Notion Props */
-.props { display: flex; flex-direction: column; gap: 12px; margin-bottom: 32px; }
-.prop { background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
-.prop-label { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
-.prop-item { font-size: 14px; color: var(--text-secondary); padding: 4px 0; border-bottom: 1px dashed var(--border); }
-.prop-item:last-child { border-bottom: none; }
-
-/* ── 视图1：时间线 (Timeline View) ── */
 .segment { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; transition: box-shadow var(--transition); background: var(--bg); }
 .segment:hover { box-shadow: var(--shadow); }
 .segment.hidden { display: none; }
-
-.seg-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--bg-hover); padding-bottom: 8px;}
-.seg-time { font-size: 14px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.seg-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--bg-hover); padding-bottom: 8px; }
+.seg-time { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .role-label { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
 .role-label.needs-review::after { content: '待确认'; font-size: 9px; padding: 0 4px; margin-left: 4px; border-radius: 3px; background: #fff3db; color: #d9730d; }
-
-.seg-distilled {
-  font-size: 15px; color: var(--text); line-height: 1.6; margin-bottom: 12px;
-}
-.seg-distilled-placeholder {
-  font-size: 14px; color: var(--text-secondary); font-style: italic; background: var(--bg-sidebar); padding: 8px 12px; border-radius: 4px; border-left: 3px solid var(--border);
-}
-
+.rl-source { font-size: 10px; opacity: 0.7; margin-left: 4px; }
+.seg-distilled { font-size: 15px; line-height: 1.6; margin-bottom: 12px; }
+.seg-distilled-placeholder { font-size: 14px; color: var(--text-secondary); font-style: italic; background: var(--bg-sidebar); padding: 8px 12px; border-radius: 4px; border-left: 3px solid var(--border); }
 .raw-controls { display: flex; justify-content: flex-end; }
 .raw-btn {
   background: var(--bg-sidebar); border: 1px solid var(--border); padding: 4px 10px;
@@ -179,7 +140,6 @@ body {
   display: inline-flex; align-items: center; gap: 4px; transition: all var(--transition);
 }
 .raw-btn:hover { background: var(--border); color: var(--text); }
-
 .seg-raw {
   margin-top: 12px; padding: 16px; background: var(--bg-sidebar);
   border-radius: var(--radius); font-size: 14px; line-height: 1.8; color: var(--text-secondary);
@@ -189,7 +149,7 @@ body {
 .seg-raw p { margin-bottom: 12px; }
 .seg-raw p:last-child { margin-bottom: 0; }
 
-/* ── 视图2：数据表格 (Table View) ── */
+/* 数据表格 */
 .table-view { width: 100%; overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .data-table th, .data-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
@@ -197,6 +157,21 @@ body {
 .data-table tr:hover { background: var(--bg-hover); }
 .data-table .td-time { font-variant-numeric: tabular-nums; font-weight: 500; }
 .data-table .td-summary { color: var(--text); max-width: 400px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 图表 */
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.chart-card { background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+.chart-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+.chart-card canvas { max-height: 260px; }
+.chart-full { grid-column: 1 / -1; }
+
+/* 搜索 */
+.search-header { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: var(--text); }
+.search-result { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; cursor: pointer; transition: all var(--transition); }
+.search-result:hover { box-shadow: var(--shadow); border-color: var(--accent); }
+.sr-meta { font-size: 12px; color: var(--text-light); margin-bottom: 6px; }
+.sr-context { font-size: 14px; line-height: 1.6; }
+.sr-context mark { background: #fef3c7; color: var(--text); padding: 0 2px; border-radius: 2px; }
 
 /* 空状态 */
 .empty { text-align: center; padding: 120px 40px 80px; color: var(--text-light); }
@@ -208,114 +183,37 @@ body {
 }
 .highlight-target { animation: highlight-flash 2.5s ease-out; }
 
-/* 纠错弹框 */
+/* ── 纠错弹框 ── */
 .correct-btn {
-  position: fixed;
-  display: none;
-  padding: 4px 10px;
-  background: var(--text);
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-  z-index: 1000;
-  box-shadow: var(--shadow);
-  transition: opacity var(--transition);
+  position: fixed; display: none; padding: 4px 10px;
+  background: var(--text); color: #fff; border: none; border-radius: 4px;
+  font-size: 12px; cursor: pointer; z-index: 1000; box-shadow: var(--shadow);
 }
 .correct-btn:hover { opacity: 0.85; }
-
 .correct-modal {
-  display: none;
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.3);
-  z-index: 2000;
-  align-items: center;
-  justify-content: center;
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.3); z-index: 2000; align-items: center; justify-content: center;
 }
 .correct-modal.visible { display: flex; }
-.correct-dialog {
-  background: #fff;
-  border-radius: 12px;
-  padding: 28px 32px;
-  width: 420px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
-}
-.correct-dialog h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 20px;
-}
-.correct-field {
-  margin-bottom: 16px;
-}
-.correct-field label {
-  display: block;
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-  font-weight: 500;
-}
+.correct-dialog { background: #fff; border-radius: 12px; padding: 28px 32px; width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+.correct-dialog h3 { font-size: 16px; font-weight: 600; margin-bottom: 20px; }
+.correct-field { margin-bottom: 16px; }
+.correct-field label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500; }
 .correct-field input {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 14px;
-  font-family: var(--font-body);
-  outline: none;
-  transition: border-color var(--transition);
+  width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 14px; font-family: var(--font-body); outline: none; transition: border-color var(--transition);
 }
-.correct-field input:focus {
-  border-color: var(--accent);
-}
-.correct-field .wrong-text {
-  padding: 10px 12px;
-  background: #fff0f0;
-  border: 1px solid #fecaca;
-  border-radius: var(--radius);
-  color: #dc2626;
-  font-size: 14px;
-  text-decoration: line-through;
-}
-.correct-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-  margin-top: 20px;
-}
-.correct-actions button {
-  padding: 8px 20px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: #fff;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all var(--transition);
-}
-.correct-actions .btn-submit {
-  background: var(--text);
-  color: #fff;
-  border-color: var(--text);
-}
+.correct-field input:focus { border-color: var(--accent); }
+.correct-field .wrong-text { padding: 10px 12px; background: #fff0f0; border: 1px solid #fecaca; border-radius: var(--radius); color: #dc2626; font-size: 14px; text-decoration: line-through; }
+.correct-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.correct-actions button { padding: 8px 20px; border-radius: var(--radius); border: 1px solid var(--border); background: #fff; cursor: pointer; font-size: 13px; transition: all var(--transition); }
+.correct-actions .btn-submit { background: var(--text); color: #fff; border-color: var(--text); }
 .correct-actions .btn-submit:hover { opacity: 0.85; }
 .correct-actions .btn-cancel:hover { background: var(--bg-hover); }
 .correct-toast {
-  position: fixed;
-  bottom: 30px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--text);
-  color: #fff;
-  padding: 10px 24px;
-  border-radius: 20px;
-  font-size: 13px;
-  z-index: 3000;
-  opacity: 0;
-  transition: opacity 0.3s;
-  pointer-events: none;
+  position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+  background: var(--text); color: #fff; padding: 10px 24px; border-radius: 20px;
+  font-size: 13px; z-index: 3000; opacity: 0; transition: opacity 0.3s; pointer-events: none;
 }
 .correct-toast.visible { opacity: 1; }
 
@@ -370,8 +268,6 @@ body {
     </div>
   </div>
 </div>
-
-<!-- 提示 Toast -->
 <div class="correct-toast" id="correctToast"></div>
 
 <script>
@@ -385,6 +281,7 @@ const ROLES = {
 };
 
 let allDates = [], currentDate = null, currentData = null, activeFilters = new Set(), searchTimer = null;
+let chartInstances = [];
 
 async function init() {
   const [dates, stats] = await Promise.all([
@@ -398,42 +295,42 @@ async function init() {
     <span class="stat-item"><span class="stat-num">${stats.total_segments}</span>段</span>
     <span class="stat-item"><span class="stat-num">${fmtNum(stats.total_words)}</span>字</span>`;
 
+  // 全局角色条
   const rd = stats.role_distribution || {};
-  if (Object.keys(rd).length) {
-    document.getElementById('globalBar').innerHTML = Object.entries(rd).map(([r,c])=>{
-      const cfg = ROLES[r]||ROLES['不确定'];
-      return `<div style="flex:${c};background:${cfg.color}" title="${r} ${c}"></div>`;
-    }).join('');
-    document.getElementById('globalLegend').innerHTML = Object.entries(rd).map(([r,c])=>{
-      const cfg = ROLES[r]||ROLES['不确定'];
-      return `<span><span class="dot" style="background:${cfg.color}"></span>${r} ${c}</span>`;
-    }).join('');
+  const total = Object.values(rd).reduce((a,b)=>a+b,0);
+  const colorMap = {'跟AI说':'var(--role-ai)','跟商家':'var(--role-merchant)','跟宠物':'var(--role-pet)','自言自语':'var(--role-self)','跟人聊':'var(--role-interpersonal)','不确定':'var(--role-uncertain)'};
+  if (total > 0) {
+    document.getElementById('globalBar').innerHTML = Object.entries(rd).map(([r,c])=>`<div style="flex:${c};background:${colorMap[r]||'#ccc'}"></div>`).join('');
+    document.getElementById('globalLegend').innerHTML = Object.entries(rd).map(([r,c])=>`<span><span class="dot" style="background:${colorMap[r]||'#ccc'}"></span>${r} ${c}</span>`).join('');
   }
 
-  const dl = document.getElementById('dateList');
-  dl.innerHTML = dates.map(d=>`
-    <div class="date-item" data-date="${d.date}" onclick="loadDate('${d.date}')">
-      <span class="icon">📄</span>
-      <span>${d.date}</span>
-      <span class="meta">${d.segments}段</span>
-    </div>`).join('');
-
-  if (dates.length) loadDate(dates[0].date);
-
-  const si = document.getElementById('searchInput');
-  si.addEventListener('input', e=>{
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(()=>doSearch(e.target.value), 300);
+  // 日期列表
+  let dh = '';
+  allDates.forEach(d => {
+    dh += `<div class="date-item" data-date="${d.date}" onclick="loadDate('${d.date}')">
+      <span class="icon">📄</span> ${d.date} <span class="meta">${d.segments}段</span>
+    </div>`;
   });
-  si.addEventListener('keydown', e=>{ if(e.key==='Escape'){si.value='';doSearch('');} });
+  document.getElementById('dateList').innerHTML = dh;
+
+  // 搜索
+  document.getElementById('searchInput').addEventListener('input', e => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => doSearch(e.target.value), 300);
+  });
+
+  if (allDates.length > 0) loadDate(allDates[0].date);
 }
 
-async function loadDate(date, targetId = null) {
+async function loadDate(date, targetId) {
   currentDate = date;
-  activeFilters.clear();
-  document.querySelectorAll('.date-item').forEach(el=>el.classList.toggle('active',el.dataset.date===date));
   currentData = await fetch(`/api/date/${date}`).then(r=>r.json());
-  
+  activeFilters.clear();
+
+  document.querySelectorAll('.date-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.date === date);
+  });
+
   renderDayLayout();
 
   if (targetId) {
@@ -443,7 +340,6 @@ async function loadDate(date, targetId = null) {
         el.classList.remove('hidden');
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.classList.add('highlight-target');
-        // Auto expand raw text on search hit
         const rawBtn = el.querySelector('.raw-btn');
         if (rawBtn) toggleRawText(rawBtn);
       }
@@ -456,30 +352,32 @@ function renderDayLayout() {
   const m = d.meta;
   const rc = {};
   let needsReviewCnt = 0;
-  
-  d.segments.forEach(s=>{ 
-    const l=s.role?.scene_type_label||'不确定'; 
-    rc[l]=(rc[l]||0)+1; 
+
+  d.segments.forEach(s => {
+    const l = s.role?.scene_type_label || '不确定';
+    rc[l] = (rc[l]||0) + 1;
     if (s.role?.needs_review) needsReviewCnt++;
   });
 
   let h = '';
-  // 顶部标题
   h += `<div class="page-header">
     <div class="page-icon">📅</div>
     <div class="page-title">${d.date}</div>
-    <div class="page-meta">
-      <span>${d.segments.length} 个场景</span>
-      <span>${fmtNum(d.word_count)} 字</span>
-    </div>
+    <div class="page-meta"><span>${d.segments.length} 个场景</span><span>${fmtNum(d.word_count)} 字</span></div>
   </div>`;
 
-  // 摘要 Callout
   if (m?.daily_summary) {
     h += `<div class="callout"><span class="callout-icon">💡</span><div class="callout-body">${m.daily_summary}</div></div>`;
   }
 
-  // 角色筛选器 (时间线专用)
+  // 视图 Tabs
+  h += `<div class="view-tabs">
+    <button class="view-tab active" id="tab-timeline" onclick="switchView('timeline')">🕒 蒸馏时间线</button>
+    <button class="view-tab" id="tab-table" onclick="switchView('table')">📋 数据表格</button>
+    <button class="view-tab" id="tab-charts" onclick="switchView('charts')">📊 可视化</button>
+  </div>`;
+
+  // 角色筛选器
   h += '<div class="role-tags" id="filter-bar">';
   if (Object.keys(rc).length > 1) {
     h += `<button class="role-tag active" style="background:var(--bg-tag);color:var(--text)" data-role="all" onclick="filterRole('all')">全部 <span class="cnt">${d.segments.length}</span></button>`;
@@ -488,48 +386,36 @@ function renderDayLayout() {
       h += `<button class="role-tag" style="background:${cfg.bg};color:${cfg.color}" data-role="${r}" onclick="filterRole('${r}')">${cfg.emoji} ${r} <span class="cnt">${c}</span></button>`;
     }
     if (needsReviewCnt > 0) {
-      h += `<button class="role-tag" style="background:#fff3db;color:#d9730d;border:1px solid #f2e2c4;opacity:0.9;" data-role="needs_review" onclick="filterRole('needs_review')">🚨 待确认 <span class="cnt">${needsReviewCnt}</span></button>`;
+      h += `<button class="role-tag" style="background:#fff3db;color:#d9730d" data-role="needs_review" onclick="filterRole('needs_review')">🚨 待确认 <span class="cnt">${needsReviewCnt}</span></button>`;
     }
   }
   h += '</div>';
 
-  // 视图容器 - 移除Tabs，只保留Timeline
   h += `<div id="view-timeline" class="view-content active"></div>`;
+  h += `<div id="view-table" class="view-content"></div>`;
+  h += `<div id="view-charts" class="view-content"></div>`;
 
   document.getElementById('main').innerHTML = h;
-
-  // 渲染视图内容
   renderTimelineView();
+  renderTableView();
+  renderChartsView();
 }
 
 function getSegmentDistillation(s, meta) {
-  // 根据事件/待办/决策，匹配当前时间段的提炼总结
   let highlights = [];
   if (meta) {
     (meta.events || []).filter(e => e.time === s.time).forEach(e => highlights.push(`📌 <strong>[${e.project||'事件'}]</strong> ${e.summary}`));
-    (meta.decisions || []).filter(d => {
-       // Decisions don't have time usually in meta.json, fallback if they do
-       return d.time === s.time; 
-    }).forEach(d => highlights.push(`🎯 <strong>[${d.project||'决策'}]</strong> ${d.what}`));
+    (meta.decisions || []).filter(dd => dd.time === s.time).forEach(dd => highlights.push(`🎯 <strong>[${dd.project||'决策'}]</strong> ${dd.what}`));
     (meta.todos || []).filter(t => t.time === s.time).forEach(t => highlights.push(`✅ <strong>[${t.project||'待办'}]</strong> ${t.task}`));
   }
-  
-  if (highlights.length > 0) {
-    return highlights.join('<br>');
-  }
+  if (highlights.length > 0) return highlights.join('<br>');
+  if (s.summary && s.summary.trim() !== "") return `<div class="seg-distilled-placeholder">💭 ${s.summary}</div>`;
+  return `<div class="seg-distilled-placeholder">" ${s.preview}... "</div>`;
+}
 
-  // 尝试使用大模型蒸馏出的摘要
-  if (s.summary && s.summary.trim() !== "") {
-    return `<div class="seg-distilled-placeholder">💭 ${s.summary}</div>`;
-  }
-
-  // 没有结构化事件，也没有大模型摘要，直接用 preview 截断替代
-  return `<div class="seg-distilled-placeholder">“ ${s.preview}... ”</div>`;
-  }
 function renderTimelineView() {
   const d = currentData;
   let h = '';
-  
   d.segments.forEach(s => {
     const role = s.role;
     const rl = role?.scene_type_label||'不确定';
@@ -538,30 +424,91 @@ function renderTimelineView() {
     const conf = role?.confidence||0;
     const nr = role?.needs_review;
     const segId = `seg-${s.time.replace(':', '-')}`;
-
     const distilledHTML = getSegmentDistillation(s, d.meta);
 
-    h += `
-    <div class="segment" id="${segId}" data-role="${rl}" data-needs-review="${nr?'true':'false'}">
+    h += `<div class="segment" id="${segId}" data-role="${rl}" data-needs-review="${nr?'true':'false'}">
       <div class="seg-header">
         <span class="seg-time">${s.time}</span>
         <span class="role-label ${nr?'needs-review':''}" style="background:${cfg.bg};color:${cfg.color}">
-          ${cfg.emoji} ${rl}
-          <span class="rl-source">${src} ${Math.round(conf*100)}%</span>
+          ${cfg.emoji} ${rl} <span class="rl-source">${src} ${Math.round(conf*100)}%</span>
         </span>
       </div>
-      
       <div class="seg-distilled">${distilledHTML}</div>
-      
-      <div class="raw-controls">
-         <button class="raw-btn" onclick="toggleRawText(this)">👁️ 显示原文</button>
-      </div>
-      
+      <div class="raw-controls"><button class="raw-btn" onclick="toggleRawText(this)">👁️ 显示原文</button></div>
       <div class="seg-raw">${fmtText(s.text)}</div>
     </div>`;
   });
-  
   document.getElementById('view-timeline').innerHTML = h;
+}
+
+function renderTableView() {
+  const d = currentData;
+  let h = '<div class="table-view"><table class="data-table">';
+  h += '<thead><tr><th width="80">时间</th><th width="120">角色</th><th>内容预览</th><th width="100">操作</th></tr></thead><tbody>';
+  d.segments.forEach(s => {
+    const rl = s.role?.scene_type_label||'不确定';
+    const cfg = ROLES[rl]||ROLES['不确定'];
+    const preview = stripMd(s.preview).substring(0, 50) + '...';
+    const segId = `seg-${s.time.replace(':', '-')}`;
+    h += `<tr>
+      <td class="td-time">${s.time}</td>
+      <td><span style="color:${cfg.color};font-size:12px;font-weight:600">${cfg.emoji} ${rl}</span></td>
+      <td class="td-summary">${preview}</td>
+      <td><button class="raw-btn" onclick="switchView('timeline');loadDate('${d.date}','${segId}')">👉 跳转</button></td>
+    </tr>`;
+  });
+  h += '</tbody></table></div>';
+  document.getElementById('view-table').innerHTML = h;
+}
+
+function renderChartsView() {
+  let h = '<div class="charts-grid">';
+  h += '<div class="chart-card"><h3>🎭 角色分布</h3><canvas id="chartRoles"></canvas></div>';
+  h += '<div class="chart-card"><h3>🕒 时段热度</h3><canvas id="chartTime"></canvas></div>';
+  h += '</div>';
+  document.getElementById('view-charts').innerHTML = h;
+}
+
+function initCharts() {
+  const d = currentData;
+  chartInstances.forEach(c => c.destroy());
+  chartInstances = [];
+
+  const rc = {};
+  d.segments.forEach(s => { const l = s.role?.scene_type_label||'不确定'; rc[l] = (rc[l]||0)+1; });
+  const cmap = {'跟AI说':'#529cca','跟商家':'#d9730d','跟宠物':'#e255a1','自言自语':'#9065b0','跟人聊':'#0f7b6c','不确定':'#9b9a97'};
+
+  const c1 = document.getElementById('chartRoles');
+  if (c1) {
+    chartInstances.push(new Chart(c1, {
+      type: 'doughnut',
+      data: { labels: Object.keys(rc), datasets: [{ data: Object.values(rc), backgroundColor: Object.keys(rc).map(k => cmap[k]||'#9b9a97') }] },
+      options: { plugins: { legend: { position: 'bottom' } }, maintainAspectRatio: false }
+    }));
+  }
+
+  const tc = {};
+  d.segments.forEach(s => { const hour = s.time.split(':')[0]+':00'; tc[hour] = (tc[hour]||0)+s.text.length; });
+  const sortedH = Object.keys(tc).sort();
+  const c2 = document.getElementById('chartTime');
+  if (c2) {
+    chartInstances.push(new Chart(c2, {
+      type: 'bar',
+      data: { labels: sortedH, datasets: [{ label: '字数', data: sortedH.map(h => tc[h]), backgroundColor: '#2eaadc', borderRadius: 4 }] },
+      options: { plugins: { legend: { display: false } }, maintainAspectRatio: false }
+    }));
+  }
+}
+
+function switchView(viewName) {
+  document.querySelectorAll('.view-tab').forEach(el => el.classList.remove('active'));
+  document.getElementById(`tab-${viewName}`).classList.add('active');
+  document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
+  document.getElementById(`view-${viewName}`).classList.add('active');
+
+  const filterBar = document.getElementById('filter-bar');
+  filterBar.style.display = viewName === 'timeline' ? 'flex' : 'none';
+  if (viewName === 'charts') setTimeout(initCharts, 50);
 }
 
 function toggleRawText(btn) {
@@ -581,20 +528,18 @@ function toggleRawText(btn) {
 }
 
 function filterRole(role) {
-  if (role==='all') { activeFilters.clear(); } 
+  if (role==='all') { activeFilters.clear(); }
   else { activeFilters.has(role) ? activeFilters.delete(role) : activeFilters.add(role); }
-  
-  document.querySelectorAll('.role-tag').forEach(b=>{
+  document.querySelectorAll('.role-tag').forEach(b => {
     if (b.dataset.role==='all') b.classList.toggle('active', activeFilters.size===0);
     else b.classList.toggle('active', activeFilters.has(b.dataset.role));
   });
-
-  document.querySelectorAll('#view-timeline .segment').forEach(el=>{
+  document.querySelectorAll('#view-timeline .segment').forEach(el => {
     if (activeFilters.size === 0) { el.classList.remove('hidden'); return; }
-    let isMatch = false;
-    if (activeFilters.has('needs_review') && el.dataset.needsReview === 'true') isMatch = true;
-    if (activeFilters.has(el.dataset.role)) isMatch = true;
-    el.classList.toggle('hidden', !isMatch);
+    let m = false;
+    if (activeFilters.has('needs_review') && el.dataset.needsReview === 'true') m = true;
+    if (activeFilters.has(el.dataset.role)) m = true;
+    el.classList.toggle('hidden', !m);
   });
 }
 
@@ -602,14 +547,11 @@ async function doSearch(q) {
   if (!q.trim()) { if (currentDate) loadDate(currentDate); return; }
   const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`).then(r=>r.json());
   const main = document.getElementById('main');
-  if (!res.length) {
-    main.innerHTML = `<div class="empty"><div class="icon">🔍</div><p>没有找到"${q}"</p></div>`;
-    return;
-  }
+  if (!res.length) { main.innerHTML = `<div class="empty"><div class="icon">🔍</div><p>没有找到"${q}"</p></div>`; return; }
   main.innerHTML = `<div class="search-header">🔍 "${q}" — ${res.length} 条结果</div>` +
-    res.map(r=>{
-      const targetId = `seg-${r.time.replace(':', '-')}`;
-      return `<div class="search-result" onclick="loadDate('${r.date}', '${targetId}')">
+    res.map(r => {
+      const tid = `seg-${r.time.replace(':','-')}`;
+      return `<div class="search-result" onclick="loadDate('${r.date}','${tid}')">
         <div class="sr-meta">📄 ${r.date} · ${r.time}</div>
         <div class="sr-context">${r.context}</div>
       </div>`;
@@ -617,23 +559,19 @@ async function doSearch(q) {
 }
 
 function fmtText(t) {
-  const highlighted = t.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
-  return highlighted.split(/\n+/).map(p => p.trim() ? `<p>${p}</p>` : '').join('');
+  const hl = t.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+  return hl.split(/\n+/).map(p => p.trim() ? `<p>${p}</p>` : '').join('');
 }
-function fmtNum(n) {
-  return n>=10000?(n/10000).toFixed(1)+'万':n>=1000?(n/1000).toFixed(1)+'k':n.toString();
-}
+function fmtNum(n) { return n>=10000?(n/10000).toFixed(1)+'万':n>=1000?(n/1000).toFixed(1)+'k':n.toString(); }
+function stripMd(t) { return (t||'').replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1').replace(/<[^>]+>/g,''); }
 
-// ── 纠错反馈循环 ─────────────────────────────────────────────
+// ── 纠错反馈循环 ──
 let selectedWrongText = '';
 
-// 监听原文区域的文字选中
 document.addEventListener('mouseup', (e) => {
   const correctBtn = document.getElementById('correctBtn');
   const selection = window.getSelection();
   const text = selection.toString().trim();
-  
-  // 只在 seg-raw（原文区域）内选中文字时才显示纠正按钮
   if (text.length >= 2 && text.length <= 30) {
     const anchor = selection.anchorNode;
     if (anchor && anchor.parentElement && anchor.parentElement.closest('.seg-raw')) {
@@ -644,8 +582,6 @@ document.addEventListener('mouseup', (e) => {
       return;
     }
   }
-  
-  // 点击其他地方隐藏
   setTimeout(() => {
     if (!document.getElementById('correctModal').classList.contains('visible')) {
       correctBtn.style.display = 'none';
@@ -661,7 +597,6 @@ function openCorrectionModal() {
   document.getElementById('correctModal').classList.add('visible');
   setTimeout(() => document.getElementById('correctRight').focus(), 100);
 }
-
 function closeCorrectionModal() {
   document.getElementById('correctModal').classList.remove('visible');
   selectedWrongText = '';
@@ -671,48 +606,25 @@ async function submitCorrection() {
   const wrong = selectedWrongText;
   const right = document.getElementById('correctRight').value.trim();
   const context = document.getElementById('correctContext').value.trim();
-  
-  if (!right) {
-    document.getElementById('correctRight').style.borderColor = '#dc2626';
-    return;
-  }
-  
-  if (wrong === right) {
-    showToast('❌ 纠正前后相同');
-    return;
-  }
-  
+  if (!right) { document.getElementById('correctRight').style.borderColor = '#dc2626'; return; }
+  if (wrong === right) { showToast('❌ 纠正前后相同'); return; }
   try {
     const res = await fetch('/api/correct', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        wrong,
-        right,
-        date: currentDate || '',
-        context,
-        sync_vocab: true
-      })
+      body: JSON.stringify({ wrong, right, date: currentDate || '', context, sync_vocab: true })
     }).then(r => r.json());
-    
     if (res.success) {
       closeCorrectionModal();
-      
-      // 即时替换页面上的文字
       document.querySelectorAll('.seg-raw').forEach(el => {
-        el.innerHTML = el.innerHTML.replaceAll(wrong, 
+        el.innerHTML = el.innerHTML.replaceAll(wrong,
           `<span style="background:#dcfce7;color:#16a34a;padding:1px 3px;border-radius:3px">${right}</span>`);
       });
-      
       let msg = `✅ 已纠正："${wrong}" → "${right}"`;
       if (res.replaced_in_file > 0) msg += ` (文件中替换 ${res.replaced_in_file} 处)`;
       showToast(msg);
-    } else {
-      showToast(`❌ ${res.error || '纠正失败'}`);
-    }
-  } catch (err) {
-    showToast(`❌ 网络错误: ${err.message}`);
-  }
+    } else { showToast(`❌ ${res.error || '纠正失败'}`); }
+  } catch (err) { showToast(`❌ 网络错误: ${err.message}`); }
 }
 
 function showToast(msg) {
@@ -722,7 +634,6 @@ function showToast(msg) {
   setTimeout(() => toast.classList.remove('visible'), 3000);
 }
 
-// 键盘快捷键：ESC 关闭弹框，Enter 提交
 document.addEventListener('keydown', (e) => {
   const modal = document.getElementById('correctModal');
   if (!modal.classList.contains('visible')) return;
