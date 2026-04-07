@@ -466,16 +466,21 @@ function renderDayLayout() {
   renderChartsView();
 }
 
+function stripMd(t) {
+  if (!t) return '';
+  return t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
 function getSegmentDistillation(s, meta) {
   let highlights = [];
   if (meta) {
-    (meta.events || []).filter(e => e.time === s.time).forEach(e => highlights.push(`📌 <strong>[${e.project||'事件'}]</strong> ${e.summary}`));
-    (meta.decisions || []).filter(dd => dd.time === s.time).forEach(dd => highlights.push(`🎯 <strong>[${dd.project||'决策'}]</strong> ${dd.what}`));
-    (meta.todos || []).filter(t => t.time === s.time).forEach(t => highlights.push(`✅ <strong>[${t.project||'待办'}]</strong> ${t.task}`));
+    (meta.events || []).filter(e => e.time === s.time).forEach(e => highlights.push(`📌 <strong>[${e.project||'事件'}]</strong> ${stripMd(e.summary)}`));
+    (meta.decisions || []).filter(dd => dd.time === s.time).forEach(dd => highlights.push(`🎯 <strong>[${dd.project||'决策'}]</strong> ${stripMd(dd.what)}`));
+    (meta.todos || []).filter(t => t.time === s.time).forEach(t => highlights.push(`✅ <strong>[${t.project||'待办'}]</strong> ${stripMd(t.task)}`));
   }
   if (highlights.length > 0) return highlights.join('<br>');
-  if (s.summary && s.summary.trim() !== "") return `<div class="seg-distilled-placeholder">💭 ${s.summary}</div>`;
-  return `<div class="seg-distilled-placeholder">" ${s.preview}... "</div>`;
+  if (s.summary && s.summary.trim() !== "") return `<div class="seg-distilled-placeholder">💭 ${stripMd(s.summary)}</div>`;
+  return `<div class="seg-distilled-placeholder">" ${stripMd(s.preview)}... "</div>`;
 }
 
 function renderTimelineView() {
