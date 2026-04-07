@@ -123,6 +123,17 @@ body {
 .callout-icon { font-size: 20px; flex-shrink: 0; }
 .callout-body { font-size: 14px; color: var(--text); flex: 1; }
 
+/* Props 三栏元数据卡片 */
+.props-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.prop-card { background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.prop-card-title { font-size: 12px; font-weight: 700; color: var(--text-light); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; text-transform: uppercase; }
+.prop-card-title .dot { width: 8px; height: 8px; border-radius: 50%; }
+.prop-item { font-size: 13px; color: var(--text-secondary); padding: 4px 0; border-bottom: 1px dashed var(--border); line-height: 1.5; }
+.prop-item:last-child { border-bottom: none; }
+.prop-item .time-tag { font-size: 11px; color: var(--text-light); font-variant-numeric: tabular-nums; margin-right: 4px; }
+.prop-item .project-tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--accent-light); color: var(--accent); font-weight: 500; margin-right: 4px; }
+.prop-count { font-size: 11px; color: var(--text-light); font-weight: 400; }
+
 .segment { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; transition: box-shadow var(--transition); background: var(--bg); }
 .segment:hover { box-shadow: var(--shadow); }
 .segment.hidden { display: none; }
@@ -370,6 +381,51 @@ function renderDayLayout() {
     h += `<div class="callout"><span class="callout-icon">💡</span><div class="callout-body">${m.daily_summary}</div></div>`;
   }
 
+  // Props 三栏元数据卡片
+  if (m) {
+    const hasEvents = m.events?.length > 0;
+    const hasDecisions = m.decisions?.length > 0;
+    const hasTodos = m.todos?.length > 0;
+    const hasInsights = m.insights?.length > 0;
+    if (hasEvents || hasDecisions || hasTodos || hasInsights) {
+      h += '<div class="props-grid">';
+      if (hasEvents) {
+        h += `<div class="prop-card">
+          <div class="prop-card-title"><span class="dot" style="background:#2eaadc"></span>📌 事件 <span class="prop-count">${m.events.length}</span></div>`;
+        m.events.forEach(e => {
+          h += `<div class="prop-item"><span class="time-tag">${e.time||''}</span><span class="project-tag">${e.project||''}</span>${e.summary}</div>`;
+        });
+        h += '</div>';
+      }
+      if (hasDecisions) {
+        h += `<div class="prop-card">
+          <div class="prop-card-title"><span class="dot" style="background:#d9730d"></span>🎯 决策 <span class="prop-count">${m.decisions.length}</span></div>`;
+        m.decisions.forEach(dd => {
+          h += `<div class="prop-item"><span class="project-tag">${dd.project||''}</span>${dd.what}</div>`;
+        });
+        h += '</div>';
+      }
+      if (hasTodos) {
+        h += `<div class="prop-card">
+          <div class="prop-card-title"><span class="dot" style="background:#0f7b6c"></span>✅ 待办 <span class="prop-count">${m.todos.length}</span></div>`;
+        m.todos.forEach(t => {
+          const pri = t.priority === 'high' ? '🔴' : t.priority === 'medium' ? '🟡' : '⚪';
+          h += `<div class="prop-item">${pri} <span class="project-tag">${t.project||''}</span>${t.task}</div>`;
+        });
+        h += '</div>';
+      }
+      if (hasInsights) {
+        h += `<div class="prop-card">
+          <div class="prop-card-title"><span class="dot" style="background:#9065b0"></span>⚡ 洞察 <span class="prop-count">${m.insights.length}</span></div>`;
+        m.insights.forEach(i => {
+          h += `<div class="prop-item"><span class="project-tag">${i.topic||''}</span>${i.content}</div>`;
+        });
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+  }
+
   // 视图 Tabs
   h += `<div class="view-tabs">
     <button class="view-tab active" id="tab-timeline" onclick="switchView('timeline')">🕒 蒸馏时间线</button>
@@ -574,11 +630,11 @@ document.addEventListener('mouseup', (e) => {
   const text = selection.toString().trim();
   if (text.length >= 2 && text.length <= 30) {
     const anchor = selection.anchorNode;
-    if (anchor && anchor.parentElement && anchor.parentElement.closest('.seg-raw')) {
+    if (anchor && anchor.parentElement && (anchor.parentElement.closest('.seg-raw') || anchor.parentElement.closest('.seg-distilled') || anchor.parentElement.closest('.segment'))) {
       selectedWrongText = text;
       correctBtn.style.display = 'block';
-      correctBtn.style.left = (e.pageX + 10) + 'px';
-      correctBtn.style.top = (e.pageY - 30) + 'px';
+      correctBtn.style.left = (e.clientX + 8) + 'px';
+      correctBtn.style.top = (e.clientY - 32) + 'px';
       return;
     }
   }
