@@ -291,6 +291,21 @@ body {
 <div class="correct-toast" id="correctToast"></div>
 
 <script>
+// 按具体角色配色（addressed_to 为主键）
+const ROLE_STYLES = {
+  '老婆':   { emoji:'👩', color:'#d946ef', bg:'#fdf4ff' },
+  '老公':   { emoji:'👨', color:'#8b5cf6', bg:'#f5f3ff' },
+  '妈妈':   { emoji:'🤱', color:'#ec4899', bg:'#fdf2f8' },
+  '爸爸':   { emoji:'👨‍🦳', color:'#6366f1', bg:'#eef2ff' },
+  '朋友':   { emoji:'🙋', color:'#f59e0b', bg:'#fffbeb' },
+  'AI助手': { emoji:'🤖', color:'var(--role-ai)', bg:'var(--role-ai-bg)' },
+  '商家':   { emoji:'🏪', color:'var(--role-merchant)', bg:'var(--role-merchant-bg)' },
+  '宠物':   { emoji:'🐾', color:'var(--role-pet)', bg:'var(--role-pet-bg)' },
+  '自己':   { emoji:'💭', color:'var(--role-self)', bg:'var(--role-self-bg)' },
+};
+const DEFAULT_STYLE = { emoji:'❓', color:'var(--role-uncertain)', bg:'var(--role-uncertain-bg)' };
+function getRoleStyle(addr) { return ROLE_STYLES[addr] || DEFAULT_STYLE; }
+// 保留旧 ROLES 给筛选栏等兼容用
 const ROLES = {
   '跟AI说':   { emoji:'🤖', color:'var(--role-ai)',           bg:'var(--role-ai-bg)' },
   '跟商家':   { emoji:'🏪', color:'var(--role-merchant)',     bg:'var(--role-merchant-bg)' },
@@ -318,10 +333,10 @@ async function init() {
   // 全局角色条
   const rd = stats.role_distribution || {};
   const total = Object.values(rd).reduce((a,b)=>a+b,0);
-  const colorMap = {'跟AI说':'var(--role-ai)','跟商家':'var(--role-merchant)','跟宠物':'var(--role-pet)','自言自语':'var(--role-self)','跟人聊':'var(--role-interpersonal)','不确定':'var(--role-uncertain)'};
+  const getBarColor = (r) => { const sty = getRoleStyle(r); return typeof sty.color === 'string' && sty.color.startsWith('#') ? sty.color : (sty.color || '#ccc'); };
   if (total > 0) {
-    document.getElementById('globalBar').innerHTML = Object.entries(rd).map(([r,c])=>`<div style="flex:${c};background:${colorMap[r]||'#ccc'}"></div>`).join('');
-    document.getElementById('globalLegend').innerHTML = Object.entries(rd).map(([r,c])=>`<span><span class="dot" style="background:${colorMap[r]||'#ccc'}"></span>${r} ${c}</span>`).join('');
+    document.getElementById('globalBar').innerHTML = Object.entries(rd).map(([r,c])=>`<div style="flex:${c};background:${getBarColor(r)}"></div>`).join('');
+    document.getElementById('globalLegend').innerHTML = Object.entries(rd).map(([r,c])=>`<span><span class="dot" style="background:${getBarColor(r)}"></span>${r} ${c}</span>`).join('');
   }
 
   // 日期列表
@@ -374,8 +389,8 @@ function renderDayLayout() {
   let needsReviewCnt = 0;
 
   d.segments.forEach(s => {
-    const l = s.role?.scene_type_label || '不确定';
-    rc[l] = (rc[l]||0) + 1;
+    const a = s.role?.addressed_to || '未识别';
+    rc[a] = (rc[a]||0) + 1;
     if (s.role?.needs_review) needsReviewCnt++;
   });
 
@@ -447,8 +462,8 @@ function renderDayLayout() {
   if (Object.keys(rc).length > 1) {
     h += `<button class="role-tag active" style="background:var(--bg-tag);color:var(--text)" data-role="all" onclick="filterRole('all')">全部 <span class="cnt">${d.segments.length}</span></button>`;
     for (const [r,c] of Object.entries(rc)) {
-      const cfg = ROLES[r]||ROLES['不确定'];
-      h += `<button class="role-tag" style="background:${cfg.bg};color:${cfg.color}" data-role="${r}" onclick="filterRole('${r}')">${cfg.emoji} ${r} <span class="cnt">${c}</span></button>`;
+      const sty = getRoleStyle(r);
+      h += `<button class="role-tag" style="background:${sty.bg};color:${sty.color}" data-role="${r}" onclick="filterRole('${r}')">${sty.emoji} ${r} <span class="cnt">${c}</span></button>`;
     }
     if (needsReviewCnt > 0) {
       h += `<button class="role-tag" style="background:#fff3db;color:#d9730d" data-role="needs_review" onclick="filterRole('needs_review')">🚨 待确认 <span class="cnt">${needsReviewCnt}</span></button>`;
@@ -485,27 +500,23 @@ function getSegmentDistillation(s, meta) {
 
 function renderTimelineView() {
   const d = currentData;
-  const ADDR_ICONS = {'老婆':'👩','AI助手':'🤖','商家':'🏪','宠物':'🐾','老公':'👨','妈妈':'👩‍🧳','爸爸':'👨‍🧳','朋友':'🙋','自己':'💭'};
   let h = '<div class="timeline">';
   d.segments.forEach(s => {
     const role = s.role;
-    const rl = role?.scene_type_label||'不确定';
-    const cfg = ROLES[rl]||ROLES['不确定'];
-    const addr = role?.addressed_to||'';
+    const addr = role?.addressed_to || '未识别';
+    const sty = getRoleStyle(addr);
     const nr = role?.needs_review;
     const segId = `seg-${s.time.replace(':', '-')}`;
     const distilledHTML = getSegmentDistillation(s, d.meta);
-    const addrIcon = ADDR_ICONS[addr]||'';
 
-    h += `<div class="tl-node" id="${segId}" data-role="${rl}" data-needs-review="${nr?'true':'false'}">
+    h += `<div class="tl-node" id="${segId}" data-role="${addr}" data-needs-review="${nr?'true':'false'}">
       <span class="tl-time">${s.time}</span>
-      <div class="tl-dot" style="border-color:${cfg.color};background:${nr?'#fff3db':cfg.bg}"></div>
+      <div class="tl-dot" style="border-color:${sty.color};background:${nr?'#fff3db':sty.bg}"></div>
       <div class="tl-card">
         <div class="tl-role-row">
-          <span class="role-label ${nr?'needs-review':''}" style="background:${cfg.bg};color:${cfg.color}">
-            ${cfg.emoji} ${rl}
+          <span class="role-label ${nr?'needs-review':''}" style="background:${sty.bg};color:${sty.color}">
+            ${sty.emoji} ${addr}
           </span>
-          ${addr ? `<span class="addressed-to"><span class="addr-icon">${addrIcon}</span> ${addr}</span>` : ''}
         </div>
         <div class="seg-distilled">${distilledHTML}</div>
         <div class="raw-controls"><button class="raw-btn" onclick="toggleRawText(this)">👁️ 显示原文</button></div>
@@ -551,14 +562,14 @@ function initCharts() {
   chartInstances = [];
 
   const rc = {};
-  d.segments.forEach(s => { const l = s.role?.scene_type_label||'不确定'; rc[l] = (rc[l]||0)+1; });
-  const cmap = {'跟AI说':'#529cca','跟商家':'#d9730d','跟宠物':'#e255a1','自言自语':'#9065b0','跟人聊':'#0f7b6c','不确定':'#9b9a97'};
+  d.segments.forEach(s => { const a = s.role?.addressed_to||'未识别'; rc[a] = (rc[a]||0)+1; });
+  const getChartColor = (k) => { const sty = getRoleStyle(k); return typeof sty.color === 'string' && sty.color.startsWith('#') ? sty.color : '#9b9a97'; };
 
   const c1 = document.getElementById('chartRoles');
   if (c1) {
     chartInstances.push(new Chart(c1, {
       type: 'doughnut',
-      data: { labels: Object.keys(rc), datasets: [{ data: Object.values(rc), backgroundColor: Object.keys(rc).map(k => cmap[k]||'#9b9a97') }] },
+      data: { labels: Object.keys(rc), datasets: [{ data: Object.values(rc), backgroundColor: Object.keys(rc).map(k => getChartColor(k)) }] },
       options: { plugins: { legend: { position: 'bottom' } }, maintainAspectRatio: false }
     }));
   }
