@@ -31,6 +31,15 @@ if str(SRC_DIR) not in sys.path:
 from daytape.services.cleaning.cleaner import sync_correction_to_vocab
 from daytape.services.segmentation.segmenter import parse_time_segments
 
+try:
+    from daytape.adapters.screenpipe.client import ScreenpipeClient
+
+    _screenpipe = ScreenpipeClient()
+    _screenpipe_available = _screenpipe.is_available()
+except Exception:
+    _screenpipe = None
+    _screenpipe_available = False
+
 DATA_ROOT = ROOT_DIR / 'data'
 LEGACY_ROOT = ROOT_DIR
 CORRECTIONS_FILE = ROOT_DIR / 'src' / 'daytape' / 'resources' / 'corrections.json'
@@ -388,6 +397,10 @@ def main():
     print(f"📊 {stats['total_dates']} 天 | {stats['total_segments']} 段 | {stats['total_words']} 字")
     if stats['role_distribution']:
         print(f"🏷️ 角色分布: {json.dumps(stats['role_distribution'], ensure_ascii=False)}")
+    if _screenpipe_available:
+        print("🖥️ Screenpipe 已连接（hints 模式）")
+    else:
+        print("🖥️ Screenpipe 未检测到（角色归因仍正常工作）")
     print(f'🌐 http://localhost:{PORT}')
     print('按 Ctrl+C 停止\n')
 

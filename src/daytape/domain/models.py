@@ -38,6 +38,20 @@ class Scene:
     keywords_matched: list[str] = field(default_factory=list)
     summary: str = ""
     preview: str = ""
+    screen_sessions: list["ScreenSession"] = field(default_factory=list)
+
+
+@dataclass
+class ScreenSession:
+    """Screenpipe 屏幕会话摘要"""
+
+    app_name: str = ""
+    window_name: str = ""
+    url_domain: str = ""
+    start_time: str = ""
+    end_time: str = ""
+    frame_ids: list[int] = field(default_factory=list)
+    role_hint: str = ""
 
 
 @dataclass

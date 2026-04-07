@@ -1,0 +1,1 @@
+# Screenpipe services namespace.

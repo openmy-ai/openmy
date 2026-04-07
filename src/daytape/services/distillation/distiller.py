@@ -5,33 +5,20 @@ import argparse
 import json
 import os
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
+from google import genai
 
-
-DEFAULT_MODEL = 'gemini-3-flash-preview'
-API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
-
+DEFAULT_MODEL = 'gemini-2.5-flash'
 
 def summarize_scene(text: str, api_key: str, model: str) -> str:
+    client = genai.Client(api_key=api_key)
     prompt = f'请用一句大白话（不超过20个字）总结以下录音片段的核心语义：\n\n{text}'
-    payload = {
-        'contents': [{'parts': [{'text': prompt}]}],
-        'generationConfig': {'temperature': 0.2},
-    }
-    data = json.dumps(payload).encode('utf-8')
-    url = f'{API_BASE}/{model}:generateContent?key={api_key}'
-    request = urllib.request.Request(
-        url,
-        data=data,
-        headers={'Content-Type': 'application/json'},
-        method='POST',
+    response = client.models.generate_content(
+        model=model,
+        contents=prompt,
+        config=genai.types.GenerateContentConfig(temperature=0.2)
     )
-    with urllib.request.urlopen(request, timeout=120) as response:
-        result = json.loads(response.read().decode('utf-8'))
-    return result['candidates'][0]['content']['parts'][0]['text'].strip().replace('**', '').replace('\n', ' ')
-
+    return response.text.strip().replace('**', '').replace('\n', ' ')
 
 def distill_scenes(scenes_path: Path, api_key: str, model: str) -> dict:
     data = json.loads(scenes_path.read_text(encoding='utf-8'))
@@ -45,7 +32,6 @@ def distill_scenes(scenes_path: Path, api_key: str, model: str) -> dict:
         scene['summary'] = summarize_scene(text, api_key, model)
     scenes_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
     return data
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description='Distill scene summaries with Gemini API.')
@@ -66,14 +52,10 @@ def main() -> int:
 
     try:
         distill_scenes(scenes_path, api_key, args.model)
-    except urllib.error.HTTPError as exc:
-        print(f'Gemini API 错误: {exc.code} {exc.reason}', file=sys.stderr)
-        return 1
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         return 1
     return 0
-
 
 if __name__ == '__main__':
     raise SystemExit(main())

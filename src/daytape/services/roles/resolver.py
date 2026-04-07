@@ -230,8 +230,20 @@ def tag_all_scenes(scenes: list[SceneBlock]) -> list[SceneBlock]:
     return scenes
 
 
-def resolve_roles(scenes: list[SceneBlock]) -> list[SceneBlock]:
-    return tag_all_scenes(scenes)
+def resolve_roles(
+    scenes: list[SceneBlock],
+    date_str: str | None = None,
+    screenpipe_client=None,
+) -> list[SceneBlock]:
+    scenes = tag_all_scenes(scenes)
+    if screenpipe_client:
+        try:
+            from daytape.services.screenpipe.hints import enrich_with_hints
+
+            scenes = enrich_with_hints(scenes, screenpipe_client, date_str)
+        except Exception:
+            pass
+    return scenes
 
 
 def compute_stats(scenes: list[SceneBlock]) -> dict:
