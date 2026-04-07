@@ -5,6 +5,11 @@
 </p>
 
 <p align="center">
+  <a href="README.md">中文</a> •
+  <a href="README.en.md">English</a>
+</p>
+
+<p align="center">
   <a href="#快速开始">快速开始</a> •
   <a href="#功能特性">功能特性</a> •
   <a href="#技术架构">技术架构</a> •
