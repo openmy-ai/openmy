@@ -29,8 +29,21 @@ It's not just speech-to-text. DayTape automatically figures out *who you're talk
 
 ## Features
 
-### 🎯 Smart Role Attribution
-Automatically detects who you're talking to in each segment. Uses a three-layer resolution chain — explicit declarations, keyword rules, and contextual inheritance — for accuracy far beyond naive keyword matching.
+### 🎯 Hybrid Layered Role Attribution
+
+You talk to many people each day, but keyword matching alone isn't accurate enough, and manually tagging every recording is too tedious. DayTape uses a **hybrid layered approach** — different strategies at different stages. What can be determined by rules gets determined by rules. What can be inherited from context gets inherited. When the evidence is insufficient, it honestly marks "uncertain" instead of guessing.
+
+**Design Philosophy:**
+- 🚫 No mandatory role declaration per recording (too heavy, won't last a week)
+- 🚫 No forced classification of ambiguous segments (pollutes long-term archives)
+- ✅ "Uncertain" is allowed (not a bug — it's how a long-term system stays trustworthy)
+- ✅ Rules first, AI models last (if rules can handle it, don't call a model)
+
+**Two-stage classification:**
+- **Coarse** (Phase 1): AI / Merchant / Pet / Self / Interpersonal / Uncertain
+- **Fine** (after collecting confirmed samples): Partner / Family / Friends
+
+> "Discussing ChatGPT with your wife" won't be misclassified as "talking to AI" — because declarations and context inheritance take priority over keywords.
 
 ### 🧹 10-Step Deep Cleaning
 Raw transcriptions are noisy: filler words, AI boilerplate responses, background music lyrics, verbal tics. DayTape's cleaning pipeline handles each of these while protecting role-signal words from being accidentally removed.
@@ -98,13 +111,35 @@ Distilled Summaries + Structured Extraction
 Web Timeline Browser
 ```
 
-## Role Attribution: The Three-Layer Chain
+## Role Attribution: The Layered Resolution Chain
 
-| Priority | Layer | Example |
-|----------|-------|---------|
-| 1 | Explicit Declaration | "Hey babe" / "Hi Gemini" |
-| 2 | Context Inheritance | Confirmed talking to partner → weak keywords can't override |
-| 3 | Keyword Rules | 3+ AI-related terms needed to classify as "talking to AI" |
+| Priority | Layer | What it does | Example |
+|----------|-------|-------------|---------|
+| 1 | **Explicit Declaration** | Speaker uses a direct address | "Hey babe" / "Hi Gemini" |
+| 2 | **Strong Inheritance** | High-confidence role carries forward | Confirmed talking to partner → weak keywords can't override |
+| 3 | **Rule Match** | Keyword-based coarse classification | 3+ AI terms → AI; "refund/invoice" → Merchant |
+| 4 | **Weak Inheritance** | Medium-confidence role carries forward | Previous segment was merchant → next one defaults to merchant |
+| 5 | **Mark Uncertain** | Insufficient evidence → don't force a guess | Below threshold → uncertain |
+
+Each scene block outputs:
+
+```
+role:         Role category (6 coarse types)
+addressed_to: Specific entity (Partner / AI Assistant / Pet name)
+confidence:   Confidence score (0-1)
+evidence:     Resolution reasoning
+```
+
+### Why not other approaches?
+
+| Approach | Why not use it alone |
+|----------|---------------------|
+| Pure keyword matching | Only 45-70% accuracy for interpersonal subtypes |
+| Manual declaration per recording | Too much friction, won't last a week |
+| Pure LLM classification | Slow, expensive, rules handle most cases |
+| No "uncertain" allowed | Forced guessing → polluted long-term archives |
+
+**DayTape's choice:** Hybrid — rules handle the obvious cases, inheritance handles continuity, models only process truly ambiguous interpersonal segments, and "uncertain" is always an acceptable answer.
 
 ## Roadmap
 
