@@ -1,0 +1,262 @@
+#!/usr/bin/env python3
+"""Daily Briefing 生成器 — 把一天的语音+屏幕数据变成 AI 可读的交接文档"""
+
+from __future__ import annotations
+
+import json
+from collections import Counter, defaultdict
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+
+@dataclass
+class TimeBlock:
+    """一个时段的活动摘要"""
+
+    period: str = ""
+    summary: str = ""
+    mode: str = "voice_only"
+    apps_used: list[str] = field(default_factory=list)
+    people_talked_to: list[str] = field(default_factory=list)
+    scene_count: int = 0
+
+
+@dataclass
+class PersonInteraction:
+    """与一个人的交互摘要"""
+
+    name: str = ""
+    scene_count: int = 0
+    topics: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DailyBriefing:
+    """一天的完整交接文档"""
+
+    date: str = ""
+    generated_at: str = ""
+    summary: str = ""
+    time_blocks: list[TimeBlock] = field(default_factory=list)
+    key_events: list[str] = field(default_factory=list)
+    decisions: list[str] = field(default_factory=list)
+    todos_open: list[str] = field(default_factory=list)
+    insights: list[str] = field(default_factory=list)
+    people_interaction_map: dict[str, Any] = field(default_factory=dict)
+    work_sessions: dict[str, str] = field(default_factory=dict)
+    total_scenes: int = 0
+    total_words: int = 0
+    voice_hours: float = 0.0
+    screenpipe_available: bool = False
+
+
+def _time_to_period(time_str: str) -> str:
+    """把 HH:MM 归入时段。"""
+    try:
+        hour = int(time_str.split(":")[0])
+    except (ValueError, IndexError):
+        return "其他"
+
+    if hour < 6:
+        return "凌晨"
+    if hour < 9:
+        return "早上"
+    if hour < 12:
+        return "上午"
+    if hour < 14:
+        return "中午"
+    if hour < 17:
+        return "下午"
+    if hour < 19:
+        return "傍晚"
+    if hour < 22:
+        return "晚上"
+    return "深夜"
+
+
+def _time_range_for_period(period: str) -> str:
+    """返回时段的时间范围文字。"""
+    ranges = {
+        "凌晨": "00:00-06:00",
+        "早上": "06:00-09:00",
+        "上午": "09:00-12:00",
+        "中午": "12:00-14:00",
+        "下午": "14:00-17:00",
+        "傍晚": "17:00-19:00",
+        "晚上": "19:00-22:00",
+        "深夜": "22:00-24:00",
+    }
+    return ranges.get(period, "")
+
+
+def _minutes_between(time_start: str, time_end: str) -> int:
+    try:
+        start = datetime.strptime(time_start, "%H:%M")
+        end = datetime.strptime(time_end, "%H:%M")
+    except ValueError:
+        return 0
+    minutes = int((end - start).total_seconds() // 60)
+    return max(0, minutes)
+
+
+def _get_screenpipe_apps(client, date_str: str, time_start: str, time_end: str) -> list[str]:
+    """查询 Screenpipe 获取指定时间段使用的 App 列表。"""
+    if not client:
+        return []
+    try:
+        start_iso = f"{date_str}T{time_start}:00+08:00"
+        end_iso = f"{date_str}T{time_end}:59+08:00"
+        events = client.search_ocr(start_time=start_iso, end_time=end_iso, limit=50)
+        apps = set()
+        for event in events:
+            if event.app_name and event.app_name not in ("loginwindow", "screencaptureui"):
+                apps.add(event.app_name)
+        return sorted(apps)
+    except Exception:
+        return []
+
+
+def _get_screenpipe_app_usage(client, date_str: str) -> dict[str, int]:
+    """统计全天各 App 出现次数（粗略估算使用时长）。"""
+    if not client:
+        return {}
+    try:
+        start_iso = f"{date_str}T00:00:00+08:00"
+        end_iso = f"{date_str}T23:59:59+08:00"
+        events = client.search_ocr(start_time=start_iso, end_time=end_iso, limit=500)
+        app_counts: Counter[str] = Counter()
+        for event in events:
+            if event.app_name and event.app_name not in ("loginwindow", "screencaptureui"):
+                app_counts[event.app_name] += 1
+        return dict(app_counts.most_common(10))
+    except Exception:
+        return {}
+
+
+def generate_briefing(scenes_path: Path, date_str: str, screenpipe_client=None) -> DailyBriefing:
+    """生成 Daily Briefing。"""
+    briefing = DailyBriefing(date=date_str, generated_at=datetime.now().isoformat())
+
+    if not scenes_path.exists():
+        briefing.summary = f"{date_str} 没有语音数据"
+        return briefing
+
+    data = json.loads(scenes_path.read_text(encoding="utf-8"))
+    scenes = data.get("scenes", [])
+    briefing.total_scenes = len(scenes)
+    briefing.total_words = sum(len(scene.get("text", "")) for scene in scenes)
+    briefing.voice_hours = round(
+        sum(_minutes_between(scene.get("time_start", ""), scene.get("time_end", "")) for scene in scenes) / 60,
+        1,
+    )
+
+    if screenpipe_client:
+        try:
+            briefing.screenpipe_available = screenpipe_client.is_available()
+        except Exception:
+            pass
+
+    period_scenes: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for scene in scenes:
+        period_scenes[_time_to_period(scene.get("time_start", ""))].append(scene)
+
+    people: dict[str, PersonInteraction] = {}
+    period_order = ["凌晨", "早上", "上午", "中午", "下午", "傍晚", "晚上", "深夜", "其他"]
+    for period in period_order:
+        if period not in period_scenes:
+            continue
+
+        grouped_scenes = period_scenes[period]
+        time_range = _time_range_for_period(period)
+        addressed_people: list[str] = []
+        summaries: list[str] = []
+
+        for scene in grouped_scenes:
+            role = scene.get("role", {})
+            addressed_to = role.get("addressed_to", "")
+            if addressed_to:
+                addressed_people.append(addressed_to)
+                if addressed_to not in people:
+                    people[addressed_to] = PersonInteraction(name=addressed_to)
+                people[addressed_to].scene_count += 1
+                summary = scene.get("summary", "")
+                if summary and len(people[addressed_to].topics) < 5:
+                    people[addressed_to].topics.append(summary)
+
+            summary = scene.get("summary", "")
+            if summary:
+                summaries.append(summary)
+
+        apps: list[str] = []
+        mode = "voice_only"
+        if briefing.screenpipe_available and time_range:
+            start_time, end_time = time_range.split("-")
+            apps = _get_screenpipe_apps(screenpipe_client, date_str, start_time, end_time)
+            if apps:
+                mode = "dual"
+
+        summary_parts: list[str] = []
+        if summaries:
+            summary_parts.append(summaries[0])
+            if len(summaries) > 1:
+                summary_parts.append(f"等 {len(summaries)} 段对话")
+
+        briefing.time_blocks.append(
+            TimeBlock(
+                period=f"{period} ({time_range})" if time_range else period,
+                summary=" / ".join(summary_parts) if summary_parts else f"{len(grouped_scenes)} 段语音",
+                mode=mode,
+                apps_used=apps[:8],
+                people_talked_to=sorted(set(addressed_people)),
+                scene_count=len(grouped_scenes),
+            )
+        )
+
+    for name, interaction in people.items():
+        briefing.people_interaction_map[name] = {
+            "scene_count": interaction.scene_count,
+            "topics": interaction.topics[:5],
+        }
+
+    for scene in scenes:
+        summary = scene.get("summary", "")
+        if not summary:
+            continue
+        briefing.key_events.append(summary)
+        if any(keyword in summary for keyword in ["决定", "确定", "选择", "定了"]):
+            briefing.decisions.append(summary)
+        elif any(keyword in summary for keyword in ["要", "记得", "待", "别忘"]):
+            briefing.todos_open.append(summary)
+
+    if briefing.screenpipe_available:
+        app_counts = _get_screenpipe_app_usage(screenpipe_client, date_str)
+        for app, count in app_counts.items():
+            minutes = count * 2 // 60
+            briefing.work_sessions[app] = f"约{minutes}分钟" if minutes > 0 else "<1分钟"
+
+    summary_parts: list[str] = []
+    people_names = list(briefing.people_interaction_map.keys())
+    if people_names:
+        summary_parts.append(f"跟 {'、'.join(people_names[:3])} 有互动")
+    if briefing.time_blocks:
+        active_periods = [block.period.split(" ")[0] for block in briefing.time_blocks]
+        summary_parts.append(f"活跃时段：{'、'.join(active_periods)}")
+    if briefing.work_sessions:
+        top_apps = list(briefing.work_sessions.keys())[:3]
+        summary_parts.append(f"主要用了 {'、'.join(top_apps)}")
+
+    briefing.summary = "。".join(summary_parts) + "。" if summary_parts else f"{date_str} 的记录"
+    briefing.key_events = briefing.key_events[:10]
+    briefing.decisions = briefing.decisions[:10]
+    briefing.todos_open = briefing.todos_open[:10]
+    return briefing
+
+
+def save_briefing(briefing: DailyBriefing, output_path: Path) -> None:
+    """保存 briefing 为 JSON。"""
+    output_path.write_text(
+        json.dumps(asdict(briefing), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )

@@ -192,9 +192,11 @@ evidence:     判定依据
 - [x] 蒸馏摘要
 - [x] Web 时间线浏览器
 - [x] Python 包架构（v0.1）
+- [x] Screenpipe 屏幕上下文增强（hints 模式）
+- [x] Daily Briefing 每日交接文档
 - [ ] `config.yaml` 配置外化
 - [ ] 多转写引擎支持（OpenAI / Whisper / 豆包）
-- [ ] Screenpipe 屏幕上下文增强
+- [ ] 双信源角色判定（语音+屏幕同时参与）
 - [ ] 对话式查询（"今天和老婆聊了什么？"）
 - [ ] 手机录音一键上传（iOS 快捷指令）
 - [ ] Obsidian / Notion 输出

@@ -174,9 +174,11 @@ evidence:     Resolution reasoning
 - [x] Distilled summaries
 - [x] Web timeline browser
 - [x] Python package architecture (v0.1)
+- [x] Screenpipe screen-context augmentation (hints mode)
+- [x] Daily Briefing — AI-readable daily handoff document
 - [ ] `config.yaml` externalized configuration
 - [ ] Multi-engine transcription (OpenAI / Whisper / Doubao)
-- [ ] Screenpipe screen-context augmentation
+- [ ] Dual-source role attribution (voice + screen simultaneously)
 - [ ] Conversational queries ("What did I discuss with my partner today?")
 - [ ] Mobile recording upload (iOS Shortcuts)
 - [ ] Obsidian / Notion export

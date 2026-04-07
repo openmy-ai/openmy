@@ -44,7 +44,7 @@ DATA_ROOT = ROOT_DIR / 'data'
 LEGACY_ROOT = ROOT_DIR
 CORRECTIONS_FILE = ROOT_DIR / 'src' / 'daytape' / 'resources' / 'corrections.json'
 PORT = 8420
-TIME_HEADER_RE = re.compile(r'^##\s+(\d{1,2}:\d{2})')
+TIME_HEADER_RE = re.compile(r'^##\s+(\d{1,2}:\d{2})', re.MULTILINE)
 DATE_RE = re.compile(r'^(\d{4}-\d{2}-\d{2})$')
 DATE_MD_RE = re.compile(r'^(\d{4}-\d{2}-\d{2})\.md$')
 
@@ -250,6 +250,13 @@ def get_date_detail(date: str):
     }
 
 
+def get_briefing(date: str):
+    briefing_path = DATA_ROOT / date / 'daily_briefing.json'
+    if not briefing_path.exists():
+        return None
+    return load_json(briefing_path)
+
+
 def get_corrections():
     if not CORRECTIONS_FILE.exists():
         return {'corrections': []}
@@ -327,6 +334,13 @@ class BrainHandler(SimpleHTTPRequestHandler):
             self.json_response([] if not query else search_content(query))
         elif path == '/api/stats':
             self.json_response(get_stats())
+        elif path.startswith('/api/briefing/'):
+            date = path.split('/api/briefing/')[-1]
+            briefing = get_briefing(date)
+            if briefing:
+                self.json_response(briefing)
+            else:
+                self.json_response({'error': 'no briefing', 'date': date}, status=404)
         elif path.startswith('/api/date/'):
             date = path.split('/api/date/')[-1]
             detail = get_date_detail(date)
@@ -365,9 +379,9 @@ class BrainHandler(SimpleHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
 
-    def json_response(self, data):
+    def json_response(self, data, status=200):
         response = json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8')
-        self.send_response(200)
+        self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(response)))
         self.send_header('Access-Control-Allow-Origin', '*')
