@@ -134,15 +134,27 @@ body {
 .prop-item .project-tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--accent-light); color: var(--accent); font-weight: 500; margin-right: 4px; }
 .prop-count { font-size: 11px; color: var(--text-light); font-weight: 400; }
 
-.segment { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; transition: box-shadow var(--transition); background: var(--bg); }
-.segment:hover { box-shadow: var(--shadow); }
-.segment.hidden { display: none; }
-.seg-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--bg-hover); padding-bottom: 8px; }
-.seg-time { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.role-label { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
-.role-label.needs-review::after { content: '待确认'; font-size: 9px; padding: 0 4px; margin-left: 4px; border-radius: 3px; background: #fff3db; color: #d9730d; }
-.rl-source { font-size: 10px; opacity: 0.7; margin-left: 4px; }
-.seg-distilled { font-size: 15px; line-height: 1.6; margin-bottom: 12px; }
+/* ── 树形时间轴 ── */
+.timeline { position: relative; padding-left: 80px; }
+.timeline::before { content: ''; position: absolute; left: 60px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+.tl-node { position: relative; padding: 0 0 32px 32px; }
+.tl-node.hidden { display: none; }
+.tl-node:last-child { padding-bottom: 0; }
+.tl-node:last-child::after { content: ''; position: absolute; left: -22px; top: 14px; bottom: 0; width: 2px; background: var(--bg); z-index: 1; }
+.tl-dot { position: absolute; left: -26px; top: 6px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--border); background: var(--bg); z-index: 2; transition: all 0.2s; }
+.tl-node:hover .tl-dot { transform: scale(1.3); box-shadow: 0 0 0 4px rgba(46,170,220,0.15); }
+.tl-time { position: absolute; left: -80px; top: 3px; width: 50px; text-align: right; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-light); }
+.tl-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; transition: box-shadow 0.2s, border-color 0.2s; }
+.tl-node:hover .tl-card { box-shadow: var(--shadow); border-color: #d0d0ce; }
+.tl-role-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.role-label { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+.role-label.needs-review { outline: 2px dashed #d9730d; outline-offset: 1px; }
+.role-chain { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-light); background: var(--bg-sidebar); padding: 2px 8px; border-radius: 10px; }
+.role-chain .chain-arrow { color: var(--border); }
+.role-chain .chain-source { font-weight: 600; color: var(--text-secondary); }
+.role-chain .chain-conf { color: var(--accent); font-weight: 600; }
+.role-evidence { font-size: 10px; color: var(--text-light); font-style: italic; }
+.seg-distilled { font-size: 15px; line-height: 1.7; margin-bottom: 10px; color: var(--text); }
 .seg-distilled-placeholder { font-size: 14px; color: var(--text-secondary); font-style: italic; background: var(--bg-sidebar); padding: 8px 12px; border-radius: 4px; border-left: 3px solid var(--border); }
 .raw-controls { display: flex; justify-content: flex-end; }
 .raw-btn {
@@ -471,29 +483,52 @@ function getSegmentDistillation(s, meta) {
 
 function renderTimelineView() {
   const d = currentData;
-  let h = '';
+  let h = '<div class="timeline">';
   d.segments.forEach(s => {
     const role = s.role;
     const rl = role?.scene_type_label||'不确定';
     const cfg = ROLES[rl]||ROLES['不确定'];
     const src = role?.source_label||'';
+    const srcKey = role?.source||'';
     const conf = role?.confidence||0;
+    const evidence = role?.evidence||'';
     const nr = role?.needs_review;
     const segId = `seg-${s.time.replace(':', '-')}`;
     const distilledHTML = getSegmentDistillation(s, d.meta);
+    const confPct = Math.round(conf * 100);
+    const confColor = confPct >= 80 ? '#0f7b6c' : confPct >= 50 ? '#d9730d' : '#dc2626';
 
-    h += `<div class="segment" id="${segId}" data-role="${rl}" data-needs-review="${nr?'true':'false'}">
-      <div class="seg-header">
-        <span class="seg-time">${s.time}</span>
-        <span class="role-label ${nr?'needs-review':''}" style="background:${cfg.bg};color:${cfg.color}">
-          ${cfg.emoji} ${rl} <span class="rl-source">${src} ${Math.round(conf*100)}%</span>
-        </span>
+    // 判定链展示
+    const chainSteps = ['亲口说的','强继承','一看就知道','普通继承','不确定'];
+    const srcIndex = {'declared':0,'inherited':1,'rule_matched':2,'weak_inherited':3,'uncertain':4};
+    const activeIdx = srcIndex[srcKey] ?? 4;
+
+    let chainHTML = '<span class="role-chain">';
+    chainSteps.forEach((step, i) => {
+      if (i > 0) chainHTML += '<span class="chain-arrow">→</span>';
+      if (i === activeIdx) chainHTML += `<span class="chain-source">${step}</span>`;
+      else chainHTML += `<span>${step}</span>`;
+    });
+    chainHTML += ` <span class="chain-conf" style="color:${confColor}">${confPct}%</span></span>`;
+
+    h += `<div class="tl-node" id="${segId}" data-role="${rl}" data-needs-review="${nr?'true':'false'}">
+      <span class="tl-time">${s.time}</span>
+      <div class="tl-dot" style="border-color:${cfg.color};background:${nr?'#fff3db':cfg.bg}"></div>
+      <div class="tl-card">
+        <div class="tl-role-row">
+          <span class="role-label ${nr?'needs-review':''}" style="background:${cfg.bg};color:${cfg.color}">
+            ${cfg.emoji} ${rl}
+          </span>
+          ${chainHTML}
+          ${evidence ? `<span class="role-evidence">"${evidence}"</span>` : ''}
+        </div>
+        <div class="seg-distilled">${distilledHTML}</div>
+        <div class="raw-controls"><button class="raw-btn" onclick="toggleRawText(this)">👁️ 显示原文</button></div>
+        <div class="seg-raw">${fmtText(s.text)}</div>
       </div>
-      <div class="seg-distilled">${distilledHTML}</div>
-      <div class="raw-controls"><button class="raw-btn" onclick="toggleRawText(this)">👁️ 显示原文</button></div>
-      <div class="seg-raw">${fmtText(s.text)}</div>
     </div>`;
   });
+  h += '</div>';
   document.getElementById('view-timeline').innerHTML = h;
 }
 
@@ -590,7 +625,7 @@ function filterRole(role) {
     if (b.dataset.role==='all') b.classList.toggle('active', activeFilters.size===0);
     else b.classList.toggle('active', activeFilters.has(b.dataset.role));
   });
-  document.querySelectorAll('#view-timeline .segment').forEach(el => {
+  document.querySelectorAll('#view-timeline .tl-node').forEach(el => {
     if (activeFilters.size === 0) { el.classList.remove('hidden'); return; }
     let m = false;
     if (activeFilters.has('needs_review') && el.dataset.needsReview === 'true') m = true;
