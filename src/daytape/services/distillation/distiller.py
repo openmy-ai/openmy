@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+
+DEFAULT_MODEL = 'gemini-3-flash-preview'
+API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
+
+
+def summarize_scene(text: str, api_key: str, model: str) -> str:
+    prompt = f'请用一句大白话（不超过20个字）总结以下录音片段的核心语义：\n\n{text}'
+    payload = {
+        'contents': [{'parts': [{'text': prompt}]}],
+        'generationConfig': {'temperature': 0.2},
+    }
+    data = json.dumps(payload).encode('utf-8')
+    url = f'{API_BASE}/{model}:generateContent?key={api_key}'
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={'Content-Type': 'application/json'},
+        method='POST',
+    )
+    with urllib.request.urlopen(request, timeout=120) as response:
+        result = json.loads(response.read().decode('utf-8'))
+    return result['candidates'][0]['content']['parts'][0]['text'].strip().replace('**', '').replace('\n', ' ')
+
+
+def distill_scenes(scenes_path: Path, api_key: str, model: str) -> dict:
+    data = json.loads(scenes_path.read_text(encoding='utf-8'))
+    for scene in data.get('scenes', []):
+        if scene.get('summary'):
+            continue
+        text = scene.get('text', '').strip()
+        if not text:
+            scene['summary'] = ''
+            continue
+        scene['summary'] = summarize_scene(text, api_key, model)
+    scenes_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    return data
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description='Distill scene summaries with Gemini API.')
+    parser.add_argument('scenes_json', help='Path to scenes.json')
+    parser.add_argument('--model', default=DEFAULT_MODEL)
+    parser.add_argument('--api-key-env', default='GEMINI_API_KEY')
+    args = parser.parse_args()
+
+    api_key = os.getenv(args.api_key_env, '').strip()
+    if not api_key:
+        print(f'缺少环境变量: {args.api_key_env}', file=sys.stderr)
+        return 1
+
+    scenes_path = Path(args.scenes_json)
+    if not scenes_path.exists():
+        print(f'文件不存在: {scenes_path}', file=sys.stderr)
+        return 1
+
+    try:
+        distill_scenes(scenes_path, api_key, args.model)
+    except urllib.error.HTTPError as exc:
+        print(f'Gemini API 错误: {exc.code} {exc.reason}', file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

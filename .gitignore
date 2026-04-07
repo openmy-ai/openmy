@@ -1,1 +1,6 @@
 *.raw.md
+*.pyc
+__pycache__/
+app/server.log
+nohup.out
+*.before-gemini-cli-*

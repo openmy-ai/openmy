@@ -1,0 +1,21 @@
+{
+  "_comment": "DayTape 纠错词典",
+  "corrections": [
+    {
+      "wrong": "青维",
+      "right": "青梅",
+      "context": "狗的名字",
+      "count": 2,
+      "first_seen": "2026-04-07",
+      "last_updated": "2026-04-07T16:17:52.532449"
+    },
+    {
+      "wrong": "理想电机",
+      "right": "理想电竞",
+      "context": "",
+      "count": 1,
+      "first_seen": "2026-04-07",
+      "last_updated": "2026-04-07T16:01:50.111514"
+    }
+  ]
+}
