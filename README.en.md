@@ -59,6 +59,32 @@ Each conversation segment is distilled into a single sentence, so you know what 
 ### 🏷️ Structured Extraction
 Automatically extracts events, decisions, to-dos, and insights from conversations, tagged by project.
 
+### 🖥️ Screenpipe Screen-Context Augmentation (Optional)
+
+Voice is the main signal; screen activity is corroborating evidence. DayTape integrates with [Screenpipe](https://github.com/mediar-ai/screenpipe) to enrich your audio timeline with screen context.
+
+**Core design: Don't copy Screenpipe's data — borrow its understanding.**
+
+- DayTape queries Screenpipe's HTTP API by time window, never depends on its database schema
+- Only stores summarized screen sessions and frame_id references; screenshots are lazy-loaded on demand
+- Raw OCR text is never mixed into the voice transcript, preventing screen text from polluting structured extraction
+
+**Three fusion modes:**
+
+| Mode | What it does | Example |
+|------|-------------|---------|
+| **hints** (default) | Boosts role attribution confidence | WeChat window → "interpersonal" ↑; Cursor window → "AI" ↑ |
+| **augment** | Feeds screen summaries into extraction prompts | "Was viewing Taobao refund page" added to event context |
+| **full** | Attaches frame references to scenes | Click in Web UI to view the actual screenshot from that moment |
+
+**Time alignment (3-stage):**
+
+```
+1. Coarse: Estimate global offset delta0 from recording start time
+2. Refine: Keyword overlap scan within ±30min to find best offset delta
+3. Merge: Query Screenpipe for [scene.start+delta-20s, scene.end+delta+20s]
+```
+
 ## Quick Start
 
 ```bash
