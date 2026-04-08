@@ -12,7 +12,17 @@ DEFAULT_MODEL = 'gemini-2.5-flash'
 
 def summarize_scene(text: str, api_key: str, model: str) -> str:
     client = genai.Client(api_key=api_key)
-    prompt = f'请用一句大白话（不超过20个字）总结以下录音片段的核心语义：\n\n{text}'
+    prompt = (
+        f'你是一个录音日志的摘要助手。请用自然语言概括以下录音片段，要求：\n'
+        f'1. 用 2-5 句话完整概括这段录音的内容，不要只说一句话\n'
+        f'2. 保留关键人物（谁在说话、提到了谁）\n'
+        f'3. 保留具体事件和话题（聊了什么、做了什么、去了哪里）\n'
+        f'4. 如果有有趣的观点或金句，用引号保留原话\n'
+        f'5. 如果有待办事项或决定，明确写出来\n'
+        f'6. 用大白话写，像跟朋友转述今天发生了什么一样\n'
+        f'7. 总字数控制在 50-150 字之间\n\n'
+        f'录音原文：\n{text}'
+    )
     response = client.models.generate_content(
         model=model,
         contents=prompt,

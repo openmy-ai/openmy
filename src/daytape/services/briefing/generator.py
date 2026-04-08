@@ -227,7 +227,7 @@ def generate_briefing(scenes_path: Path, date_str: str, screenpipe_client=None) 
         briefing.key_events.append(summary)
         if any(keyword in summary for keyword in ["决定", "确定", "选择", "定了"]):
             briefing.decisions.append(summary)
-        elif any(keyword in summary for keyword in ["要", "记得", "待", "别忘"]):
+        elif any(keyword in summary for keyword in ["需要", "要去", "要做", "要买", "要找", "记得", "别忘", "待处理", "待确认", "还没"]):
             briefing.todos_open.append(summary)
 
     if briefing.screenpipe_available:

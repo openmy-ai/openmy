@@ -16,6 +16,28 @@
       "count": 1,
       "first_seen": "2026-04-07",
       "last_updated": "2026-04-07T16:01:50.111514"
+    },
+    {
+      "wrong": "刘浩",
+      "right": "刘涛",
+      "context": "人名",
+      "count": 1,
+      "first_seen": "2026-04-08",
+      "last_updated": "2026-04-08T13:20:15.102572"
+    },
+    {
+      "wrong": "降费",
+      "right": "寄养费",
+      "context": "宠物医院寄养",
+      "count": 1,
+      "first_seen": "2026-04-08"
+    },
+    {
+      "wrong": "阿加塔",
+      "right": "阿维塔",
+      "context": "Avatr 电动车品牌",
+      "count": 1,
+      "first_seen": "2026-04-08"
     }
   ]
 }

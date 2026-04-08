@@ -66,8 +66,7 @@ def _extract_domain(url: str) -> str:
 
 
 def sessionize(events, gap_seconds: int = 15) -> list[ScreenSession]:
-    """按 app_name+window_name 粗聚合 screen events。"""
-    del gap_seconds
+    """按 app_name+window_name 聚合 screen events，间隔超过 gap_seconds 则切分。"""
     if not events:
         return []
 
@@ -75,15 +74,33 @@ def sessionize(events, gap_seconds: int = 15) -> list[ScreenSession]:
     sessions: list[ScreenSession] = []
     current = None
 
+    def _parse_ts(ts_str: str) -> float:
+        """尽力解析 ISO 时间戳为 epoch 秒，失败返回 0。"""
+        try:
+            from datetime import datetime, timezone
+            # 处理带时区偏移的 ISO 格式
+            clean = ts_str.replace("+08:00", "+0800").replace("+00:00", "+0000")
+            for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f%z"):
+                try:
+                    return datetime.strptime(clean, fmt).timestamp()
+                except ValueError:
+                    continue
+            return 0.0
+        except Exception:
+            return 0.0
+
     for event in sorted_events:
         key = f"{event.app_name}|{event.window_name}"
+        # 检查是否应该合并到当前 session：同 key 且时间间隔 <= gap_seconds
         if current and current["key"] == key:
-            current["end_time"] = event.timestamp
-            if event.frame_id:
-                current["frame_ids"].append(event.frame_id)
-            if event.url and not current["url_domain"]:
-                current["url_domain"] = _extract_domain(event.url)
-            continue
+            elapsed = _parse_ts(event.timestamp) - _parse_ts(current["end_time"])
+            if 0 <= elapsed <= gap_seconds:
+                current["end_time"] = event.timestamp
+                if event.frame_id:
+                    current["frame_ids"].append(event.frame_id)
+                if event.url and not current["url_domain"]:
+                    current["url_domain"] = _extract_domain(event.url)
+                continue
 
         if current:
             hint, _ = get_role_hint(current["app_name"], current["window_name"])

@@ -185,6 +185,96 @@ body {
 .chart-card canvas { max-height: 260px; }
 .chart-full { grid-column: 1 / -1; }
 
+/* ── Briefing 仪表盘 ── */
+.briefing-banner {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px; padding: 24px 28px; margin-bottom: 24px; color: #fff;
+  position: relative; overflow: hidden;
+}
+.briefing-banner::after {
+  content: ''; position: absolute; top: -30%; right: -10%; width: 200px; height: 200px;
+  background: rgba(255,255,255,0.08); border-radius: 50%;
+}
+.briefing-banner h2 { font-family: var(--font-serif); font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+.briefing-summary { font-size: 14px; opacity: 0.92; line-height: 1.6; }
+.briefing-stats-row { display: flex; gap: 24px; margin-top: 14px; }
+.briefing-stat { display: flex; flex-direction: column; }
+.briefing-stat-num { font-size: 22px; font-weight: 700; }
+.briefing-stat-label { font-size: 11px; opacity: 0.75; }
+
+.briefing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+@media (max-width: 720px) { .briefing-grid { grid-template-columns: 1fr; } }
+.briefing-card {
+  background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 20px; transition: box-shadow 0.2s;
+}
+.briefing-card:hover { box-shadow: var(--shadow); }
+.briefing-card-title {
+  font-size: 13px; font-weight: 700; color: var(--text-light); margin-bottom: 12px;
+  display: flex; align-items: center; gap: 6px; text-transform: uppercase;
+}
+.briefing-card-full { grid-column: 1 / -1; }
+
+.time-block {
+  display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px dashed var(--border);
+  align-items: flex-start;
+}
+.time-block:last-child { border-bottom: none; padding-bottom: 0; }
+.tb-period {
+  font-size: 12px; font-weight: 700; color: var(--accent); white-space: nowrap;
+  min-width: 56px; padding-top: 2px;
+}
+.tb-body { flex: 1; }
+.tb-summary { font-size: 14px; color: var(--text); line-height: 1.6; margin-bottom: 6px; }
+.tb-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tb-tag {
+  font-size: 10px; padding: 2px 8px; border-radius: 10px;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.tb-tag-person { background: #f0f9ff; color: #0369a1; }
+.tb-tag-app { background: #f0fdf4; color: #15803d; }
+.tb-mode-badge {
+  font-size: 9px; padding: 2px 6px; border-radius: 4px; font-weight: 600;
+  margin-left: 6px; vertical-align: middle;
+}
+.tb-mode-dual { background: #dbeafe; color: #1d4ed8; }
+.tb-mode-voice { background: #f0f0ee; color: #787774; }
+
+.event-item {
+  font-size: 13px; color: var(--text-secondary); padding: 6px 0;
+  border-bottom: 1px dashed var(--border); line-height: 1.5;
+}
+.event-item:last-child { border-bottom: none; }
+.event-icon { margin-right: 4px; }
+
+.people-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.people-chip {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 14px; min-width: 140px;
+}
+.people-avatar {
+  width: 32px; height: 32px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; font-size: 16px;
+}
+.people-info { flex: 1; }
+.people-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.people-meta { font-size: 11px; color: var(--text-light); }
+
+.app-bar-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.app-bar-name { font-size: 12px; font-weight: 500; color: var(--text); min-width: 80px; }
+.app-bar-track { flex: 1; height: 8px; background: var(--bg-active); border-radius: 4px; overflow: hidden; }
+.app-bar-fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 4px; transition: width 0.6s ease; }
+.app-bar-duration { font-size: 11px; color: var(--text-light); min-width: 60px; text-align: right; }
+
+/* 屏幕佐证徽章（时间轴卡片内） */
+.screen-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; padding: 2px 8px; border-radius: 10px;
+  background: #eff6ff; color: #3b82f6; font-weight: 500;
+}
+.screen-badge .sb-icon { font-size: 11px; }
+
 /* 搜索 */
 .search-header { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: var(--text); }
 .search-result { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; cursor: pointer; transition: all var(--transition); }
@@ -452,9 +542,10 @@ function renderDayLayout() {
 
   // 视图 Tabs
   h += `<div class="view-tabs">
-    <button class="view-tab active" id="tab-timeline" onclick="switchView('timeline')">🕒 蒸馏时间线</button>
-    <button class="view-tab" id="tab-table" onclick="switchView('table')">📋 数据表格</button>
-    <button class="view-tab" id="tab-charts" onclick="switchView('charts')">📊 可视化</button>
+    <button class="view-tab active" id="tab-briefing" onclick="switchView('briefing')">📋 日报</button>
+    <button class="view-tab" id="tab-timeline" onclick="switchView('timeline')">🕒 蒸馏时间线</button>
+    <button class="view-tab" id="tab-table" onclick="switchView('table')">📊 数据表格</button>
+    <button class="view-tab" id="tab-charts" onclick="switchView('charts')">📈 可视化</button>
   </div>`;
 
   // 角色筛选器
@@ -471,11 +562,13 @@ function renderDayLayout() {
   }
   h += '</div>';
 
-  h += `<div id="view-timeline" class="view-content active"></div>`;
+  h += `<div id="view-briefing" class="view-content active"></div>`;
+  h += `<div id="view-timeline" class="view-content"></div>`;
   h += `<div id="view-table" class="view-content"></div>`;
   h += `<div id="view-charts" class="view-content"></div>`;
 
   document.getElementById('main').innerHTML = h;
+  renderBriefingView();
   renderTimelineView();
   renderTableView();
   renderChartsView();
@@ -517,6 +610,8 @@ function renderTimelineView() {
           <span class="role-label ${nr?'needs-review':''}" style="background:${sty.bg};color:${sty.color}">
             ${sty.emoji} ${addr}
           </span>
+          ${(s.screen_sessions && s.screen_sessions.length > 0) ? s.screen_sessions.slice(0,2).map(ss => `<span class="screen-badge"><span class="sb-icon">🖥️</span>${ss.app_name}</span>`).join('') : ''}
+          ${(s.role?.source === 'screen_hint') ? '<span class="screen-badge" style="background:#fff7ed;color:#c2410c"><span class="sb-icon">👁️</span>屏幕推断</span>' : ''}
         </div>
         <div class="seg-distilled">${distilledHTML}</div>
         <div class="raw-controls"><button class="raw-btn" onclick="toggleRawText(this)">👁️ 显示原文</button></div>
@@ -596,6 +691,141 @@ function switchView(viewName) {
   const filterBar = document.getElementById('filter-bar');
   filterBar.style.display = viewName === 'timeline' ? 'flex' : 'none';
   if (viewName === 'charts') setTimeout(initCharts, 50);
+}
+
+// ── Briefing 仪表盘 ──
+let briefingCache = {};
+async function renderBriefingView() {
+  const container = document.getElementById('view-briefing');
+  if (!currentDate) { container.innerHTML = ''; return; }
+
+  // 加载 briefing 数据
+  let briefing = briefingCache[currentDate];
+  if (!briefing) {
+    try {
+      const resp = await fetch(`/api/briefing/${currentDate}`);
+      if (resp.ok) {
+        briefing = await resp.json();
+        briefingCache[currentDate] = briefing;
+      }
+    } catch(e) {}
+  }
+
+  if (!briefing || briefing.error) {
+    container.innerHTML = `<div class="briefing-banner" style="background:linear-gradient(135deg,#94a3b8,#64748b)">
+      <h2>📋 暂无日报</h2>
+      <div class="briefing-summary">${currentDate} 的 Daily Briefing 尚未生成。运行 <code style="background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:4px">python -m daytape.services.briefing ${currentDate}</code> 来生成。</div>
+    </div>`;
+    return;
+  }
+
+  let h = '';
+
+  // ── 顶部 Banner ──
+  h += `<div class="briefing-banner">
+    <h2>📋 Daily Briefing</h2>
+    <div class="briefing-summary">${briefing.summary}</div>
+    <div class="briefing-stats-row">
+      <div class="briefing-stat"><span class="briefing-stat-num">${briefing.total_scenes || 0}</span><span class="briefing-stat-label">场景</span></div>
+      <div class="briefing-stat"><span class="briefing-stat-num">${fmtNum(briefing.total_words || 0)}</span><span class="briefing-stat-label">字数</span></div>
+      <div class="briefing-stat"><span class="briefing-stat-num">${briefing.voice_hours || 0}h</span><span class="briefing-stat-label">语音时长</span></div>
+      <div class="briefing-stat"><span class="briefing-stat-num">${briefing.screenpipe_available ? '✅' : '—'}</span><span class="briefing-stat-label">Screenpipe</span></div>
+    </div>
+  </div>`;
+
+  h += '<div class="briefing-grid">';
+
+  // ── 时段块 ──
+  if (briefing.time_blocks && briefing.time_blocks.length > 0) {
+    h += `<div class="briefing-card briefing-card-full">
+      <div class="briefing-card-title">🕒 时段概览</div>`;
+    briefing.time_blocks.forEach(tb => {
+      const modeBadge = tb.mode === 'dual'
+        ? '<span class="tb-mode-badge tb-mode-dual">🖥️+🎤</span>'
+        : '<span class="tb-mode-badge tb-mode-voice">🎤</span>';
+      h += `<div class="time-block">
+        <div class="tb-period">${tb.period.split(' ')[0]}</div>
+        <div class="tb-body">
+          <div class="tb-summary">${tb.summary} ${modeBadge} <span style="font-size:11px;color:var(--text-light)">${tb.scene_count}段</span></div>
+          <div class="tb-tags">
+            ${(tb.people_talked_to||[]).map(p => { const sty = getRoleStyle(p); return `<span class="tb-tag tb-tag-person">${sty.emoji} ${p}</span>`; }).join('')}
+            ${(tb.apps_used||[]).map(a => `<span class="tb-tag tb-tag-app">💻 ${a}</span>`).join('')}
+          </div>
+        </div>
+      </div>`;
+    });
+    h += '</div>';
+  }
+
+  // ── 人物互动 ──
+  const people = briefing.people_interaction_map || {};
+  if (Object.keys(people).length > 0) {
+    h += `<div class="briefing-card">
+      <div class="briefing-card-title">👥 人物互动</div>
+      <div class="people-grid">`;
+    for (const [name, info] of Object.entries(people)) {
+      const sty = getRoleStyle(name);
+      h += `<div class="people-chip">
+        <div class="people-avatar" style="background:${sty.bg};color:${sty.color}">${sty.emoji}</div>
+        <div class="people-info">
+          <div class="people-name">${name}</div>
+          <div class="people-meta">${info.scene_count} 段对话</div>
+        </div>
+      </div>`;
+    }
+    h += '</div></div>';
+  }
+
+  // ── App 使用 ──
+  const sessions = briefing.work_sessions || {};
+  if (Object.keys(sessions).length > 0) {
+    h += `<div class="briefing-card">
+      <div class="briefing-card-title">💻 App 使用</div>`;
+    const maxVal = Math.max(...Object.values(sessions).map(v => parseInt(v) || 1));
+    for (const [app, duration] of Object.entries(sessions)) {
+      const numVal = parseInt(duration) || 1;
+      const pct = Math.max(5, (numVal / maxVal) * 100);
+      h += `<div class="app-bar-row">
+        <span class="app-bar-name">${app}</span>
+        <div class="app-bar-track"><div class="app-bar-fill" style="width:${pct}%"></div></div>
+        <span class="app-bar-duration">${duration}</span>
+      </div>`;
+    }
+    h += '</div>';
+  }
+
+  // ── 关键事件 ──
+  if (briefing.key_events && briefing.key_events.length > 0) {
+    h += `<div class="briefing-card briefing-card-full">
+      <div class="briefing-card-title">📌 关键事件 <span class="prop-count">${briefing.key_events.length}</span></div>`;
+    briefing.key_events.forEach(ev => {
+      h += `<div class="event-item"><span class="event-icon">•</span> ${ev}</div>`;
+    });
+    h += '</div>';
+  }
+
+  // ── 决策 ──
+  if (briefing.decisions && briefing.decisions.length > 0) {
+    h += `<div class="briefing-card">
+      <div class="briefing-card-title">🎯 决策 <span class="prop-count">${briefing.decisions.length}</span></div>`;
+    briefing.decisions.forEach(d => {
+      h += `<div class="event-item"><span class="event-icon">🎯</span> ${d}</div>`;
+    });
+    h += '</div>';
+  }
+
+  // ── 待办 ──
+  if (briefing.todos_open && briefing.todos_open.length > 0) {
+    h += `<div class="briefing-card">
+      <div class="briefing-card-title">✅ 待办 <span class="prop-count">${briefing.todos_open.length}</span></div>`;
+    briefing.todos_open.forEach(t => {
+      h += `<div class="event-item"><span class="event-icon">☐</span> ${t}</div>`;
+    });
+    h += '</div>';
+  }
+
+  h += '</div>'; // close briefing-grid
+  container.innerHTML = h;
 }
 
 function toggleRawText(btn) {
