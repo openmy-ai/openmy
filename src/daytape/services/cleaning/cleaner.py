@@ -522,7 +522,7 @@ def bold_keywords(text: str) -> str:
 
 
 # ── 纠错替换 ─────────────────────────────────────────────
-CORRECTIONS_FILE = Path(__file__).parent / 'corrections.json'
+CORRECTIONS_FILE = Path(__file__).resolve().parent.parent.parent / 'resources' / 'corrections.json'
 
 def load_corrections() -> list[dict]:
     """加载纠错词典"""
@@ -572,7 +572,7 @@ def apply_corrections(text: str) -> str:
 
 def sync_correction_to_vocab(wrong: str, right: str, context: str = ''):
     """将纠正同步写入 vocab.txt（事前预防层）"""
-    vocab_file = Path(__file__).parent / 'vocab.txt'
+    vocab_file = Path(__file__).resolve().parent.parent.parent / 'resources' / 'vocab.txt'
     if not vocab_file.exists():
         return
     

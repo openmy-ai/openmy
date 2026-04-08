@@ -5,13 +5,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import sys
+from datetime import date, datetime
 from pathlib import Path
+from typing import Any
 
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 
@@ -32,6 +37,7 @@ ROLE_COLORS = {
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 DATE_MD_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
+AUDIO_TIME_RE = re.compile(r".*?(\d{8})_(\d{2})(\d{2})(\d{2}).*")
 
 
 def find_all_dates() -> list[str]:
@@ -50,16 +56,38 @@ def find_all_dates() -> list[str]:
     return sorted(dates, reverse=True)
 
 
-def get_date_status(date: str) -> dict:
-    """获取某一天的处理阶段。"""
-    day_dir = DATA_ROOT / date
-    legacy = LEGACY_ROOT / f"{date}.md"
+def ensure_day_dir(date_str: str) -> Path:
+    day_dir = DATA_ROOT / date_str
+    day_dir.mkdir(parents=True, exist_ok=True)
+    return day_dir
 
-    status = {
-        "date": date,
+
+def read_json(path: Path, default: Any) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default
+
+
+def strip_document_header(markdown: str) -> str:
+    if "---" not in markdown:
+        return markdown
+    parts = markdown.split("---", 2)
+    if len(parts) >= 3:
+        return parts[2].strip()
+    return markdown
+
+
+def get_date_status(date_str: str) -> dict[str, Any]:
+    """获取某一天的处理阶段。"""
+    day_dir = DATA_ROOT / date_str
+    legacy = LEGACY_ROOT / f"{date_str}.md"
+
+    status: dict[str, Any] = {
+        "date": date_str,
         "has_transcript": (day_dir / "transcript.md").exists() or legacy.exists(),
-        "has_raw": (day_dir / "transcript.raw.md").exists() or (LEGACY_ROOT / f"{date}.raw.md").exists(),
-        "has_scenes": (day_dir / "scenes.json").exists() or (LEGACY_ROOT / f"{date}.scenes.json").exists(),
+        "has_raw": (day_dir / "transcript.raw.md").exists() or (LEGACY_ROOT / f"{date_str}.raw.md").exists(),
+        "has_scenes": (day_dir / "scenes.json").exists() or (LEGACY_ROOT / f"{date_str}.scenes.json").exists(),
         "has_briefing": (day_dir / "daily_briefing.json").exists(),
         "word_count": 0,
         "scene_count": 0,
@@ -75,38 +103,36 @@ def get_date_status(date: str) -> dict:
 
     scenes_path = day_dir / "scenes.json"
     if not scenes_path.exists():
-        scenes_path = LEGACY_ROOT / f"{date}.scenes.json"
+        scenes_path = LEGACY_ROOT / f"{date_str}.scenes.json"
     if scenes_path.exists():
-        try:
-            data = json.loads(scenes_path.read_text(encoding="utf-8"))
-            status["scene_count"] = len(data.get("scenes", []))
-            status["role_distribution"] = data.get("stats", {}).get("role_distribution", {})
-        except Exception:
-            pass
+        data = read_json(scenes_path, {})
+        status["scene_count"] = len(data.get("scenes", []))
+        status["role_distribution"] = data.get("stats", {}).get("role_distribution", {})
 
     return status
 
 
-def resolve_day_paths(date: str) -> dict[str, Path]:
-    day_dir = DATA_ROOT / date
-    paths = {
-        "transcript": day_dir / "transcript.md",
-        "raw": day_dir / "transcript.raw.md",
-        "scenes": day_dir / "scenes.json",
-        "briefing": day_dir / "daily_briefing.json",
-    }
-    if paths["transcript"].exists():
-        return paths
+def resolve_day_paths(date_str: str) -> dict[str, Path]:
+    day_dir = DATA_ROOT / date_str
+    if day_dir.exists():
+        return {
+            "dir": day_dir,
+            "transcript": day_dir / "transcript.md",
+            "raw": day_dir / "transcript.raw.md",
+            "scenes": day_dir / "scenes.json",
+            "briefing": day_dir / "daily_briefing.json",
+        }
 
     return {
-        "transcript": LEGACY_ROOT / f"{date}.md",
-        "raw": LEGACY_ROOT / f"{date}.raw.md",
-        "scenes": LEGACY_ROOT / f"{date}.scenes.json",
+        "dir": day_dir,
+        "transcript": LEGACY_ROOT / f"{date_str}.md",
+        "raw": LEGACY_ROOT / f"{date_str}.raw.md",
+        "scenes": LEGACY_ROOT / f"{date_str}.scenes.json",
         "briefing": day_dir / "daily_briefing.json",
     }
 
 
-def stage_label(status: dict) -> str:
+def stage_label(status: dict[str, Any]) -> str:
     if status["has_briefing"]:
         return "[green]✅ 完成[/green]"
     if status["has_scenes"]:
@@ -118,7 +144,7 @@ def stage_label(status: dict) -> str:
     return "[dim]❌ 无数据[/dim]"
 
 
-def role_bar(distribution: dict, width: int = 20) -> str:
+def role_bar(distribution: dict[str, int], width: int = 20) -> str:
     total = sum(distribution.values())
     if total == 0:
         return "[dim]—[/dim]"
@@ -129,6 +155,67 @@ def role_bar(distribution: dict, width: int = 20) -> str:
         bar_len = max(1, round(count / total * width))
         parts.append(f"[{color}]{'█' * bar_len}[/{color}]")
     return "".join(parts)
+
+
+def get_screenpipe_client():
+    try:
+        from daytape.adapters.screenpipe.client import ScreenpipeClient
+
+        client = ScreenpipeClient()
+        return client if client.is_available() else None
+    except Exception:
+        return None
+
+
+def read_scenes_payload(date_str: str) -> tuple[Path, dict[str, Any]]:
+    paths = resolve_day_paths(date_str)
+    return paths["scenes"], read_json(paths["scenes"], {})
+
+
+def parse_audio_time(audio_path: Path) -> str:
+    match = AUDIO_TIME_RE.match(audio_path.name)
+    if not match:
+        return "00:00"
+    return f"{match.group(2)}:{match.group(3)}"
+
+
+def write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def upsert_correction(wrong: str, right: str, context: str = "") -> Path:
+    from daytape.services.cleaning.cleaner import CORRECTIONS_FILE
+
+    payload = {"_comment": "DayTape 纠错词典", "corrections": []}
+    if CORRECTIONS_FILE.exists():
+        payload = read_json(CORRECTIONS_FILE, payload)
+        payload.setdefault("_comment", "DayTape 纠错词典")
+        payload.setdefault("corrections", [])
+
+    now = datetime.now().isoformat()
+    today = date.today().isoformat()
+    corrections = payload["corrections"]
+    for item in corrections:
+        if item.get("wrong") == wrong and item.get("right") == right:
+            item["count"] = int(item.get("count", 0)) + 1
+            item["context"] = context or item.get("context", "")
+            item["last_updated"] = now
+            write_json(CORRECTIONS_FILE, payload)
+            return CORRECTIONS_FILE
+
+    corrections.append(
+        {
+            "wrong": wrong,
+            "right": right,
+            "context": context,
+            "count": 1,
+            "first_seen": today,
+            "last_updated": now,
+        }
+    )
+    write_json(CORRECTIONS_FILE, payload)
+    return CORRECTIONS_FILE
 
 
 def cmd_status(_args: argparse.Namespace) -> int:
@@ -145,10 +232,10 @@ def cmd_status(_args: argparse.Namespace) -> int:
     table.add_column("场景", justify="right")
     table.add_column("角色分布", min_width=20)
 
-    for date in dates:
-        status = get_date_status(date)
+    for date_str in dates:
+        status = get_date_status(date_str)
         table.add_row(
-            date,
+            date_str,
             stage_label(status),
             f"{status['word_count']:,}" if status["word_count"] else "—",
             str(status["scene_count"]) if status["scene_count"] else "—",
@@ -161,19 +248,19 @@ def cmd_status(_args: argparse.Namespace) -> int:
 
 def cmd_view(args: argparse.Namespace) -> int:
     """终端查看某天概览。"""
-    date = args.date
-    status = get_date_status(date)
+    date_str = args.date
+    status = get_date_status(date_str)
     if not status["has_transcript"]:
-        console.print(f"[red]❌ {date} 没有数据[/red]")
+        console.print(f"[red]❌ {date_str} 没有数据[/red]")
         return 1
 
-    paths = resolve_day_paths(date)
+    paths = resolve_day_paths(date_str)
     if paths["briefing"].exists():
-        briefing = json.loads(paths["briefing"].read_text(encoding="utf-8"))
+        briefing = read_json(paths["briefing"], {})
         console.print(
             Panel(
                 briefing.get("summary", "无摘要"),
-                title=f"📋 {date} 日报",
+                title=f"📋 {date_str} 日报",
                 border_style="magenta",
                 padding=(1, 2),
             )
@@ -181,7 +268,7 @@ def cmd_view(args: argparse.Namespace) -> int:
         console.print()
 
     if paths["scenes"].exists():
-        data = json.loads(paths["scenes"].read_text(encoding="utf-8"))
+        data = read_json(paths["scenes"], {})
         scenes = data.get("scenes", [])
         for scene in scenes:
             time_start = scene.get("time_start", "")
@@ -219,8 +306,283 @@ def cmd_view(args: argparse.Namespace) -> int:
                 console.print(f"  [{color}]{'█' * bar_len}[/{color}] {role_name} {count}段 ({pct:.0f}%)")
     else:
         content = paths["transcript"].read_text(encoding="utf-8")
-        console.print(Panel(Markdown(content[:2000]), title=f"📝 {date} 转写文本"))
+        console.print(Panel(Markdown(content[:2000]), title=f"📝 {date_str} 转写文本"))
 
+    return 0
+
+
+def cmd_clean(args: argparse.Namespace) -> int:
+    """清洗转写文本。"""
+    date_str = args.date
+    paths = resolve_day_paths(date_str)
+    raw_path = paths["raw"]
+    if not raw_path.exists():
+        console.print(f"[red]❌ 找不到 {date_str} 的原始转写[/red]")
+        return 1
+
+    from daytape.services.cleaning.cleaner import clean_text
+
+    raw_text = raw_path.read_text(encoding="utf-8")
+    with console.status("[bold green]🧹 清洗中..."):
+        cleaned = clean_text(raw_text)
+
+    output_path = ensure_day_dir(date_str) / "transcript.md"
+    output_path.write_text(cleaned, encoding="utf-8")
+
+    before = len(re.sub(r"\s+", "", raw_text))
+    after = len(re.sub(r"\s+", "", cleaned))
+    console.print(f"[green]✅ 清洗完成[/green]: {before:,} → {after:,} 字 (去除 {before - after:,} 字)")
+    console.print(f"[dim]{output_path}[/dim]")
+    return 0
+
+
+def cmd_roles(args: argparse.Namespace) -> int:
+    """切场景 + 角色归因。"""
+    date_str = args.date
+    paths = resolve_day_paths(date_str)
+    transcript_path = paths["transcript"]
+    if not transcript_path.exists():
+        console.print(f"[red]❌ 找不到 {date_str} 的清洗后文本，先运行 daytape clean {date_str}[/red]")
+        return 1
+
+    from daytape.services.roles.resolver import resolve_roles, scenes_to_dict
+    from daytape.services.segmentation.segmenter import segment
+
+    markdown = strip_document_header(transcript_path.read_text(encoding="utf-8"))
+    screenpipe_client = get_screenpipe_client()
+
+    with console.status("[bold cyan]🏷️ 场景切分 + 角色归因..."):
+        scenes = resolve_roles(segment(markdown), date_str=date_str, screenpipe_client=screenpipe_client)
+        result = scenes_to_dict(scenes)
+
+    output_path = ensure_day_dir(date_str) / "scenes.json"
+    write_json(output_path, result)
+
+    stats = result["stats"]
+    console.print(f"[green]✅ 角色归因完成[/green]: {stats['total_scenes']} 个场景")
+    for role_name, count in sorted(stats["role_distribution"].items(), key=lambda item: -item[1]):
+        color = ROLE_COLORS.get(role_name, "white")
+        console.print(f"  [{color}]■[/{color}] {role_name}: {count} 段")
+    if stats["needs_review_count"]:
+        console.print(f"  [yellow]⚠️ {stats['needs_review_count']} 段需要人工确认[/yellow]")
+    return 0
+
+
+def cmd_distill(args: argparse.Namespace) -> int:
+    """蒸馏摘要。"""
+    date_str = args.date
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        console.print("[red]❌ 缺少 GEMINI_API_KEY 环境变量[/red]")
+        return 1
+
+    scenes_path, data = read_scenes_payload(date_str)
+    if not scenes_path.exists():
+        console.print(f"[red]❌ 找不到 {date_str}/scenes.json，先运行 daytape roles {date_str}[/red]")
+        return 1
+
+    from daytape.services.distillation.distiller import DEFAULT_MODEL, summarize_scene
+
+    pending = [scene for scene in data.get("scenes", []) if not scene.get("summary")]
+    if not pending:
+        console.print(f"[green]✅ {date_str} 所有场景已有摘要，跳过[/green]")
+        return 0
+
+    console.print(f"[cyan]🧪 蒸馏 {len(pending)} 个场景...[/cyan]")
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("蒸馏中...", total=len(pending))
+        for scene in data.get("scenes", []):
+            if scene.get("summary"):
+                continue
+            text = scene.get("text", "").strip()
+            scene["summary"] = summarize_scene(text, api_key, DEFAULT_MODEL) if text else ""
+            progress.advance(task)
+
+    write_json(scenes_path, data)
+    console.print(f"[green]✅ 蒸馏完成[/green]: {len(pending)} 个摘要已写入")
+    return 0
+
+
+def cmd_briefing(args: argparse.Namespace) -> int:
+    """生成日报。"""
+    date_str = args.date
+    paths = resolve_day_paths(date_str)
+
+    from daytape.services.briefing.generator import generate_briefing, save_briefing
+
+    screenpipe_client = get_screenpipe_client()
+    with console.status("[bold magenta]📋 生成日报中..."):
+        briefing = generate_briefing(paths["scenes"], date_str, screenpipe_client)
+        output_path = ensure_day_dir(date_str) / "daily_briefing.json"
+        save_briefing(briefing, output_path)
+
+    console.print(f"[green]✅ 日报已生成[/green]: {output_path}")
+    console.print(
+        Panel(
+            briefing.summary or f"{date_str} 的记录",
+            title=f"📋 {date_str} 日报摘要",
+            border_style="magenta",
+            padding=(1, 2),
+        )
+    )
+    return 0
+
+
+def cmd_correct(args: argparse.Namespace) -> int:
+    """终端纠错。"""
+    date_str = args.date
+    wrong = args.wrong
+    right = args.right
+    paths = resolve_day_paths(date_str)
+    transcript_path = paths["transcript"]
+    if not transcript_path.exists():
+        console.print(f"[red]❌ 找不到 {date_str} 的 transcript.md[/red]")
+        return 1
+
+    from daytape.services.cleaning.cleaner import sync_correction_to_vocab
+
+    content = transcript_path.read_text(encoding="utf-8")
+    replaced_count = content.count(wrong)
+    transcript_path.write_text(content.replace(wrong, right), encoding="utf-8")
+
+    corrections_path = upsert_correction(wrong, right)
+    sync_correction_to_vocab(wrong, right)
+
+    console.print(f"[green]✅ 纠错完成[/green]: {wrong} → {right}，替换 {replaced_count} 处")
+    console.print(f"[dim]词典: {corrections_path}[/dim]")
+    return 0
+
+
+def transcribe_audio_files(date_str: str, audio_files: list[str]) -> int:
+    """把本地音频文件转成 raw transcript。"""
+    from daytape.adapters.transcription.gemini_cli import load_vocab_terms, run_gemini_cli
+
+    vocab_file = ROOT_DIR / "src" / "daytape" / "resources" / "vocab.txt"
+    vocab_terms = load_vocab_terms(vocab_file)
+    gemini_home = Path.home() / ".gemini"
+
+    rendered_parts: list[str] = [
+        f"# {date_str} 上下文（原始）",
+        "",
+        "> 来源：DayTape CLI 音频导入",
+        f"> 转写时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        f"> 音频文件数：{len(audio_files)} 段",
+        "",
+        "---",
+        "",
+    ]
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("转写音频...", total=len(audio_files))
+        for audio_name in audio_files:
+            audio_path = Path(audio_name).expanduser().resolve()
+            if not audio_path.is_file():
+                console.print(f"[red]❌ 音频文件不存在[/red]: {audio_path}")
+                return 1
+
+            transcript = run_gemini_cli(
+                audio_path=audio_path,
+                model="gemini-3-flash-preview",
+                vocab_terms=vocab_terms,
+                timeout_seconds=1800,
+                gemini_home=gemini_home,
+            )
+            rendered_parts.extend([f"## {parse_audio_time(audio_path)}", "", transcript.strip(), ""])
+            progress.advance(task)
+
+    output_path = ensure_day_dir(date_str) / "transcript.raw.md"
+    output_path.write_text("\n".join(rendered_parts).strip() + "\n", encoding="utf-8")
+    console.print(f"[green]✅ 原始转写已生成[/green]: {output_path}")
+    return 0
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    """全流程：转写 → 清洗 → 角色 → 蒸馏 → 日报。"""
+    date_str = args.date
+    console.print(
+        Panel(
+            f"🎙️ DayTape 全流程处理\n📅 日期: {date_str}",
+            border_style="bright_blue",
+        )
+    )
+
+    paths = resolve_day_paths(date_str)
+    if args.audio and not args.skip_transcribe:
+        console.print("[bold]Step 0: 🎙️ 转写音频[/bold]")
+        result = transcribe_audio_files(date_str, args.audio)
+        if result != 0:
+            return result
+        paths = resolve_day_paths(date_str)
+
+    if args.skip_transcribe and not paths["raw"].exists() and not paths["transcript"].exists() and not paths["scenes"].exists():
+        console.print(f"[red]❌ {date_str} 没有可复用的数据，至少需要 transcript/raw/scenes 之一[/red]")
+        return 1
+
+    if not args.audio and not args.skip_transcribe and not paths["raw"].exists() and not paths["transcript"].exists():
+        console.print("[red]❌ 没有输入音频，也没有现成 raw/transcript 数据[/red]")
+        return 1
+
+    if not paths["transcript"].exists():
+        console.print("\n[bold]🧹 清洗[/bold]")
+        result = cmd_clean(args)
+        if result != 0:
+            console.print("[red]❌ 清洗失败，终止[/red]")
+            return result
+        paths = resolve_day_paths(date_str)
+    else:
+        console.print("\n[dim]⏭️ 跳过清洗：已存在 transcript.md[/dim]")
+
+    scenes_data = read_json(paths["scenes"], {}) if paths["scenes"].exists() else {}
+    if not paths["scenes"].exists():
+        console.print("\n[bold]🏷️ 角色归因[/bold]")
+        result = cmd_roles(args)
+        if result != 0:
+            console.print("[red]❌ 角色归因失败，终止[/red]")
+            return result
+        paths = resolve_day_paths(date_str)
+        scenes_data = read_json(paths["scenes"], {})
+    else:
+        console.print("\n[dim]⏭️ 跳过角色归因：已存在 scenes.json[/dim]")
+
+    missing_summaries = [scene for scene in scenes_data.get("scenes", []) if not scene.get("summary")]
+    if missing_summaries:
+        if os.getenv("GEMINI_API_KEY", "").strip():
+            console.print("\n[bold]🧪 蒸馏[/bold]")
+            result = cmd_distill(args)
+            if result != 0:
+                console.print("[red]❌ 蒸馏失败，终止[/red]")
+                return result
+        else:
+            console.print("\n[yellow]⏭️ 跳过蒸馏：缺少 GEMINI_API_KEY，继续生成基础日报[/yellow]")
+    else:
+        console.print("\n[dim]⏭️ 跳过蒸馏：场景摘要已齐全[/dim]")
+
+    console.print("\n[bold]📋 日报[/bold]")
+    result = cmd_briefing(args)
+    if result != 0:
+        console.print("[red]❌ 日报生成失败，终止[/red]")
+        return result
+
+    console.print(
+        Panel(
+            f"[green]✅ {date_str} 处理完成！[/green]\n运行 [bold]daytape view {date_str}[/bold] 查看结果",
+            border_style="green",
+        )
+    )
     return 0
 
 
@@ -251,7 +613,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run = sub.add_parser("run", help="全流程处理")
     p_run.add_argument("date", help="日期 YYYY-MM-DD")
     p_run.add_argument("--audio", nargs="+", help="音频文件路径")
-    p_run.add_argument("--skip-transcribe", action="store_true", help="跳过转写（使用已有 raw）")
+    p_run.add_argument("--skip-transcribe", action="store_true", help="跳过转写（使用已有数据）")
 
     p_correct = sub.add_parser("correct", help="纠正转写错词")
     p_correct.add_argument("date", help="日期 YYYY-MM-DD")
@@ -270,13 +632,30 @@ def main() -> int:
         return 0
 
     commands = {
+        "briefing": cmd_briefing,
+        "clean": cmd_clean,
+        "correct": cmd_correct,
+        "distill": cmd_distill,
+        "roles": cmd_roles,
+        "run": cmd_run,
         "status": cmd_status,
         "view": cmd_view,
     }
 
     handler = commands.get(args.command)
-    if handler:
-        return handler(args)
+    if not handler:
+        console.print(f"[yellow]命令 '{args.command}' 尚未实现[/yellow]")
+        return 1
 
-    console.print(f"[yellow]命令 '{args.command}' 尚未实现[/yellow]")
-    return 1
+    try:
+        return handler(args)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]已中断[/yellow]")
+        return 130
+    except Exception:
+        console.print_exception(show_locals=False)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
