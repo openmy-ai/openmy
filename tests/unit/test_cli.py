@@ -20,6 +20,46 @@ class TestOpenMyCli(unittest.TestCase):
     def cleanup_day_dir(self, date_str: str) -> None:
         shutil.rmtree(PROJECT_ROOT / "data" / date_str, ignore_errors=True)
 
+    def seed_view_day(self, date_str: str) -> Path:
+        day_dir = self.make_day_dir(date_str)
+        (day_dir / "transcript.md").write_text(
+            "# sample\n\n---\n\n## 12:42\n\n老婆，今天晚上吃火锅。",
+            encoding="utf-8",
+        )
+        (day_dir / "daily_briefing.json").write_text(
+            json.dumps({"summary": "今天主要在约晚饭。"}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        (day_dir / "scenes.json").write_text(
+            json.dumps(
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "scene_001",
+                            "time_start": "12:42",
+                            "time_end": "12:50",
+                            "text": "老婆，今天晚上吃火锅。",
+                            "summary": "在约晚饭。",
+                            "preview": "老婆，今天晚上吃火锅。",
+                            "role": {
+                                "addressed_to": "老婆",
+                                "scene_type_label": "跟人聊",
+                                "needs_review": False,
+                            },
+                        }
+                    ],
+                    "stats": {
+                        "total_scenes": 1,
+                        "role_distribution": {"老婆": 1},
+                        "needs_review_count": 0,
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return day_dir
+
     def make_context_snapshot(self) -> dict:
         return {
             "schema_version": "active_context.v1",
@@ -138,15 +178,20 @@ class TestOpenMyCli(unittest.TestCase):
 
     def test_cli_view_existing_date(self):
         """openmy view 2026-04-06 应该输出场景概览。"""
-        result = subprocess.run(
-            [sys.executable, "-m", "openmy", "view", "2026-04-06"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=PROJECT_ROOT,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue("12:" in result.stdout or "13:" in result.stdout)
+        date_str = "2099-01-10"
+        self.seed_view_day(date_str)
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "openmy", "view", date_str],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("12:42", result.stdout)
+        finally:
+            self.cleanup_day_dir(date_str)
 
     def test_cli_view_nonexistent_date(self):
         """不存在的日期应该友好报错。"""
@@ -457,6 +502,126 @@ class TestOpenMyCli(unittest.TestCase):
                 updates_path.unlink(missing_ok=True)
             else:
                 updates_path.write_text(original_updates, encoding="utf-8")
+
+    def test_agent_recent_routes_to_context(self):
+        """openmy agent --recent 应该走活动上下文入口。"""
+        context_path = PROJECT_ROOT / "data" / "active_context.json"
+        compact_path = PROJECT_ROOT / "data" / "active_context.compact.md"
+        updates_path = PROJECT_ROOT / "data" / "active_context_updates.jsonl"
+
+        original_context = context_path.read_text(encoding="utf-8") if context_path.exists() else None
+        original_compact = compact_path.read_text(encoding="utf-8") if compact_path.exists() else None
+        original_updates = updates_path.read_text(encoding="utf-8") if updates_path.exists() else None
+
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "openmy", "agent", "--recent"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Level 0", result.stdout)
+        finally:
+            if original_context is None:
+                context_path.unlink(missing_ok=True)
+            else:
+                context_path.write_text(original_context, encoding="utf-8")
+
+            if original_compact is None:
+                compact_path.unlink(missing_ok=True)
+            else:
+                compact_path.write_text(original_compact, encoding="utf-8")
+
+            if original_updates is None:
+                updates_path.unlink(missing_ok=True)
+            else:
+                updates_path.write_text(original_updates, encoding="utf-8")
+
+    def test_agent_day_routes_to_view(self):
+        """openmy agent --day 应该走单日查看入口。"""
+        date_str = "2099-01-11"
+        self.seed_view_day(date_str)
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "openmy", "agent", "--day", date_str],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("日报", result.stdout)
+        finally:
+            self.cleanup_day_dir(date_str)
+
+    def test_agent_reject_decision_routes_to_correct(self):
+        """openmy agent --reject-decision 应该追加 correction 事件。"""
+        corrections_path = PROJECT_ROOT / "data" / "corrections.jsonl"
+        context_path = PROJECT_ROOT / "data" / "active_context.json"
+        original_corrections = corrections_path.read_text(encoding="utf-8") if corrections_path.exists() else None
+        original_context = context_path.read_text(encoding="utf-8") if context_path.exists() else None
+
+        context_path.parent.mkdir(parents=True, exist_ok=True)
+        context_path.write_text(
+            json.dumps(self.make_context_snapshot(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "openmy", "agent", "--reject-decision", "中午改吃河南蒸菜"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = corrections_path.read_text(encoding="utf-8")
+            self.assertIn("reject_decision", payload)
+            self.assertIn("decision_lunch", payload)
+        finally:
+            if original_corrections is None:
+                corrections_path.unlink(missing_ok=True)
+            else:
+                corrections_path.write_text(original_corrections, encoding="utf-8")
+
+            if original_context is None:
+                context_path.unlink(missing_ok=True)
+            else:
+                context_path.write_text(original_context, encoding="utf-8")
+
+    def test_agent_ingest_reuses_existing_artifacts(self):
+        """openmy agent --ingest 配合 --skip-transcribe 应该能复用现有数据。"""
+        date_str = "2099-01-09"
+        day_dir = self.make_day_dir(date_str)
+        (day_dir / "transcript.md").write_text(
+            "# 2099-01-09\n\n---\n\n## 10:00\n\n老婆，今天晚上吃火锅。",
+            encoding="utf-8",
+        )
+        (day_dir / "scenes.json").write_text(
+            (
+                '{"scenes":[{"scene_id":"s01","time_start":"10:00","time_end":"10:30",'
+                '"text":"老婆，今天晚上吃火锅。","summary":"在约晚饭。","preview":"老婆，今天晚上吃火锅。",'
+                '"role":{"addressed_to":"老婆","scene_type_label":"跟人聊","needs_review":false}}],'
+                '"stats":{"total_scenes":1,"role_distribution":{"老婆":1},"needs_review_count":0}}'
+            ),
+            encoding="utf-8",
+        )
+
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "openmy", "agent", "--ingest", date_str, "--skip-transcribe"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((day_dir / "daily_briefing.json").exists())
+        finally:
+            self.cleanup_day_dir(date_str)
 
 
 if __name__ == "__main__":

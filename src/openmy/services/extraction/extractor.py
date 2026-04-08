@@ -2,261 +2,481 @@
 """
 extract.py — 从每日上下文转写中提取结构化摘要
 
-读取带时间戳的清洗后 Markdown（YYYY-MM-DD.md），调 Gemini 提取：
-  - 每日摘要（3句话）
-  - 事件列表（时间+项目+摘要）
-  - 决策记录
-  - 待办事项
-  - 灵感/想法
+新输出主结构：
+  - daily_summary
+  - events
+  - intents
+  - facts
+  - role_hints
 
-输出：
-  - YYYY-MM-DD.meta.json  → 结构化数据（供 OpenMy UI 读取）
-  - Vault 事件流 jsonl     → CC 启动自动读
-  - Vault 日志 md          → 每日摘要
+同时保留旧字段兼容层：
+  - legacy_todos
+  - todos
+  - decisions
+  - insights
 """
+
+from __future__ import annotations
 
 import argparse
 import json
 import os
 import re
-import ssl
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
-# ── Gemini API 配置 ──────────────────────────────────────
+from openmy.domain.intent import Fact, Intent
+
+try:
+    from google import genai
+except ImportError:  # pragma: no cover - 本地缺依赖时给测试留钩子
+    class _GenAIStub:
+        Client = None
+
+    genai = _GenAIStub()
+
 
 DEFAULT_MODEL = "gemini-3.1-flash-lite-preview"
-API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
-EXTRACT_PROMPT = """你是一个个人助手，需要从用户一天的口述录音转写中提取结构化信息。
+EXTRACT_PROMPT = """你是 OpenMy 的结构化提取器，要把一天的口述转写拆成“未来约束”和“已经发生/已经知道”的两类信息。
 
-业务背景：这些转写文本来自一个"每日上下文归档系统"。说话人每天会在不同场景之间切换，常见场景包括：跟伴侣/老婆聊天、跟家人、跟朋友、跟商家、跟AI、跟宠物说话，以及自言自语的任务记录。
+规则：
+1. intent 只收真正会影响后续行动的内容：
+   - action_item：明确要做的事
+   - commitment：明确答应要做的事
+   - open_question：明确还没定、需要后续判断的问题
+   - decision：已经做出的关键决定
+2. fact 只收已经发生、已经观察到、已经想明白的内容：
+   - observation / idea / preference / relation / project_update
+3. 不要把下面这些升格成 intent：
+   - 吃什么、买了什么、小额消费、随口吐槽、生活碎片
+   - 没有未来约束力的感慨
+   - 只是聊过，但没有形成后续动作或正式决定
+4. who 是一个对象，不是散文本。可选 kind：
+   user / agent / other_person / shared / unclear
+5. confidence_label 只用 high / medium / low。
+6. 输出必须是纯 JSON，不能带 markdown 代码块。
 
-文本中的 ## HH:MM 是录制时间标记，代表该段内容的录制时间。
-
-请从以下转写文本中提取：
-
-1. **每日摘要**：用 3 句大白话总结这一天干了什么
-2. **事件列表**：今天做了什么有意义的事，每个事件包含时间、关联项目（如有）、一句话摘要
-3. **决策记录**：做了什么决定，包含项目名、决策内容、理由
-4. **待办事项**：提到要做但还没做的事，包含任务描述、优先级(high/medium/low)、关联项目
-5. **灵感/想法**：有价值的想法、观察、反思
-6. **角色线索**：提取每个时间段的"说话场景"信息，包含：
-   - scene_type（场景类型）：跟AI说 / 跟商家 / 跟宠物 / 自言自语 / 跟人聊 / 不确定
-   - addressed_to（对谁说的）：具体对象，如"老婆""商家""AI助手""狗"等
-   - about（在讲什么/谁）：这段话的主题
-   - confidence（置信度）：0.0 到 1.0
-   - source（判定依据类型）：亲口说的 / 一看就知道 / 接着上文 / 不确定
-   - evidence（证据）：一句话说明
-   - needs_review（是否要确认）：true/false
-
-注意：
-- 忽略纯闲聊、背景音乐、生活琐事（除非包含有意义的决策或待办）
-- 项目名用简短中文，如"公众号"、"技能书"、"OpenMy"
-- 如果无法判断项目，project 填空字符串
-- 文本里出现“你”时，不要武断指定对象；只有上下文明确时才标注具体角色，否则标为“未确定”
-- 角色判断优先做大类，不要过度细分到具体个人
-- 明确区分“文本明确说出”与“根据上下文弱推断”
-
-输出严格 JSON 格式（不要 markdown 代码块）：
+输出 schema：
 {
-  "daily_summary": "3句话总结",
+  "daily_summary": "三句以内的人话总结",
   "events": [{"time": "HH:MM", "project": "项目名", "summary": "一句话"}],
-  "decisions": [{"project": "项目名", "what": "决策内容", "why": "理由"}],
-  "todos": [{"task": "任务描述", "priority": "high/medium/low", "project": "项目名"}],
-  "insights": [{"topic": "主题", "content": "内容"}],
-  "role_hints": [{"time": "HH:MM", "role": "伴侣|家人|朋友|商家|AI|宠物|自己|未确定", "basis": "explicit|inferred", "confidence": 0.0, "evidence": "一句话依据"}]
+  "intents": [
+    {
+      "intent_id": "intent_xxx",
+      "kind": "action_item|commitment|open_question|decision",
+      "what": "内容",
+      "status": "open|active|done",
+      "who": {"kind": "user|agent|other_person|shared|unclear", "label": "执行者"},
+      "confidence_label": "high|medium|low",
+      "confidence_score": 0.0,
+      "needs_review": false,
+      "evidence_quote": "原话片段",
+      "source_scene_id": "scene_xxx",
+      "topic": "主题",
+      "speech_act": "self_instruction|delegation|question|decision",
+      "due": {"raw_text": "", "iso_date": "", "granularity": "none|day|time"},
+      "project_hint": "项目名",
+      "source_recording_id": ""
+    }
+  ],
+  "facts": [
+    {
+      "fact_type": "observation|idea|preference|relation|project_update",
+      "content": "内容",
+      "topic": "主题",
+      "confidence_label": "high|medium|low",
+      "confidence_score": 0.0,
+      "source_scene_id": "scene_xxx"
+    }
+  ],
+  "role_hints": [
+    {"time": "HH:MM", "role": "伴侣|家人|朋友|商家|AI|宠物|自己|未确定", "basis": "explicit|inferred", "confidence": 0.0, "evidence": "一句话依据"}
+  ]
 }
 """
 
 
+def _strip_code_fences(raw_text: str) -> str:
+    text = str(raw_text or "").strip()
+    text = re.sub(r"^```json\s*", "", text)
+    text = re.sub(r"^```\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    return text.strip()
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _extract_response_text(response: Any) -> str:
+    text = getattr(response, "text", "") or ""
+    if text:
+        return text
+
+    candidates = getattr(response, "candidates", None) or []
+    try:
+        return str(candidates[0].content.parts[0].text or "")
+    except Exception:
+        return ""
+
+
+def _intent_priority(intent: Intent) -> str:
+    if intent.confidence_label == "high":
+        return "high"
+    if intent.confidence_label == "low":
+        return "low"
+    return "medium"
+
+
+def _intent_project(intent: Intent) -> str:
+    return intent.project_hint.strip() or intent.topic.strip()
+
+
+def _should_surface_as_legacy_todo(intent: Intent) -> bool:
+    if intent.kind not in {"action_item", "commitment"}:
+        return False
+    if intent.status in {"done", "closed", "abandoned", "cancelled", "rejected"}:
+        return False
+    if intent.confidence_label == "low" or intent.confidence_score < 0.5:
+        return False
+    return intent.who.kind in {"user", "shared", "unclear"}
+
+
+def _legacy_todos_from_intents(intents: list[Intent]) -> list[dict[str, Any]]:
+    todos: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for intent in intents:
+        if not _should_surface_as_legacy_todo(intent):
+            continue
+        task = intent.what.strip()
+        if not task or task in seen:
+            continue
+        seen.add(task)
+        todos.append(
+            {
+                "task": task,
+                "priority": _intent_priority(intent),
+                "project": _intent_project(intent),
+            }
+        )
+    return todos
+
+
+def _decisions_from_intents(intents: list[Intent]) -> list[dict[str, Any]]:
+    decisions: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for intent in intents:
+        if intent.kind != "decision":
+            continue
+        what = intent.what.strip()
+        if not what or what in seen:
+            continue
+        seen.add(what)
+        decisions.append(
+            {
+                "project": _intent_project(intent),
+                "what": what,
+                "why": intent.evidence_quote.strip(),
+            }
+        )
+    return decisions
+
+
+def _insights_from_facts(facts: list[Fact]) -> list[dict[str, Any]]:
+    insights: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for fact in facts:
+        content = fact.content.strip()
+        if not content or content in seen:
+            continue
+        seen.add(content)
+        insights.append(
+            {
+                "topic": fact.topic.strip() or fact.fact_type.strip() or "事实",
+                "content": content,
+            }
+        )
+    return insights
+
+
+def normalize_extraction_payload(data: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(data if isinstance(data, dict) else {})
+
+    events = []
+    for raw in payload.get("events", []):
+        if not isinstance(raw, dict):
+            continue
+        events.append(
+            {
+                "time": str(raw.get("time", "") or ""),
+                "project": str(raw.get("project", "") or ""),
+                "summary": str(raw.get("summary", "") or ""),
+            }
+        )
+
+    intents = [
+        Intent.from_dict(raw)
+        for raw in payload.get("intents", [])
+        if isinstance(raw, dict)
+    ]
+    facts = [
+        Fact.from_dict(raw)
+        for raw in payload.get("facts", [])
+        if isinstance(raw, dict)
+    ]
+
+    payload["daily_summary"] = str(payload.get("daily_summary", "") or "")
+    payload["events"] = events
+    payload["intents"] = [intent.to_dict() for intent in intents]
+    payload["facts"] = [fact.to_dict() for fact in facts]
+    payload["role_hints"] = [
+        item for item in payload.get("role_hints", []) if isinstance(item, dict)
+    ]
+    return payload
+
+
+def build_legacy_compatible_payload(data: dict[str, Any]) -> dict[str, Any]:
+    payload = normalize_extraction_payload(data)
+    intents = [Intent.from_dict(item) for item in payload.get("intents", [])]
+    facts = [Fact.from_dict(item) for item in payload.get("facts", [])]
+
+    compat = dict(payload)
+    if intents:
+        legacy_todos = _legacy_todos_from_intents(intents)
+        compat["legacy_todos"] = legacy_todos
+        compat["todos"] = legacy_todos
+        compat["decisions"] = _decisions_from_intents(intents)
+    else:
+        legacy_todos = [
+            item for item in data.get("legacy_todos", data.get("todos", [])) if isinstance(item, dict)
+        ]
+        compat["legacy_todos"] = legacy_todos
+        compat["todos"] = [item for item in data.get("todos", legacy_todos) if isinstance(item, dict)]
+        compat["decisions"] = [item for item in data.get("decisions", []) if isinstance(item, dict)]
+
+    if facts:
+        compat["insights"] = _insights_from_facts(facts)
+    else:
+        compat["insights"] = [item for item in data.get("insights", []) if isinstance(item, dict)]
+
+    return compat
+
+
 def call_gemini(text: str, api_key: str, model: str = DEFAULT_MODEL) -> dict | None:
-    """调 Gemini API 提取结构化数据"""
-    import urllib.request
-    import urllib.error
-    import certifi
-
-    url = f"{API_BASE}/{model}:generateContent?key={api_key}"
-
-    payload = {
-        "contents": [{
-            "parts": [
-                {"text": EXTRACT_PROMPT},
-                {"text": f"以下是今天的录音转写：\n\n{text}"}
-            ]
-        }],
-        "generationConfig": {
-            "temperature": 0.2,
-            "responseMimeType": "application/json"
-        }
-    }
-
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST"
-    )
-
-    try:
-        ssl_context = ssl.create_default_context(cafile=certifi.where())
-        with urllib.request.urlopen(req, timeout=120, context=ssl_context) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        print(f"Gemini API 错误: {e.code} {e.reason}", file=sys.stderr)
-        try:
-            body = e.read().decode("utf-8")
-            print(body[:500], file=sys.stderr)
-        except Exception:
-            pass
-        return None
-    except Exception as e:
-        print(f"请求失败: {e}", file=sys.stderr)
+    """调 Gemini API 提取结构化数据。"""
+    if getattr(genai, "Client", None) is None:
+        print("Gemini SDK 不可用：缺少 google-genai", file=sys.stderr)
         return None
 
-    # 解析响应
+    client = genai.Client(api_key=api_key)
+    prompt = f"{EXTRACT_PROMPT}\n\n以下是今天的录音转写：\n\n{text}"
+
     try:
-        raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
-        # 去掉可能的 markdown 代码块包裹
-        raw_text = re.sub(r'^```json\s*', '', raw_text.strip())
-        raw_text = re.sub(r'\s*```$', '', raw_text.strip())
-        return json.loads(raw_text)
-    except (KeyError, IndexError, json.JSONDecodeError) as e:
-        print(f"解析 Gemini 响应失败: {e}", file=sys.stderr)
-        print(f"原始响应: {json.dumps(result, ensure_ascii=False)[:500]}", file=sys.stderr)
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config={
+                "temperature": 0.2,
+                "response_mime_type": "application/json",
+            },
+        )
+    except Exception as exc:
+        print(f"Gemini 请求失败: {exc}", file=sys.stderr)
+        return None
+
+    raw_text = _strip_code_fences(_extract_response_text(response))
+    if not raw_text:
+        print("解析 Gemini 响应失败: 空响应", file=sys.stderr)
+        return None
+
+    try:
+        return normalize_extraction_payload(json.loads(raw_text))
+    except json.JSONDecodeError as exc:
+        print(f"解析 Gemini 响应失败: {exc}", file=sys.stderr)
+        print(raw_text[:500], file=sys.stderr)
         return None
 
 
 def save_meta_json(data: dict, date: str, output_dir: str):
-    """保存结构化数据为 .meta.json"""
+    """保存结构化数据为 .meta.json，同时补旧字段兼容层。"""
     meta_path = Path(output_dir) / f"{date}.meta.json"
+    compat_payload = build_legacy_compatible_payload(data)
     meta_path.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2),
-        encoding="utf-8"
+        json.dumps(compat_payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
     )
     print(f"✓ 结构化数据: {meta_path}", file=sys.stderr)
 
 
 def distribute_to_vault(data: dict, date: str, vault_path: str):
-    """分发提取结果到 Obsidian Vault"""
+    """分发提取结果到 Obsidian Vault。"""
+    compat_payload = build_legacy_compatible_payload(data)
     vault = Path(vault_path)
 
-    # 1. 事件流 → 系统/事件流/YYYY-MM-DD/context.jsonl
     event_dir = vault / "系统" / "事件流" / date
     event_dir.mkdir(parents=True, exist_ok=True)
     event_file = event_dir / "context.jsonl"
 
-    events = data.get("events", [])
-    with open(event_file, "a", encoding="utf-8") as f:
+    events = compat_payload.get("events", [])
+    with open(event_file, "a", encoding="utf-8") as fh:
         for event in events:
             entry = {
                 "time": f"{date}T{event.get('time', '00:00')}:00+08:00",
                 "actor": "context",
                 "project": event.get("project", ""),
                 "type": "口述记录",
-                "summary": event.get("summary", "")
+                "summary": event.get("summary", ""),
             }
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
     if events:
         print(f"✓ 事件流: {len(events)} 条 → {event_file}", file=sys.stderr)
 
-    # 2. 每日摘要 → 写入日志备注
-    summary = data.get("daily_summary", "")
+    summary = compat_payload.get("daily_summary", "")
     if summary:
         log_dir = vault / "日志"
         log_dir.mkdir(parents=True, exist_ok=True)
         log_file = log_dir / f"{date}-上下文.md"
         content = f"# {date} 上下文摘要\n\n{summary}\n"
 
-        # 追加决策
-        decisions = data.get("decisions", [])
+        decisions = compat_payload.get("decisions", [])
         if decisions:
             content += "\n## 决策\n\n"
-            for d in decisions:
-                proj = f"【{d['project']}】" if d.get("project") else ""
-                content += f"- {proj}{d.get('what', '')}"
-                if d.get("why"):
-                    content += f"（{d['why']}）"
+            for item in decisions:
+                proj = f"【{item['project']}】" if item.get("project") else ""
+                content += f"- {proj}{item.get('what', '')}"
+                if item.get("why"):
+                    content += f"（{item['why']}）"
                 content += "\n"
 
-        # 追加待办
-        todos = data.get("todos", [])
+        todos = compat_payload.get("todos", [])
         if todos:
             content += "\n## 待办\n\n"
-            for t in todos:
+            for item in todos:
                 prio = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(
-                    t.get("priority", "medium"), "🟡"
+                    item.get("priority", "medium"),
+                    "🟡",
                 )
-                proj = f"【{t['project']}】" if t.get("project") else ""
-                content += f"- {prio} {proj}{t.get('task', '')}\n"
+                proj = f"【{item['project']}】" if item.get("project") else ""
+                content += f"- {prio} {proj}{item.get('task', '')}\n"
 
-        # 追加灵感
-        insights = data.get("insights", [])
+        insights = compat_payload.get("insights", [])
         if insights:
-            content += "\n## 灵感\n\n"
-            for i in insights:
-                content += f"- **{i.get('topic', '')}**: {i.get('content', '')}\n"
+            content += "\n## 洞察\n\n"
+            for item in insights:
+                content += f"- **{item.get('topic', '')}**: {item.get('content', '')}\n"
 
         log_file.write_text(content, encoding="utf-8")
         print(f"✓ 日志摘要: {log_file}", file=sys.stderr)
 
-    # 3. 自动同步灵感和待办到收件箱
     inbox_file = vault / "收件箱" / "灵感速记.md"
     inbox_file.parent.mkdir(parents=True, exist_ok=True)
-    inbox_appends = []
-    
-    todos = data.get("todos", [])
-    if todos:
-        for t in todos:
-            prio = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(t.get("priority", "medium"), "🟡")
-            proj = f"[{t['project']}] " if t.get("project") else ""
-            inbox_appends.append(f"- [ ] {prio} {proj}{t.get('task', '')} _{date}_")
-            
-    insights = data.get("insights", [])
-    if insights:
-        for i in insights:
-            inbox_appends.append(f"- 💡 **{i.get('topic', '')}**: {i.get('content', '')} _{date}_")
-            
+    inbox_appends: list[str] = []
+
+    for todo in compat_payload.get("todos", []):
+        prio = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(todo.get("priority", "medium"), "🟡")
+        proj = f"[{todo['project']}] " if todo.get("project") else ""
+        inbox_appends.append(f"- [ ] {prio} {proj}{todo.get('task', '')} _{date}_")
+
+    for insight in compat_payload.get("insights", []):
+        inbox_appends.append(f"- 💡 **{insight.get('topic', '')}**: {insight.get('content', '')} _{date}_")
+
     if inbox_appends:
-        with open(inbox_file, "a", encoding="utf-8") as f:
-            f.write("\n" + "\n".join(inbox_appends) + "\n")
+        with open(inbox_file, "a", encoding="utf-8") as fh:
+            fh.write("\n" + "\n".join(inbox_appends) + "\n")
         print(f"✓ 收件箱同步: {len(inbox_appends)} 条 → {inbox_file}", file=sys.stderr)
 
-    # 4. 自动同步决策到复盘库
-    decisions = data.get("decisions", [])
+    decisions = compat_payload.get("decisions", [])
     if decisions:
         decision_file = vault / "日志" / "决策复盘库.md"
         decision_file.parent.mkdir(parents=True, exist_ok=True)
         if not decision_file.exists():
             decision_file.write_text("# 决策复盘库\n\n", encoding="utf-8")
-            
-        aesthetics_file = vault / "领域" / "个人IP" / "审美档案.md"
-        
-        with open(decision_file, "a", encoding="utf-8") as df:
-            for d in decisions:
-                proj = f"【{d['project']}】" if d.get("project") else ""
-                entry = f"- **{date}** {proj}{d.get('what', '')} （{d.get('why', '')}）\n"
-                df.write(entry)
-                
-                # 如果是设计相关的，同步到审美档案
-                if d.get("project") in ["设计", "排版", "视觉", "小红书", "公众号", "配图", "审美", "封面"]:
-                    if aesthetics_file.exists():
-                        with open(aesthetics_file, "a", encoding="utf-8") as af:
-                            af.write(f"\n- **{date} 视觉决策**：{d.get('what', '')} （{d.get('why', '')}）")
-                            
+
+        with open(decision_file, "a", encoding="utf-8") as fh:
+            for item in decisions:
+                proj = f"【{item['project']}】" if item.get("project") else ""
+                entry = f"- **{date}** {proj}{item.get('what', '')} （{item.get('why', '')}）\n"
+                fh.write(entry)
         print(f"✓ 决策复盘同步: {len(decisions)} 条", file=sys.stderr)
 
-    # 5. 终端输出待办清单
+    todos = compat_payload.get("todos", [])
     if todos:
         print("\n📋 提取到的待办事项：", file=sys.stderr)
-        for t in todos:
-            prio = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(
-                t.get("priority", "medium"), "🟡"
-            )
-            proj = f"[{t['project']}] " if t.get("project") else ""
-            print(f"  {prio} {proj}{t.get('task', '')}", file=sys.stderr)
+        for item in todos:
+            prio = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(item.get("priority", "medium"), "🟡")
+            proj = f"[{item['project']}] " if item.get("project") else ""
+            print(f"  {prio} {proj}{item.get('task', '')}", file=sys.stderr)
+
+
+def run_extraction(
+    input_file: str | Path,
+    *,
+    date: str | None = None,
+    model: str = DEFAULT_MODEL,
+    vault_path: str | None = None,
+    api_key: str | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any] | None:
+    input_path = Path(input_file)
+    if not input_path.exists():
+        print(f"文件不存在: {input_path}", file=sys.stderr)
+        return None
+
+    final_date = date
+    if not final_date:
+        match = re.search(r"(\d{4}-\d{2}-\d{2})", input_path.stem)
+        final_date = match.group(1) if match else datetime.now().strftime("%Y-%m-%d")
+
+    final_api_key = api_key or os.environ.get("GEMINI_API_KEY")
+    if not final_api_key:
+        print("错误: 请设置 GEMINI_API_KEY 环境变量或使用 --api-key 参数", file=sys.stderr)
+        return None
+
+    text = input_path.read_text(encoding="utf-8")
+    if "---" in text:
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            text = parts[2].strip()
+        elif len(parts) == 2:
+            text = parts[1].strip()
+
+    print(f"📖 读取 {input_path.name}: {len(text)} 字", file=sys.stderr)
+    print(f"🤖 调用 Gemini ({model}) 提取结构化摘要...", file=sys.stderr)
+
+    data = call_gemini(text, final_api_key, model)
+    if not data:
+        print("❌ 提取失败", file=sys.stderr)
+        return None
+
+    normalized_payload = normalize_extraction_payload(data)
+    print("✓ 提取完成", file=sys.stderr)
+
+    if dry_run:
+        return normalized_payload
+
+    compat_payload = build_legacy_compatible_payload(normalized_payload)
+    save_meta_json(compat_payload, final_date, str(input_path.parent))
+    if vault_path:
+        distribute_to_vault(compat_payload, final_date, vault_path)
+
+    print(f"\n📝 每日摘要: {compat_payload.get('daily_summary', '无')}", file=sys.stderr)
+    print(
+        f"📊 提取: {len(compat_payload.get('events', []))} 事件 | "
+        f"{len(compat_payload.get('intents', []))} 意图 | "
+        f"{len(compat_payload.get('facts', []))} 事实 | "
+        f"{len(compat_payload.get('todos', []))} 兼容待办",
+        file=sys.stderr,
+    )
+    return compat_payload
 
 
 def main():
@@ -269,65 +489,18 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="只打印提取结果，不写入文件")
     args = parser.parse_args()
 
-    input_path = Path(args.input_file)
-    if not input_path.exists():
-        print(f"文件不存在: {input_path}", file=sys.stderr)
-        sys.exit(1)
-
-    # 推断日期
-    date = args.date
-    if not date:
-        match = re.search(r'(\d{4}-\d{2}-\d{2})', input_path.stem)
-        if match:
-            date = match.group(1)
-        else:
-            date = datetime.now().strftime("%Y-%m-%d")
-
-    # API key
-    api_key = args.api_key or os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("错误: 请设置 GEMINI_API_KEY 环境变量或使用 --api-key 参数", file=sys.stderr)
-        sys.exit(1)
-
-    # 读取输入
-    text = input_path.read_text(encoding="utf-8")
-
-    # 只取 --- 之后的正文（跳过 YAML 头部）
-    if "---" in text:
-        parts = text.split("---", 2)
-        if len(parts) >= 3:
-            text = parts[2].strip()
-        elif len(parts) == 2:
-            text = parts[1].strip()
-
-    print(f"📖 读取 {input_path.name}: {len(text)} 字", file=sys.stderr)
-    print(f"🤖 调用 Gemini ({args.model}) 提取结构化摘要...", file=sys.stderr)
-
-    data = call_gemini(text, api_key, args.model)
-    if not data:
-        print("❌ 提取失败", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"✓ 提取完成", file=sys.stderr)
-
+    data = run_extraction(
+        args.input_file,
+        date=args.date,
+        model=args.model,
+        vault_path=args.vault_path,
+        api_key=args.api_key,
+        dry_run=args.dry_run,
+    )
+    if data is None:
+        raise SystemExit(1)
     if args.dry_run:
         print(json.dumps(data, ensure_ascii=False, indent=2))
-        return
-
-    # 保存 meta.json
-    output_dir = str(input_path.parent)
-    save_meta_json(data, date, output_dir)
-
-    # 分发到 Vault
-    if args.vault_path:
-        distribute_to_vault(data, date, args.vault_path)
-
-    # 打印摘要
-    print(f"\n📝 每日摘要: {data.get('daily_summary', '无')}", file=sys.stderr)
-    print(f"📊 提取: {len(data.get('events', []))} 事件 | "
-          f"{len(data.get('decisions', []))} 决策 | "
-          f"{len(data.get('todos', []))} 待办 | "
-          f"{len(data.get('insights', []))} 灵感", file=sys.stderr)
 
 
 if __name__ == "__main__":
