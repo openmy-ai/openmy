@@ -10,6 +10,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from openmy.domain.intent import Intent, intent_to_loop_type, should_generate_open_loop
 from openmy.services.context.active_context import (
     ActiveContext,
     ChangeItem,
@@ -95,6 +96,17 @@ def _extract_projects(briefing: dict[str, Any], meta: dict[str, Any]) -> dict[st
     if "OpenMy" in summary:
         projects["OpenMy"].append(summary)
 
+    raw_intents = meta.get("intents")
+    if isinstance(raw_intents, list):
+        for raw in raw_intents:
+            if not isinstance(raw, dict):
+                continue
+            intent = Intent.from_dict(raw)
+            project = (intent.project_hint or intent.topic).strip()
+            snippet = intent.what.strip()
+            if project:
+                projects[project].append(snippet or project)
+
     for event in meta.get("events", []):
         if isinstance(event, dict):
             project = str(event.get("project", "")).strip()
@@ -121,6 +133,39 @@ def _extract_projects(briefing: dict[str, Any], meta: dict[str, Any]) -> dict[st
 
 def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: str) -> list[OpenLoop]:
     loops: dict[str, OpenLoop] = {}
+
+    raw_intents = meta.get("intents")
+    if isinstance(raw_intents, list):
+        # Intent 只代表未来约束；低置信、已完成、纯决策都不应该长成 open loop。
+        for raw in raw_intents:
+            if not isinstance(raw, dict):
+                continue
+            intent = Intent.from_dict(raw)
+            if not should_generate_open_loop(intent):
+                continue
+
+            title = intent.what.strip()
+            if not title:
+                continue
+
+            # 执行者是一个对象，loop_type 由 who.kind 决定，而不是靠文本猜。
+            loops.setdefault(
+                title,
+                OpenLoop(
+                    id=_slug("loop", title),
+                    loop_id=_slug("loop", title),
+                    title=title,
+                    loop_type=intent_to_loop_type(intent),
+                    priority="high" if intent.confidence_label == "high" else "medium",
+                    status="open",
+                    owner=intent.who.kind or "self",
+                    waiting_on=intent.who.label if intent.who.kind in {"agent", "other_person"} else "",
+                    source_rank="declared",
+                    confidence=intent.confidence_score or 0.8,
+                    last_seen_at=f"{date_str}T23:59:59+08:00",
+                ),
+            )
+        return list(loops.values())
 
     for item in briefing.get("todos_open", []):
         title = str(item).strip()
@@ -170,6 +215,33 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
 
 def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: str) -> list[DecisionItem]:
     items: dict[str, DecisionItem] = {}
+
+    raw_intents = meta.get("intents")
+    if isinstance(raw_intents, list):
+        for raw in raw_intents:
+            if not isinstance(raw, dict):
+                continue
+            intent = Intent.from_dict(raw)
+            if intent.kind != "decision":
+                continue
+            decision = intent.what.strip()
+            topic = (intent.project_hint or intent.topic or "intent").strip()
+            if not decision:
+                continue
+            items.setdefault(
+                decision,
+                DecisionItem(
+                    id=_slug("decision", decision),
+                    decision_id=_slug("decision", decision),
+                    topic=topic,
+                    decision=decision,
+                    scope="project",
+                    effective_from=f"{date_str}T12:00:00+08:00",
+                    source_rank="declared",
+                    confidence=intent.confidence_score or 0.9,
+                ),
+            )
+        return list(items.values())
 
     for text in briefing.get("decisions", []):
         decision = str(text).strip()
@@ -441,6 +513,12 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
         ]
 
     latest_todos = list(latest_briefing.get("todos_open", []))
+    if not latest_todos and isinstance(latest_meta.get("intents"), list):
+        latest_todos = [
+            Intent.from_dict(item).what.strip()
+            for item in latest_meta.get("intents", [])
+            if isinstance(item, dict) and should_generate_open_loop(Intent.from_dict(item))
+        ]
     if not latest_todos:
         latest_todos = [
             str(item.get("task", "")).strip()

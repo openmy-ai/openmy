@@ -548,6 +548,28 @@ def cmd_briefing(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_extract(args: argparse.Namespace) -> int:
+    """从 transcript 提取 intents / facts 结构。"""
+    from openmy.services.extraction.extractor import run_extraction
+
+    data = run_extraction(
+        args.input_file,
+        date=args.date,
+        model=args.model,
+        vault_path=args.vault_path,
+        api_key=args.api_key,
+        dry_run=args.dry_run,
+    )
+    if data is None:
+        return 1
+
+    if args.dry_run:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+    else:
+        console.print("[green]✅ 提取完成[/green]")
+    return 0
+
+
 def cmd_correct(args: argparse.Namespace) -> int:
     """终端纠错。"""
     tokens = list(args.correct_args)
@@ -731,6 +753,30 @@ def cmd_context(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_agent(args: argparse.Namespace) -> int:
+    """给 Agent 用的统一入口。"""
+    if args.recent:
+        return cmd_context(argparse.Namespace(compact=False, level=0))
+
+    if args.day:
+        return cmd_view(argparse.Namespace(date=args.day))
+
+    if args.reject_decision:
+        return cmd_correct(argparse.Namespace(correct_args=["reject-decision", args.reject_decision], status="done"))
+
+    if args.ingest:
+        return cmd_run(
+            argparse.Namespace(
+                date=args.ingest,
+                audio=args.audio,
+                skip_transcribe=args.skip_transcribe,
+            )
+        )
+
+    console.print("[red]❌ agent 入口需要指定动作[/red]")
+    return 1
+
+
 def transcribe_audio_files(date_str: str, audio_files: list[str]) -> int:
     """把本地音频文件转成 raw transcript。"""
     from openmy.adapters.transcription.gemini_cli import load_vocab_terms, run_gemini_cli
@@ -881,6 +927,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_brief = sub.add_parser("briefing", help="生成日报")
     p_brief.add_argument("date", help="日期 YYYY-MM-DD")
 
+    p_extract = sub.add_parser("extract", help="从转写中提取 intents / facts")
+    p_extract.add_argument("input_file", help="清洗后的 Markdown 文件路径")
+    p_extract.add_argument("--date", help="日期 YYYY-MM-DD，默认从文件名推断")
+    p_extract.add_argument("--model", default="gemini-3.1-flash-lite-preview", help="Gemini 模型")
+    p_extract.add_argument("--vault-path", help="Obsidian Vault 路径")
+    p_extract.add_argument("--api-key", help="Gemini API key")
+    p_extract.add_argument("--dry-run", action="store_true", help="只打印提取结果，不写入文件")
+
     p_run = sub.add_parser("run", help="全流程处理")
     p_run.add_argument("date", help="日期 YYYY-MM-DD")
     p_run.add_argument("--audio", nargs="+", help="音频文件路径")
@@ -899,6 +953,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_context.add_argument("--compact", action="store_true", help="输出 Markdown 压缩版")
     p_context.add_argument("--level", type=int, default=1, choices=[0, 1], help="输出层级 (0=极简, 1=完整)")
 
+    p_agent = sub.add_parser("agent", help="给 Agent 调用的统一入口")
+    agent_mode = p_agent.add_mutually_exclusive_group(required=True)
+    agent_mode.add_argument("--recent", action="store_true", help="读取最近整体状态")
+    agent_mode.add_argument("--day", help="查看某天结果 YYYY-MM-DD")
+    agent_mode.add_argument("--ingest", help="处理某天输入 YYYY-MM-DD")
+    agent_mode.add_argument("--reject-decision", dest="reject_decision", help="排除一条不重要的决策")
+    p_agent.add_argument("--audio", nargs="+", help="给 --ingest 使用的音频文件路径")
+    p_agent.add_argument("--skip-transcribe", action="store_true", help="给 --ingest 使用：复用已有数据")
+
     return parser
 
 
@@ -911,11 +974,13 @@ def main() -> int:
         return 0
 
     commands = {
+        "agent": cmd_agent,
         "briefing": cmd_briefing,
         "clean": cmd_clean,
         "context": cmd_context,
         "correct": cmd_correct,
         "distill": cmd_distill,
+        "extract": cmd_extract,
         "roles": cmd_roles,
         "run": cmd_run,
         "status": cmd_status,

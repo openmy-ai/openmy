@@ -137,6 +137,103 @@ class TestConsolidation(unittest.TestCase):
             self.assertGreater(ctx.context_seq, 7)
             self.assertEqual(ctx.materialized_from_event_seq, ctx.context_seq)
 
+    def test_consolidate_generates_loops_and_decisions_from_intents(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            self.write_json(
+                data_root / "2026-04-08" / "scenes.json",
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "scene_001",
+                            "time_start": "10:00",
+                            "time_end": "10:20",
+                            "summary": "让 Claude 去同步状态，并决定先做 Intent。",
+                            "role": {"addressed_to": "AI助手", "needs_review": False},
+                        }
+                    ],
+                    "stats": {"needs_review_count": 0},
+                },
+            )
+            self.write_json(
+                project_root / "2026-04-08.meta.json",
+                {
+                    "daily_summary": "今天主要推进 Intent。",
+                    "events": [{"time": "10:00", "project": "OpenMy", "summary": "继续做 Intent。"}],
+                    "intents": [
+                        {
+                            "intent_id": "intent_agent",
+                            "kind": "action_item",
+                            "what": "同步状态到 Obsidian",
+                            "status": "open",
+                            "who": {"kind": "agent", "label": "Claude"},
+                            "confidence_label": "high",
+                            "confidence_score": 0.91,
+                            "needs_review": False,
+                            "evidence_quote": "让 Claude 去同步。",
+                            "source_scene_id": "scene_001",
+                            "topic": "OpenMy",
+                            "project_hint": "OpenMy",
+                        },
+                        {
+                            "intent_id": "intent_question",
+                            "kind": "open_question",
+                            "what": "Intent 命名要不要改成 commitments",
+                            "status": "open",
+                            "who": {"kind": "user", "label": "老板"},
+                            "confidence_label": "high",
+                            "confidence_score": 0.84,
+                            "needs_review": False,
+                            "evidence_quote": "命名还要想一下。",
+                            "source_scene_id": "scene_001",
+                            "topic": "OpenMy",
+                        },
+                        {
+                            "intent_id": "intent_decision",
+                            "kind": "decision",
+                            "what": "先做 Intent，再做前端。",
+                            "status": "active",
+                            "who": {"kind": "user", "label": "老板"},
+                            "confidence_label": "high",
+                            "confidence_score": 0.88,
+                            "needs_review": False,
+                            "evidence_quote": "先做 Intent。",
+                            "source_scene_id": "scene_001",
+                            "topic": "OpenMy",
+                            "project_hint": "OpenMy",
+                        },
+                        {
+                            "intent_id": "intent_low",
+                            "kind": "action_item",
+                            "what": "回头研究一下",
+                            "status": "open",
+                            "who": {"kind": "user", "label": "老板"},
+                            "confidence_label": "low",
+                            "confidence_score": 0.33,
+                            "needs_review": True,
+                            "evidence_quote": "回头看看。",
+                            "source_scene_id": "scene_001",
+                            "topic": "OpenMy",
+                        },
+                    ],
+                    "facts": [{"fact_type": "idea", "content": "Intent 和 facts 要分桶。", "topic": "OpenMy"}],
+                },
+            )
+
+            ctx = consolidate(data_root)
+
+            loop_types = {item.title: item.loop_type for item in ctx.rolling_context.open_loops}
+            self.assertEqual(loop_types["同步状态到 Obsidian"], "delegated")
+            self.assertEqual(loop_types["Intent 命名要不要改成 commitments"], "question")
+            self.assertNotIn("先做 Intent，再做前端。", loop_types)
+            self.assertNotIn("回头研究一下", loop_types)
+
+            decision_texts = {item.decision for item in ctx.rolling_context.recent_decisions}
+            self.assertIn("先做 Intent，再做前端。", decision_texts)
+
 
 class TestRenderer(unittest.TestCase):
     def make_context(self) -> ActiveContext:
