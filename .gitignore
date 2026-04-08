@@ -4,3 +4,4 @@ __pycache__/
 app/server.log
 nohup.out
 *.before-gemini-cli-*
+.worktrees/
