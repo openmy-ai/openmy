@@ -11,7 +11,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-class TestDayTapeCli(unittest.TestCase):
+class TestOpenMyCli(unittest.TestCase):
     def make_day_dir(self, date_str: str) -> Path:
         day_dir = PROJECT_ROOT / "data" / date_str
         day_dir.mkdir(parents=True, exist_ok=True)
@@ -113,9 +113,9 @@ class TestDayTapeCli(unittest.TestCase):
         }
 
     def test_cli_status_runs(self):
-        """daytape status 应该能跑通不报错。"""
+        """openmy status 应该能跑通不报错。"""
         result = subprocess.run(
-            [sys.executable, "-m", "daytape", "status"],
+            [sys.executable, "-m", "openmy", "status"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -125,21 +125,21 @@ class TestDayTapeCli(unittest.TestCase):
         self.assertTrue("日期" in result.stdout or "📅" in result.stdout)
 
     def test_cli_help(self):
-        """daytape --help 应该输出帮助。"""
+        """openmy --help 应该输出帮助。"""
         result = subprocess.run(
-            [sys.executable, "-m", "daytape", "--help"],
+            [sys.executable, "-m", "openmy", "--help"],
             capture_output=True,
             text=True,
             timeout=10,
             cwd=PROJECT_ROOT,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue("daytape" in result.stdout.lower() or "DayTape" in result.stdout)
+        self.assertTrue("openmy" in result.stdout.lower() or "OpenMy" in result.stdout)
 
     def test_cli_view_existing_date(self):
-        """daytape view 2026-04-06 应该输出场景概览。"""
+        """openmy view 2026-04-06 应该输出场景概览。"""
         result = subprocess.run(
-            [sys.executable, "-m", "daytape", "view", "2026-04-06"],
+            [sys.executable, "-m", "openmy", "view", "2026-04-06"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -151,7 +151,7 @@ class TestDayTapeCli(unittest.TestCase):
     def test_cli_view_nonexistent_date(self):
         """不存在的日期应该友好报错。"""
         result = subprocess.run(
-            [sys.executable, "-m", "daytape", "view", "1999-01-01"],
+            [sys.executable, "-m", "openmy", "view", "1999-01-01"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -162,7 +162,7 @@ class TestDayTapeCli(unittest.TestCase):
     def test_cli_roles_nonexistent_date(self):
         """没有清洗文本时，roles 应该友好报错。"""
         result = subprocess.run(
-            [sys.executable, "-m", "daytape", "roles", "1999-01-01"],
+            [sys.executable, "-m", "openmy", "roles", "1999-01-01"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -171,13 +171,13 @@ class TestDayTapeCli(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
 
     def test_cli_briefing_generates_output(self):
-        """daytape briefing 应该生成日报文件。"""
+        """openmy briefing 应该生成日报文件。"""
         date_str = "2099-01-02"
         output_dir = self.make_day_dir(date_str)
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "daytape", "briefing", date_str],
+                [sys.executable, "-m", "openmy", "briefing", date_str],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -189,7 +189,7 @@ class TestDayTapeCli(unittest.TestCase):
             self.cleanup_day_dir(date_str)
 
     def test_cli_clean_generates_output(self):
-        """daytape clean 应该从 raw 生成 transcript.md。"""
+        """openmy clean 应该从 raw 生成 transcript.md。"""
         date_str = "2099-01-03"
         day_dir = self.make_day_dir(date_str)
         (day_dir / "transcript.raw.md").write_text(
@@ -199,7 +199,7 @@ class TestDayTapeCli(unittest.TestCase):
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "daytape", "clean", date_str],
+                [sys.executable, "-m", "openmy", "clean", date_str],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -212,7 +212,7 @@ class TestDayTapeCli(unittest.TestCase):
             self.cleanup_day_dir(date_str)
 
     def test_cli_roles_generates_scenes(self):
-        """daytape roles 应该从 transcript 生成 scenes.json。"""
+        """openmy roles 应该从 transcript 生成 scenes.json。"""
         date_str = "2099-01-04"
         day_dir = self.make_day_dir(date_str)
         (day_dir / "transcript.md").write_text(
@@ -222,7 +222,7 @@ class TestDayTapeCli(unittest.TestCase):
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "daytape", "roles", date_str],
+                [sys.executable, "-m", "openmy", "roles", date_str],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -234,7 +234,7 @@ class TestDayTapeCli(unittest.TestCase):
             self.cleanup_day_dir(date_str)
 
     def test_cli_distill_requires_api_key(self):
-        """daytape distill 没有 GEMINI_API_KEY 时应该友好报错。"""
+        """openmy distill 没有 GEMINI_API_KEY 时应该友好报错。"""
         date_str = "2099-01-05"
         day_dir = self.make_day_dir(date_str)
         (day_dir / "scenes.json").write_text(
@@ -247,7 +247,7 @@ class TestDayTapeCli(unittest.TestCase):
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "daytape", "distill", date_str],
+                [sys.executable, "-m", "openmy", "distill", date_str],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -259,20 +259,20 @@ class TestDayTapeCli(unittest.TestCase):
             self.cleanup_day_dir(date_str)
 
     def test_cli_correct_updates_transcript(self):
-        """daytape correct 应该更新 transcript 并同步纠错词典。"""
+        """openmy correct 应该更新 transcript 并同步纠错词典。"""
         date_str = "2099-01-06"
         day_dir = self.make_day_dir(date_str)
         transcript_path = day_dir / "transcript.md"
         transcript_path.write_text("## 10:00\n\n青维今天去散步。", encoding="utf-8")
 
-        corrections_path = PROJECT_ROOT / "src" / "daytape" / "resources" / "corrections.json"
-        vocab_path = PROJECT_ROOT / "src" / "daytape" / "resources" / "vocab.txt"
+        corrections_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "corrections.json"
+        vocab_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "vocab.txt"
         original_corrections = corrections_path.read_text(encoding="utf-8")
         original_vocab = vocab_path.read_text(encoding="utf-8")
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "daytape", "correct", date_str, "青维", "青梅"],
+                [sys.executable, "-m", "openmy", "correct", date_str, "青维", "青梅"],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -287,20 +287,20 @@ class TestDayTapeCli(unittest.TestCase):
             self.cleanup_day_dir(date_str)
 
     def test_correct_typo_subcommand(self):
-        """daytape correct typo 应该兼容新的子命令写法。"""
+        """openmy correct typo 应该兼容新的子命令写法。"""
         date_str = "2099-01-08"
         day_dir = self.make_day_dir(date_str)
         transcript_path = day_dir / "transcript.md"
         transcript_path.write_text("## 10:00\n\n青维今天去散步。", encoding="utf-8")
 
-        corrections_path = PROJECT_ROOT / "src" / "daytape" / "resources" / "corrections.json"
-        vocab_path = PROJECT_ROOT / "src" / "daytape" / "resources" / "vocab.txt"
+        corrections_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "corrections.json"
+        vocab_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "vocab.txt"
         original_corrections = corrections_path.read_text(encoding="utf-8")
         original_vocab = vocab_path.read_text(encoding="utf-8")
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "daytape", "correct", "typo", date_str, "青维", "青梅"],
+                [sys.executable, "-m", "openmy", "correct", "typo", date_str, "青维", "青梅"],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -314,7 +314,7 @@ class TestDayTapeCli(unittest.TestCase):
             self.cleanup_day_dir(date_str)
 
     def test_correct_close_loop(self):
-        """daytape correct close-loop 应该追加 correction 事件。"""
+        """openmy correct close-loop 应该追加 correction 事件。"""
         corrections_path = PROJECT_ROOT / "data" / "corrections.jsonl"
         context_path = PROJECT_ROOT / "data" / "active_context.json"
         original_corrections = corrections_path.read_text(encoding="utf-8") if corrections_path.exists() else None
@@ -328,7 +328,7 @@ class TestDayTapeCli(unittest.TestCase):
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "daytape", "correct", "close-loop", "README"],
+                [sys.executable, "-m", "openmy", "correct", "close-loop", "README"],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -350,7 +350,7 @@ class TestDayTapeCli(unittest.TestCase):
                 context_path.write_text(original_context, encoding="utf-8")
 
     def test_correct_list(self):
-        """daytape correct list 应该列出修正历史。"""
+        """openmy correct list 应该列出修正历史。"""
         corrections_path = PROJECT_ROOT / "data" / "corrections.jsonl"
         original_corrections = corrections_path.read_text(encoding="utf-8") if corrections_path.exists() else None
         corrections_path.parent.mkdir(parents=True, exist_ok=True)
@@ -374,7 +374,7 @@ class TestDayTapeCli(unittest.TestCase):
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "daytape", "correct", "list"],
+                [sys.executable, "-m", "openmy", "correct", "list"],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -390,7 +390,7 @@ class TestDayTapeCli(unittest.TestCase):
                 corrections_path.write_text(original_corrections, encoding="utf-8")
 
     def test_cli_run_reuses_existing_artifacts(self):
-        """daytape run --skip-transcribe 应该能复用已有 transcript/scenes 生成 briefing。"""
+        """openmy run --skip-transcribe 应该能复用已有 transcript/scenes 生成 briefing。"""
         date_str = "2099-01-07"
         day_dir = self.make_day_dir(date_str)
         (day_dir / "transcript.md").write_text(
@@ -409,7 +409,7 @@ class TestDayTapeCli(unittest.TestCase):
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "daytape", "run", date_str, "--skip-transcribe"],
+                [sys.executable, "-m", "openmy", "run", date_str, "--skip-transcribe"],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -421,7 +421,7 @@ class TestDayTapeCli(unittest.TestCase):
             self.cleanup_day_dir(date_str)
 
     def test_cli_context_generates_outputs(self):
-        """daytape context 应该生成 active_context 产物。"""
+        """openmy context 应该生成 active_context 产物。"""
         context_path = PROJECT_ROOT / "data" / "active_context.json"
         compact_path = PROJECT_ROOT / "data" / "active_context.compact.md"
         updates_path = PROJECT_ROOT / "data" / "active_context_updates.jsonl"
@@ -432,7 +432,7 @@ class TestDayTapeCli(unittest.TestCase):
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "daytape", "context", "--compact"],
+                [sys.executable, "-m", "openmy", "context", "--compact"],
                 capture_output=True,
                 text=True,
                 timeout=10,

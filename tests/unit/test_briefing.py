@@ -10,7 +10,7 @@ from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from daytape.services.briefing.generator import (
+from openmy.services.briefing.generator import (
     DailyBriefing,
     _time_to_period,
     generate_briefing,
@@ -115,7 +115,7 @@ class TestBriefingCli(unittest.TestCase):
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "daytape.services.briefing", date_str],
+                [sys.executable, "-m", "openmy.services.briefing", date_str],
                 cwd=project_root,
                 capture_output=True,
                 text=True,

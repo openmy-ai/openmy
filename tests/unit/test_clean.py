@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import unittest
 
-from daytape.services.cleaning import cleaner as clean
+from openmy.services.cleaning import cleaner as clean
 
 
 class CleanLyricsTest(unittest.TestCase):

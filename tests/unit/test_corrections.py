@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from daytape.services.context.active_context import (
+from openmy.services.context.active_context import (
     ActiveContext,
     DecisionItem,
     EntityRegistryCard,
@@ -12,8 +12,8 @@ from daytape.services.context.active_context import (
     OpenLoop,
     ProjectCard,
 )
-from daytape.services.context.consolidation import consolidate
-from daytape.services.context.corrections import (
+from openmy.services.context.consolidation import consolidate
+from openmy.services.context.corrections import (
     CorrectionEvent,
     append_correction,
     apply_corrections,

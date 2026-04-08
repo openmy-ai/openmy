@@ -1,0 +1,72 @@
+# 周瑟夫的上下文 — 个人专有词库
+# 每行一个词条，格式：正确写法 | 可选说明
+# clean.py 的 bold_keywords 也会参考此词库
+# 最后更新：2026-04-02
+
+# ── AI 产品 / 模型 ──────────────────────────────────
+Claude | Anthropic 的 AI 模型，不是 Cloud
+Anthropic | Claude 的公司
+GPT | OpenAI 的模型
+ChatGPT | OpenAI 的聊天产品
+OpenAI | GPT 的公司
+Gemini | Google 的 AI 模型
+Gemini CLI | Google 的命令行 AI 工具
+DeepSeek | 深度求索
+Copilot | GitHub/微软的 AI 编程助手
+Cursor | AI 代码编辑器
+Windsurf | AI 代码编辑器
+Antigravity | 反重力，Google 的 AI IDE
+Codex | OpenAI 的编码代理
+NotebookLM | Google 的笔记 AI
+Perplexity | AI 搜索引擎
+
+# ── 开发工具 / 平台 ──────────────────────────────────
+StreamDeck | Elgato 的可编程按键面板
+Obsidian | Markdown 笔记软件
+VS Code | 微软的代码编辑器
+Vite | 前端构建工具
+Next.js | React 框架
+Vercel | 前端部署平台
+GitHub | 代码托管
+MCP | Model Context Protocol
+API | 应用程序接口
+SDK | 软件开发包
+npm | Node 包管理器
+Docker | 容器化工具
+
+# ── 我的项目 / 概念 ──────────────────────────────────
+技能书 | StreamDeck 的技能配置系统
+OpenMy | 语音日志转写系统
+CC | Antigravity 中的 AI 助手身份
+小 g | Gemini CLI 中的 AI 助手身份
+CCW | CC + Codex 协作工作流
+深度调研 | Deep Research 的中文称呼
+事件流 | Obsidian 中的日志系统
+
+# ── 社交媒体 / 内容 ──────────────────────────────────
+小红书 | Xiaohongshu 社交平台
+公众号 | 微信公众号
+AI 思维 | 我的个人 IP 名称
+
+# ── 硬件 / 设备 ──────────────────────────────────────
+DJI Mic | DJI 的无线麦克风
+MacBook | 苹果笔记本
+AirPods | 苹果耳机
+iPhone | 苹果手机
+
+# ── 常见音近易错词 ──────────────────────────────────
+Cloud AI | 产品名，不是"克劳德"
+Super Power | 超级能力，一个 skill 名称
+Prompt | 提示词
+Token | 令牌/代币
+Embedding | 向量嵌入
+Fine-tuning | 微调
+Workflow | 工作流
+Handleoff | 任务交接
+青梅 | 不是"青维"，狗的名字
+理想电竞 | 不是"理想电机"
+
+# ── 常见音近易错词（手动添加）──────────────────────────────────
+阿维塔 | Avatr 电动汽车品牌，不是"阿加塔"
+寄养费 | 宠物寄养费用，不是"降费"
+刘涛 | 男性朋友名字，注意性别语境

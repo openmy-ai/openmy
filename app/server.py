@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-周瑟夫的外脑 — 本地 Web 服务（DayTape package 版）
+OpenMy — 本地 Web 服务（OpenMy package 版）
 
 提供：
   - 时间线浏览（按日期和时间段）
@@ -28,11 +28,11 @@ SRC_DIR = ROOT_DIR / 'src'
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from daytape.services.cleaning.cleaner import sync_correction_to_vocab
-from daytape.services.segmentation.segmenter import parse_time_segments
+from openmy.services.cleaning.cleaner import sync_correction_to_vocab
+from openmy.services.segmentation.segmenter import parse_time_segments
 
 try:
-    from daytape.adapters.screenpipe.client import ScreenpipeClient
+    from openmy.adapters.screenpipe.client import ScreenpipeClient
 
     _screenpipe = ScreenpipeClient()
     _screenpipe_available = _screenpipe.is_available()
@@ -42,7 +42,7 @@ except Exception:
 
 DATA_ROOT = ROOT_DIR / 'data'
 LEGACY_ROOT = ROOT_DIR
-CORRECTIONS_FILE = ROOT_DIR / 'src' / 'daytape' / 'resources' / 'corrections.json'
+CORRECTIONS_FILE = ROOT_DIR / 'src' / 'openmy' / 'resources' / 'corrections.json'
 PORT = 8420
 TIME_HEADER_RE = re.compile(r'^##\s+(\d{1,2}:\d{2})', re.MULTILINE)
 DATE_RE = re.compile(r'^(\d{4}-\d{2}-\d{2})$')
@@ -405,7 +405,7 @@ class BrainHandler(SimpleHTTPRequestHandler):
 
 
 def main():
-    print('🧠 周瑟夫的外脑 v3（DayTape package 版）')
+    print('🧠 OpenMy v3（OpenMy package 版）')
     print(f'📂 数据目录: {DATA_ROOT}')
     stats = get_stats()
     print(f"📊 {stats['total_dates']} 天 | {stats['total_segments']} 段 | {stats['total_words']} 字")
@@ -422,7 +422,7 @@ def main():
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print('\n👋 外脑已关闭')
+        print('\n👋 OpenMy 已关闭')
         server.server_close()
 
 

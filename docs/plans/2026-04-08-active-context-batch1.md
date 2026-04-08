@@ -36,14 +36,14 @@
 
 ### 1. 数据模型校验
 
-基于现有 `src/daytape/services/context/active_context.py`：
+基于现有 `src/openmy/services/context/active_context.py`：
 
 - 补往返序列化测试
 - 确保 `save/load/from_dict/to_json` 可用
 
 ### 2. 汇总器 consolidation
 
-新建 `src/daytape/services/context/consolidation.py`，负责：
+新建 `src/openmy/services/context/consolidation.py`，负责：
 
 - 扫描所有可用日期
 - 同时兼容新旧路径
@@ -67,7 +67,7 @@
 
 ### 3. 展示器 renderer
 
-新建 `src/daytape/services/context/renderer.py`：
+新建 `src/openmy/services/context/renderer.py`：
 
 - `render_level0(ctx)`：一句话摘要 + 待办数 + 最近变化
 - `render_level1(ctx)`：给 CLI 和 Agent 看的压缩文本
@@ -75,13 +75,13 @@
 
 ### 4. CLI 接入
 
-修改 `src/daytape/cli.py`：
+修改 `src/openmy/cli.py`：
 
 - 新增 `context` 子命令
 - 支持：
-  - `daytape context`
-  - `daytape context --level 0`
-  - `daytape context --compact`
+  - `openmy context`
+  - `openmy context --level 0`
+  - `openmy context --compact`
 
 ## TDD 顺序
 
@@ -105,9 +105,9 @@ python3 -m pytest tests/unit/test_consolidation.py -v
 python3 -m pytest tests/unit/test_renderer.py -v
 python3 -m pytest tests/unit/test_cli.py -v
 python3 -m pytest tests -v
-python3 -m daytape context
-python3 -m daytape context --level 0
-python3 -m daytape context --compact
+python3 -m openmy context
+python3 -m openmy context --level 0
+python3 -m openmy context --compact
 python3 -m json.tool data/active_context.json
 ```
 
@@ -115,8 +115,8 @@ python3 -m json.tool data/active_context.json
 
 只允许修改这些区域：
 
-- `src/daytape/services/context/`
-- `src/daytape/cli.py`
+- `src/openmy/services/context/`
+- `src/openmy/cli.py`
 - `tests/unit/`
 - `docs/plans/2026-04-08-active-context-batch1.md`
 

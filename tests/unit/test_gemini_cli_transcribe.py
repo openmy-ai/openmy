@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from daytape.adapters.transcription import gemini_cli as gemini_cli_transcribe
+from openmy.adapters.transcription import gemini_cli as gemini_cli_transcribe
 
 
 class GeminiCliTranscribeTest(unittest.TestCase):
