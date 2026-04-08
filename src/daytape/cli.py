@@ -10,6 +10,8 @@ from pathlib import Path
 
 from rich import box
 from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
 from rich.table import Table
 
 
@@ -85,6 +87,25 @@ def get_date_status(date: str) -> dict:
     return status
 
 
+def resolve_day_paths(date: str) -> dict[str, Path]:
+    day_dir = DATA_ROOT / date
+    paths = {
+        "transcript": day_dir / "transcript.md",
+        "raw": day_dir / "transcript.raw.md",
+        "scenes": day_dir / "scenes.json",
+        "briefing": day_dir / "daily_briefing.json",
+    }
+    if paths["transcript"].exists():
+        return paths
+
+    return {
+        "transcript": LEGACY_ROOT / f"{date}.md",
+        "raw": LEGACY_ROOT / f"{date}.raw.md",
+        "scenes": LEGACY_ROOT / f"{date}.scenes.json",
+        "briefing": day_dir / "daily_briefing.json",
+    }
+
+
 def stage_label(status: dict) -> str:
     if status["has_briefing"]:
         return "[green]✅ 完成[/green]"
@@ -138,6 +159,71 @@ def cmd_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_view(args: argparse.Namespace) -> int:
+    """终端查看某天概览。"""
+    date = args.date
+    status = get_date_status(date)
+    if not status["has_transcript"]:
+        console.print(f"[red]❌ {date} 没有数据[/red]")
+        return 1
+
+    paths = resolve_day_paths(date)
+    if paths["briefing"].exists():
+        briefing = json.loads(paths["briefing"].read_text(encoding="utf-8"))
+        console.print(
+            Panel(
+                briefing.get("summary", "无摘要"),
+                title=f"📋 {date} 日报",
+                border_style="magenta",
+                padding=(1, 2),
+            )
+        )
+        console.print()
+
+    if paths["scenes"].exists():
+        data = json.loads(paths["scenes"].read_text(encoding="utf-8"))
+        scenes = data.get("scenes", [])
+        for scene in scenes:
+            time_start = scene.get("time_start", "")
+            role = scene.get("role", {})
+            role_label = role.get("addressed_to", "") or role.get("scene_type_label", "未识别")
+            color = ROLE_COLORS.get(role_label, "white")
+            summary = scene.get("summary", "")
+            preview = scene.get("preview") or scene.get("text", "")[:100]
+
+            content_parts = []
+            if summary:
+                content_parts.append(summary)
+            content_parts.append(f"[dim]{preview}[/dim]")
+
+            console.print(
+                Panel(
+                    "\n".join(content_parts),
+                    title=f"🕐 {time_start}  [{color}]{role_label}[/{color}]",
+                    title_align="left",
+                    border_style=color,
+                    padding=(0, 1),
+                )
+            )
+
+        dist = data.get("stats", {}).get("role_distribution", {})
+        if dist:
+            console.print()
+            console.print("[bold]📊 角色分布[/bold]")
+            total = sum(dist.values())
+            max_bar = 30
+            for role_name, count in sorted(dist.items(), key=lambda item: -item[1]):
+                color = ROLE_COLORS.get(role_name, "white")
+                bar_len = max(1, round(count / total * max_bar))
+                pct = count / total * 100
+                console.print(f"  [{color}]{'█' * bar_len}[/{color}] {role_name} {count}段 ({pct:.0f}%)")
+    else:
+        content = paths["transcript"].read_text(encoding="utf-8")
+        console.print(Panel(Markdown(content[:2000]), title=f"📝 {date} 转写文本"))
+
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="daytape",
@@ -185,6 +271,7 @@ def main() -> int:
 
     commands = {
         "status": cmd_status,
+        "view": cmd_view,
     }
 
     handler = commands.get(args.command)
