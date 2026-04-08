@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from daytape.services.context.active_context import (
+from openmy.services.context.active_context import (
     ActiveContext,
     ChangeItem,
     CommunicationContract,
@@ -87,8 +87,8 @@ class TestActiveContextModel(unittest.TestCase):
                 ],
                 active_projects=[
                     ProjectCard(
-                        id="proj_daytape",
-                        project_id="proj_daytape",
+                        id="proj_openmy",
+                        project_id="proj_openmy",
                         title="OpenMy",
                         current_goal="做出第一版 active context",
                         next_actions=["补 consolidation", "接 CLI"],

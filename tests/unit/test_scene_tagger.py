@@ -3,15 +3,15 @@
 
 import unittest
 
-from daytape.domain.models import RoleTag, SceneBlock
-from daytape.services.roles.resolver import (
+from openmy.domain.models import RoleTag, SceneBlock
+from openmy.services.roles.resolver import (
     ROLE_SIGNAL_WORDS,
     check_declarations,
     check_keyword_rules,
     tag_all_scenes,
     tag_scene_role,
 )
-from daytape.services.segmentation.segmenter import parse_time_segments, split_into_scenes
+from openmy.services.segmentation.segmenter import parse_time_segments, split_into_scenes
 
 
 class TestParseTimeSegments(unittest.TestCase):

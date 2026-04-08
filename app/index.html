@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>周瑟夫的外脑</title>
+<title>OpenMy</title>
 <meta name="description" content="个人每日上下文浏览器">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -333,7 +333,7 @@ body {
 <div class="app">
   <aside class="sidebar">
     <div class="logo">
-      <div class="logo-title">📓 周瑟夫的外脑</div>
+      <div class="logo-title">📓 OpenMy</div>
       <div class="logo-sub">Daily Context</div>
     </div>
     <div class="search-box"><input type="text" id="searchInput" placeholder="全局搜索..." /></div>
@@ -714,7 +714,7 @@ async function renderBriefingView() {
   if (!briefing || briefing.error) {
     container.innerHTML = `<div class="briefing-banner" style="background:linear-gradient(135deg,#94a3b8,#64748b)">
       <h2>📋 暂无日报</h2>
-      <div class="briefing-summary">${currentDate} 的 Daily Briefing 尚未生成。运行 <code style="background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:4px">python -m daytape.services.briefing ${currentDate}</code> 来生成。</div>
+      <div class="briefing-summary">${currentDate} 的 Daily Briefing 尚未生成。运行 <code style="background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:4px">python -m openmy.services.briefing ${currentDate}</code> 来生成。</div>
     </div>`;
     return;
   }

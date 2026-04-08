@@ -1,10 +1,10 @@
-# DayTape CLI 统一命令行 实施计划
+# OpenMy CLI 统一命令行 实施计划
 
 > **For agentic workers:** REQUIRED: Use superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 把 DayTape 的完整处理管线包装成一个美观的 CLI 工具，支持一条命令跑完全流程，也支持分步执行，终端输出带颜色、表格、进度条和图表。
+**Goal:** 把 OpenMy 的完整处理管线包装成一个美观的 CLI 工具，支持一条命令跑完全流程，也支持分步执行，终端输出带颜色、表格、进度条和图表。
 
-**Architecture:** 新增 `src/daytape/cli.py` 作为统一入口，使用 `argparse` 做子命令路由，使用 `rich` 库做终端美化。每个子命令对应一个已有的 service 模块。不改动已有 service 层的逻辑，只做 CLI 包装。
+**Architecture:** 新增 `src/openmy/cli.py` 作为统一入口，使用 `argparse` 做子命令路由，使用 `rich` 库做终端美化。每个子命令对应一个已有的 service 模块。不改动已有 service 层的逻辑，只做 CLI 包装。
 
 **Tech Stack:** Python 3.10+, argparse（CLI 框架）, rich（终端美化：表格/面板/进度条/配色）
 
@@ -14,29 +14,29 @@
 
 | 文件 | 职责 |
 |------|------|
-| **[NEW]** `src/daytape/cli.py` | 统一 CLI 入口，子命令路由 + rich 格式化输出 |
-| **[NEW]** `src/daytape/__main__.py` | `python -m daytape` 入口 |
+| **[NEW]** `src/openmy/cli.py` | 统一 CLI 入口，子命令路由 + rich 格式化输出 |
+| **[NEW]** `src/openmy/__main__.py` | `python -m openmy` 入口 |
 | **[MODIFY]** `pyproject.toml` | 添加 `rich` 依赖 + `console_scripts` 入口 |
 | **[NEW]** `tests/unit/test_cli.py` | CLI 单元测试 |
 
 ## 子命令设计
 
 ```
-daytape run <date> [--audio <files...>]   # 全流程：转写→清洗→角色→蒸馏→日报
-daytape clean <date>                      # 只清洗
-daytape roles <date>                      # 切场景 + 角色归因
-daytape distill <date>                    # 蒸馏摘要
-daytape briefing <date>                   # 生成日报
-daytape view <date>                       # 终端查看一天的概览
-daytape status                            # 列出所有日期及处理状态
-daytape correct <date> <错词> <正确写法>  # 终端纠错
+openmy run <date> [--audio <files...>]   # 全流程：转写→清洗→角色→蒸馏→日报
+openmy clean <date>                      # 只清洗
+openmy roles <date>                      # 切场景 + 角色归因
+openmy distill <date>                    # 蒸馏摘要
+openmy briefing <date>                   # 生成日报
+openmy view <date>                       # 终端查看一天的概览
+openmy status                            # 列出所有日期及处理状态
+openmy correct <date> <错词> <正确写法>  # 终端纠错
 ```
 
 ## 美化要求（使用 rich）
 
 - **进度条**：长任务（转写、蒸馏）用 `rich.progress.Progress` 显示进度
-- **表格**：`daytape status` 输出 `rich.table.Table`，列：日期/场景数/字数/角色分布/处理阶段
-- **面板**：`daytape view <date>` 用 `rich.panel.Panel` 展示每个时段的摘要卡片
+- **表格**：`openmy status` 输出 `rich.table.Table`，列：日期/场景数/字数/角色分布/处理阶段
+- **面板**：`openmy view <date>` 用 `rich.panel.Panel` 展示每个时段的摘要卡片
 - **颜色**：角色用不同颜色标识（AI=cyan, 商家=yellow, 老婆=magenta, 宠物=green, 自己=blue, 未识别=dim）
 - **条形图**：角色分布用 `rich.columns` + 彩色方块 `█` 绘制横向条形图
 - **Markdown 渲染**：`rich.markdown.Markdown` 渲染摘要文本
@@ -50,7 +50,7 @@ daytape correct <date> <错词> <正确写法>  # 终端纠错
 
 **Files:**
 - Modify: `pyproject.toml`
-- Create: `src/daytape/__main__.py`
+- Create: `src/openmy/__main__.py`
 
 - [ ] **Step 1: 添加 rich 依赖到 pyproject.toml**
 
@@ -62,7 +62,7 @@ dependencies = ["rich>=13.0"]
 - [ ] **Step 2: 创建 __main__.py**
 
 ```python
-from daytape.cli import main
+from openmy.cli import main
 
 if __name__ == "__main__":
     raise SystemExit(main())
@@ -76,7 +76,7 @@ Expected: 成功安装，rich 可用
 - [ ] **Step 4: Commit**
 
 ```bash
-git add pyproject.toml src/daytape/__main__.py
+git add pyproject.toml src/openmy/__main__.py
 git commit -m "feat: add rich dependency and __main__ entry point"
 ```
 
@@ -85,7 +85,7 @@ git commit -m "feat: add rich dependency and __main__ entry point"
 ### Task 2: CLI 骨架 + status 子命令
 
 **Files:**
-- Create: `src/daytape/cli.py`
+- Create: `src/openmy/cli.py`
 - Test: `tests/unit/test_cli.py`
 
 - [ ] **Step 1: 写 status 子命令的测试**
@@ -96,9 +96,9 @@ import subprocess
 import sys
 
 def test_cli_status_runs():
-    """daytape status 应该能跑通不报错"""
+    """openmy status 应该能跑通不报错"""
     result = subprocess.run(
-        [sys.executable, "-m", "daytape", "status"],
+        [sys.executable, "-m", "openmy", "status"],
         capture_output=True, text=True, timeout=10,
         cwd="项目根目录路径"
     )
@@ -106,13 +106,13 @@ def test_cli_status_runs():
     assert "日期" in result.stdout or "📅" in result.stdout
 
 def test_cli_help():
-    """daytape --help 应该输出帮助"""
+    """openmy --help 应该输出帮助"""
     result = subprocess.run(
-        [sys.executable, "-m", "daytape", "--help"],
+        [sys.executable, "-m", "openmy", "--help"],
         capture_output=True, text=True, timeout=10
     )
     assert result.returncode == 0
-    assert "daytape" in result.stdout.lower() or "DayTape" in result.stdout
+    assert "openmy" in result.stdout.lower() or "OpenMy" in result.stdout
 ```
 
 - [ ] **Step 2: 跑测试看失败**
@@ -123,9 +123,9 @@ Expected: FAIL（cli.py 不存在）
 - [ ] **Step 3: 实现 CLI 骨架 + status 命令**
 
 ```python
-# src/daytape/cli.py
+# src/openmy/cli.py
 #!/usr/bin/env python3
-"""DayTape — 个人上下文引擎 CLI"""
+"""OpenMy — 个人上下文引擎 CLI"""
 from __future__ import annotations
 
 import argparse
@@ -248,7 +248,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         return 0
 
     table = Table(
-        title="📅 DayTape 数据总览",
+        title="📅 OpenMy 数据总览",
         box=box.ROUNDED,
         show_lines=True,
     )
@@ -274,8 +274,8 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="daytape",
-        description="🎙️ DayTape — 个人上下文引擎",
+        prog="openmy",
+        description="🎙️ OpenMy — 个人上下文引擎",
     )
     sub = parser.add_subparsers(dest="command", help="可用命令")
 
@@ -345,14 +345,14 @@ Expected: PASS
 
 - [ ] **Step 5: 手动验证 status 输出效果**
 
-Run: `cd ~/Desktop/周瑟夫的上下文 && python -m daytape status`
+Run: `cd ~/Desktop/周瑟夫的上下文 && python -m openmy status`
 Expected: 彩色表格，显示所有日期、状态、字数、角色分布条
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/daytape/cli.py tests/unit/test_cli.py
-git commit -m "feat: daytape CLI skeleton with rich status command"
+git add src/openmy/cli.py tests/unit/test_cli.py
+git commit -m "feat: openmy CLI skeleton with rich status command"
 ```
 
 ---
@@ -362,16 +362,16 @@ git commit -m "feat: daytape CLI skeleton with rich status command"
 ### Task 3: view 子命令 — 终端查看某天概览
 
 **Files:**
-- Modify: `src/daytape/cli.py`
+- Modify: `src/openmy/cli.py`
 - Test: `tests/unit/test_cli.py`
 
 - [ ] **Step 1: 写 view 命令的测试**
 
 ```python
 def test_cli_view_existing_date():
-    """daytape view 2026-04-06 应该输出场景概览"""
+    """openmy view 2026-04-06 应该输出场景概览"""
     result = subprocess.run(
-        [sys.executable, "-m", "daytape", "view", "2026-04-06"],
+        [sys.executable, "-m", "openmy", "view", "2026-04-06"],
         capture_output=True, text=True, timeout=10,
         cwd="项目根目录路径"
     )
@@ -382,7 +382,7 @@ def test_cli_view_existing_date():
 def test_cli_view_nonexistent_date():
     """不存在的日期应该友好报错"""
     result = subprocess.run(
-        [sys.executable, "-m", "daytape", "view", "1999-01-01"],
+        [sys.executable, "-m", "openmy", "view", "1999-01-01"],
         capture_output=True, text=True, timeout=10,
         cwd="项目根目录路径"
     )
@@ -488,14 +488,14 @@ Expected: PASS
 
 - [ ] **Step 5: 手动验证美化效果**
 
-Run: `python -m daytape view 2026-04-06`
+Run: `python -m openmy view 2026-04-06`
 Expected: 彩色面板卡片 + 角色分布条形图
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: daytape view command with rich panels and role chart"
+git commit -m "feat: openmy view command with rich panels and role chart"
 ```
 
 ---
@@ -505,14 +505,14 @@ git commit -m "feat: daytape view command with rich panels and role chart"
 ### Task 4: clean 子命令
 
 **Files:**
-- Modify: `src/daytape/cli.py`
+- Modify: `src/openmy/cli.py`
 
 - [ ] **Step 1: 写测试**
 
 ```python
 def test_cli_clean_needs_date():
     result = subprocess.run(
-        [sys.executable, "-m", "daytape", "clean"],
+        [sys.executable, "-m", "openmy", "clean"],
         capture_output=True, text=True, timeout=10
     )
     assert result.returncode != 0  # 缺少 date 参数
@@ -533,7 +533,7 @@ def cmd_clean(args: argparse.Namespace) -> int:
         console.print(f"[red]❌ 找不到 {date} 的原始转写[/red]")
         return 1
 
-    from daytape.services.cleaning.cleaner import clean_text
+    from openmy.services.cleaning.cleaner import clean_text
 
     with console.status("[bold green]🧹 清洗中..."):
         raw_text = raw_path.read_text(encoding="utf-8")
@@ -558,7 +558,7 @@ def cmd_clean(args: argparse.Namespace) -> int:
 ### Task 5: roles 子命令
 
 **Files:**
-- Modify: `src/daytape/cli.py`
+- Modify: `src/openmy/cli.py`
 
 - [ ] **Step 1: 实现 roles 命令**
 
@@ -571,11 +571,11 @@ def cmd_roles(args: argparse.Namespace) -> int:
     if not transcript.exists():
         transcript = LEGACY_ROOT / f"{date}.md"
     if not transcript.exists():
-        console.print(f"[red]❌ 找不到 {date} 的清洗后文本，先运行 daytape clean {date}[/red]")
+        console.print(f"[red]❌ 找不到 {date} 的清洗后文本，先运行 openmy clean {date}[/red]")
         return 1
 
-    from daytape.services.segmentation.segmenter import segment
-    from daytape.services.roles.resolver import resolve_roles, scenes_to_dict
+    from openmy.services.segmentation.segmenter import segment
+    from openmy.services.roles.resolver import resolve_roles, scenes_to_dict
 
     with console.status("[bold cyan]🏷️ 场景切分 + 角色归因..."):
         markdown = transcript.read_text(encoding="utf-8")
@@ -611,7 +611,7 @@ def cmd_roles(args: argparse.Namespace) -> int:
 ### Task 6: distill 子命令
 
 **Files:**
-- Modify: `src/daytape/cli.py`
+- Modify: `src/openmy/cli.py`
 
 - [ ] **Step 1: 实现 distill 命令**
 
@@ -627,10 +627,10 @@ def cmd_distill(args: argparse.Namespace) -> int:
 
     scenes_path = DATA_ROOT / date / "scenes.json"
     if not scenes_path.exists():
-        console.print(f"[red]❌ 找不到 {date}/scenes.json，先运行 daytape roles {date}[/red]")
+        console.print(f"[red]❌ 找不到 {date}/scenes.json，先运行 openmy roles {date}[/red]")
         return 1
 
-    from daytape.services.distillation.distiller import distill_scenes
+    from openmy.services.distillation.distiller import distill_scenes
     from rich.progress import Progress
 
     data = json.loads(scenes_path.read_text(encoding="utf-8"))
@@ -651,7 +651,7 @@ def cmd_distill(args: argparse.Namespace) -> int:
                 scene["summary"] = ""
                 progress.advance(task)
                 continue
-            from daytape.services.distillation.distiller import summarize_scene
+            from openmy.services.distillation.distiller import summarize_scene
             scene["summary"] = summarize_scene(text, api_key, "gemini-2.5-flash")
             progress.advance(task)
 
@@ -667,7 +667,7 @@ def cmd_distill(args: argparse.Namespace) -> int:
 ### Task 7: briefing 子命令
 
 **Files:**
-- Modify: `src/daytape/cli.py`
+- Modify: `src/openmy/cli.py`
 
 - [ ] **Step 1: 实现 briefing 命令**
 
@@ -680,14 +680,14 @@ def cmd_distill(args: argparse.Namespace) -> int:
 ### Task 8: correct 子命令
 
 **Files:**
-- Modify: `src/daytape/cli.py`
+- Modify: `src/openmy/cli.py`
 
 - [ ] **Step 1: 实现 correct 命令**
 
 ```python
 def cmd_correct(args: argparse.Namespace) -> int:
     """终端纠错"""
-    from daytape.services.cleaning.cleaner import sync_correction_to_vocab
+    from openmy.services.cleaning.cleaner import sync_correction_to_vocab
     # 1. 写入 corrections.json
     # 2. 替换 transcript.md 中的错词
     # 3. 同步到 vocab.txt
@@ -703,7 +703,7 @@ def cmd_correct(args: argparse.Namespace) -> int:
 ### Task 9: run 全流程子命令
 
 **Files:**
-- Modify: `src/daytape/cli.py`
+- Modify: `src/openmy/cli.py`
 
 - [ ] **Step 1: 实现 run 命令**
 
@@ -713,7 +713,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     date = args.date
 
     console.print(Panel(
-        f"🎙️ DayTape 全流程处理\n📅 日期: {date}",
+        f"🎙️ OpenMy 全流程处理\n📅 日期: {date}",
         border_style="bright_blue",
     ))
 
@@ -739,7 +739,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     console.print(Panel(
         f"[green]✅ {date} 处理完成！[/green]\n"
-        f"运行 [bold]daytape view {date}[/bold] 查看结果",
+        f"运行 [bold]openmy view {date}[/bold] 查看结果",
         border_style="green",
     ))
     return 0
@@ -754,7 +754,7 @@ Expected: 所有测试通过
 
 ```bash
 git add -A
-git commit -m "feat: daytape run - full pipeline command"
+git commit -m "feat: openmy run - full pipeline command"
 ```
 
 ---
@@ -770,27 +770,27 @@ git commit -m "feat: daytape run - full pipeline command"
 
 ```toml
 [project.scripts]
-daytape = "daytape.cli:main"
+openmy = "openmy.cli:main"
 ```
 
 - [ ] **Step 2: 重装**
 
 Run: `pip install -e .`
-Expected: `daytape status` 可以直接在终端跑
+Expected: `openmy status` 可以直接在终端跑
 
 - [ ] **Step 3: 验证所有命令**
 
 ```bash
-daytape status
-daytape view 2026-04-06
-daytape --help
+openmy status
+openmy view 2026-04-06
+openmy --help
 ```
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add pyproject.toml
-git commit -m "feat: register daytape as global CLI command"
+git commit -m "feat: register openmy as global CLI command"
 ```
 
 ---

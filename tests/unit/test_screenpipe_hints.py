@@ -3,16 +3,16 @@ import json
 import unittest
 from unittest.mock import patch
 
-from daytape.domain.models import RoleTag, SceneBlock, ScreenSession
-from daytape.services.roles.resolver import resolve_roles
-from daytape.services.screenpipe.hints import (
+from openmy.domain.models import RoleTag, SceneBlock, ScreenSession
+from openmy.services.roles.resolver import resolve_roles
+from openmy.services.screenpipe.hints import (
     APP_ROLE_HINTS,
     apply_hints,
     enrich_with_hints,
     get_role_hint,
     sessionize,
 )
-from daytape.adapters.screenpipe.client import ScreenEvent, ScreenpipeClient
+from openmy.adapters.screenpipe.client import ScreenEvent, ScreenpipeClient
 
 
 class FakeResponse:

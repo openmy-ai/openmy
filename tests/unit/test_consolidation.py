@@ -4,9 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from daytape.services.context.active_context import ActiveContext
-from daytape.services.context.consolidation import consolidate
-from daytape.services.context.renderer import (
+from openmy.services.context.active_context import ActiveContext
+from openmy.services.context.consolidation import consolidate
+from openmy.services.context.renderer import (
     render_compact_md,
     render_level0,
     render_level1,
