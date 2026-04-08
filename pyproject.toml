@@ -3,7 +3,7 @@ name = "daytape"
 version = "0.1.0"
 description = "个人每日上下文系统"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["rich>=13.0"]
 
 [build-system]
 requires = ["hatchling"]
