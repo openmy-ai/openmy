@@ -67,13 +67,15 @@ corrections.jsonl         ← append-only 修正历史，查询时自动叠加
   ↓ 转写 (adapters/transcription/gemini_cli.py)
   ↓ 清洗 (services/cleaning/cleaner.py)
   ↓ 场景切分 (services/segmentation/segmenter.py)
-  ↓ 角色归因 (services/roles/resolver.py)
   ↓ 蒸馏 (services/distillation/distiller.py)
   ↓ 结构化提取: intents+facts (services/extraction/extractor.py)
   ↓ 跨日聚合 (services/context/consolidation.py)
   ↓ active_context.json + corrections.jsonl
   ↓ Agent 消费 / 前端展示
 ```
+
+> 角色归因（services/roles/resolver.py）已冻结，不在默认 `run` 流程中。
+> 代码保留，可手动 `openmy roles YYYY-MM-DD` 调用。等 Phase 6 声纹识别再回来。
 
 ## 提取系统：intents + facts 双桶
 

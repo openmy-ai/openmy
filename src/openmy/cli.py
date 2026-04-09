@@ -833,15 +833,30 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     scenes_data = read_json(paths["scenes"], {}) if paths["scenes"].exists() else {}
     if not paths["scenes"].exists():
-        console.print("\n[bold]🏷️ 角色归因[/bold]")
-        result = cmd_roles(args)
-        if result != 0:
-            console.print("[red]❌ 角色归因失败，终止[/red]")
-            return result
+        console.print("\n[bold]🔪 场景切分[/bold]")
+        transcript_path = paths["transcript"]
+        if not transcript_path.exists():
+            console.print(f"[red]❌ 找不到 {date_str} 的清洗后文本[/red]")
+            return 1
+
+        from openmy.services.segmentation.segmenter import segment
+
+        markdown = strip_document_header(transcript_path.read_text(encoding="utf-8"))
+        with console.status("[bold cyan]🔪 场景切分中..."):
+            raw_scenes = segment(markdown)
+            result = {
+                "scenes": [{"text": s.text, "time_start": s.time_start, "time_end": s.time_end} for s in raw_scenes],
+                "stats": {"total_scenes": len(raw_scenes)},
+            }
+
+        output_path = ensure_day_dir(date_str) / "scenes.json"
+        write_json(output_path, result)
+        console.print(f"[green]✅ 场景切分完成[/green]: {len(raw_scenes)} 个场景")
+        console.print("[dim]ℹ️ 角色归因已冻结，如需手动归因可运行 openmy roles {date_str}[/dim]")
         paths = resolve_day_paths(date_str)
         scenes_data = read_json(paths["scenes"], {})
     else:
-        console.print("\n[dim]⏭️ 跳过角色归因：已存在 scenes.json[/dim]")
+        console.print("\n[dim]⏭️ 跳过场景切分：已存在 scenes.json[/dim]")
 
     missing_summaries = [scene for scene in scenes_data.get("scenes", []) if not scene.get("summary")]
     if missing_summaries:
