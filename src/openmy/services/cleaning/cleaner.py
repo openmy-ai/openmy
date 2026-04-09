@@ -10,6 +10,7 @@ cleaner.py — 用 Gemini CLI 对转写文本做语义级清洗
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -139,9 +140,53 @@ def clean_with_gemini_cli(
     return stdout
 
 
+TIME_HEADER_RE = re.compile(r'^##\s+\d{1,2}:\d{2}', re.MULTILINE)
+
+
+def apply_corrections(text: str) -> str:
+    """从 corrections.json 读取纠错规则，强制替换。确定性兜底。"""
+    corrections = load_corrections()
+    if not corrections:
+        return text
+
+    replaced_count = 0
+    for c in corrections:
+        wrong = c.get('wrong', '')
+        right = c.get('right', '')
+        if wrong and right and wrong in text:
+            text = text.replace(wrong, right)
+            replaced_count += 1
+
+    if replaced_count > 0:
+        print(f"  ✓ 纠错替换: {replaced_count} 处", file=sys.stderr)
+
+    return text
+
+
+def validate_time_headers(raw_text: str, cleaned_text: str) -> str:
+    """校验清洗输出是否保留了时间头。如果时间头全丢了，回退到原文。"""
+    raw_headers = TIME_HEADER_RE.findall(raw_text)
+    if not raw_headers:
+        return cleaned_text  # 原文就没时间头，不需要校验
+
+    clean_headers = TIME_HEADER_RE.findall(cleaned_text)
+    if not clean_headers:
+        # 时间头全丢了，Gemini 没遵守约束，回退原文
+        print("  ⚠️ 清洗后时间头全部丢失，回退到原文", file=sys.stderr)
+        return raw_text
+
+    if len(clean_headers) < len(raw_headers) * 0.5:
+        print(f"  ⚠️ 清洗后时间头从 {len(raw_headers)} 个减少到 {len(clean_headers)} 个", file=sys.stderr)
+
+    return cleaned_text
+
+
 def clean_text(text: str) -> str:
-    """清洗入口：调 Gemini CLI 做语义级清洗"""
-    return clean_with_gemini_cli(text)
+    """清洗入口：Gemini CLI 语义清洗 + corrections.json 确定性兜底"""
+    cleaned = clean_with_gemini_cli(text)
+    cleaned = validate_time_headers(text, cleaned)
+    cleaned = apply_corrections(cleaned)
+    return cleaned
 
 
 # ── 纠错相关工具（保留，供 correct 命令使用）────────────────

@@ -96,11 +96,57 @@ class GeminiCLICallTest(unittest.TestCase):
 
 
 class CorrectionUtilsTest(unittest.TestCase):
-    """纠错工具函数保留，验证基本功能"""
+    """纠错工具函数验证"""
 
     def test_load_corrections_returns_list_when_missing(self):
         result = clean.load_corrections()
         self.assertIsInstance(result, list)
+
+    @patch('openmy.services.cleaning.cleaner.load_corrections')
+    def test_apply_corrections_replaces_known_errors(self, mock_load):
+        mock_load.return_value = [
+            {"wrong": "青维", "right": "青梅"},
+            {"wrong": "寄养费", "right": "降费"},
+        ]
+        result = clean.apply_corrections("青维今天去散步，讨论寄养费的问题。")
+        self.assertIn("青梅", result)
+        self.assertNotIn("青维", result)
+        self.assertIn("降费", result)
+        self.assertNotIn("寄养费", result)
+
+
+class TimeHeaderValidationTest(unittest.TestCase):
+    """验证清洗输出的时间头校验"""
+
+    def test_fallback_when_all_time_headers_lost(self):
+        raw = "## 10:00\n\n说话内容\n\n## 11:00\n\n更多内容"
+        cleaned_bad = "说话内容\n\n更多内容"  # 时间头全丢了
+        result = clean.validate_time_headers(raw, cleaned_bad)
+        self.assertEqual(result, raw)  # 回退到原文
+
+    def test_passes_when_time_headers_preserved(self):
+        raw = "## 10:00\n\n说话内容\n\n## 11:00\n\n更多内容"
+        cleaned_good = "## 10:00\n\n清洗后内容\n\n## 11:00\n\n更多清洗后内容"
+        result = clean.validate_time_headers(raw, cleaned_good)
+        self.assertEqual(result, cleaned_good)
+
+    def test_passes_when_raw_has_no_time_headers(self):
+        raw = "没有时间头的文本"
+        cleaned = "清洗后没有时间头的文本"
+        result = clean.validate_time_headers(raw, cleaned)
+        self.assertEqual(result, cleaned)
+
+    @patch('openmy.services.cleaning.cleaner.clean_with_gemini_cli')
+    @patch('openmy.services.cleaning.cleaner.load_corrections')
+    def test_clean_text_full_pipeline(self, mock_corrections, mock_gemini):
+        """验证 clean_text 完整流程：Gemini + 校验 + 纠错"""
+        mock_gemini.return_value = "## 10:00\n\n青维今天去散步。"
+        mock_corrections.return_value = [{"wrong": "青维", "right": "青梅"}]
+
+        result = clean.clean_text("## 10:00\n\n嗯，青维今天去散步。")
+        self.assertIn("青梅", result)        # 纠错生效
+        self.assertIn("## 10:00", result)     # 时间头保留
+        self.assertNotIn("青维", result)      # 错词被替换
 
 
 if __name__ == "__main__":

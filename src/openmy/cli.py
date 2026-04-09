@@ -839,15 +839,13 @@ def cmd_run(args: argparse.Namespace) -> int:
             console.print(f"[red]❌ 找不到 {date_str} 的转写文本[/red]")
             return 1
 
-        from openmy.services.segmentation.segmenter import segment
+        from openmy.services.segmentation.segmenter import segment, build_scenes_payload
 
         markdown = strip_document_header(transcript_path.read_text(encoding="utf-8"))
         with console.status("[bold cyan]🔪 场景切分中..."):
             raw_scenes = segment(markdown)
-            result = {
-                "scenes": [{"text": s.text, "time_start": s.time_start, "time_end": s.time_end} for s in raw_scenes],
-                "stats": {"total_scenes": len(raw_scenes)},
-            }
+            result = build_scenes_payload(raw_scenes)
+            result["stats"] = {"total_scenes": len(raw_scenes)}
 
         output_path = ensure_day_dir(date_str) / "scenes.json"
         write_json(output_path, result)
