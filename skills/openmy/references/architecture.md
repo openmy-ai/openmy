@@ -128,6 +128,7 @@ corrections.jsonl         ← append-only 修正历史，查询时自动叠加
 - Phase 1: 状态快照 ✅
 - Phase 2: 纠正系统 ✅
 - Phase 2.5: Intent 系统 ✅
+- **Phase 2.8: 管线质量加固** ← 当前焦点（转写去语义化 + clean 保真 + 角色归因校准 + 提取产出量校准）
 - Phase 3: Screenpipe 信号接入
 - Phase 4: 前端页面
 - Phase 5: 自维护闭环
