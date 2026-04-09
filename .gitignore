@@ -5,3 +5,6 @@ app/server.log
 nohup.out
 *.before-gemini-cli-*
 .worktrees/
+data/2026-04-08/disk_audio/
+*.wav
+.DS_Store

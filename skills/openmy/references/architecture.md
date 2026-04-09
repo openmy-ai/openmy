@@ -65,6 +65,7 @@ corrections.jsonl         ← append-only 修正历史，查询时自动叠加
 音频文件
   ↓ 去静音+压缩+切块 (services/ingest/audio_pipeline.py)
   ↓ 转写 (adapters/transcription/gemini_cli.py)
+  ↓ 清洗 (services/cleaning/cleaner.py) ← 待优化：当前版本会注入 ** 标记
   ↓ 场景切分 (services/segmentation/segmenter.py)
   ↓ 蒸馏 (services/distillation/distiller.py)
   ↓ 结构化提取: intents+facts (services/extraction/extractor.py)
@@ -72,9 +73,6 @@ corrections.jsonl         ← append-only 修正历史，查询时自动叠加
   ↓ active_context.json + corrections.jsonl
   ↓ Agent 消费 / 前端展示
 ```
-
-> 清洗（services/cleaning/cleaner.py）已冻结：注入 ** 标记和段落压缩反而降低质量。
-> 代码保留，可手动 `openmy clean YYYY-MM-DD` 调用。
 
 > 角色归因（services/roles/resolver.py）已冻结，不在默认 `run` 流程中。
 > 代码保留，可手动 `openmy roles YYYY-MM-DD` 调用。等 Phase 6 声纹识别再回来。
