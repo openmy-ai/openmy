@@ -595,47 +595,51 @@ def sync_correction_to_vocab(wrong: str, right: str, context: str = ''):
 
 
 def clean_text(text: str) -> str:
-    """完整清洗流程"""
+    """完整清洗流程。
+
+    设计原则：
+    - 只降噪，不改语义
+    - 不加粗、不改词（除纠错词典）、不删脏话（真实语气是上下文证据）
+    - 保留自然分段和对话节奏
+    """
     # Step 0: 先按段剔除明显歌词/音乐口播
     text = remove_lyric_sentences(text)
 
-    # Step 0.3: 清除 Gemini 系统前缀/机械回复
+    # Step 1: 清除 Gemini 系统前缀/机械回复
     text = remove_ai_preamble(text)
 
-    # Step 0.5: 清除 Gemini 输出的 [音乐] 标记及其前后碎片
+    # Step 2: 清除 Gemini 输出的 [音乐] 标记及其前后碎片
     text = remove_music_markers(text)
 
-    # Step 1: 脏话过滤
-    text = remove_profanity(text)
+    # 注意：不过滤脏话。脏话是真实语气证据，对理解用户情绪和场景有价值。
 
     lines = text.split('\n')
 
-    # Step 2: 去除纯废词行
+    # Step 3: 去除纯废词行
     lines = [l for l in lines if not is_filler_line(l)]
 
-    # Step 3: 行内废词清理
+    # Step 4: 行内废词清理
     lines = [clean_inline(l) for l in lines]
 
-    # Step 3: 去除连续重复行
+    # Step 5: 去除连续重复行
     lines = deduplicate_lines(lines)
 
-    # Step 4: 合并碎行
-    lines = merge_short_lines(lines)
+    # Step 6: 合并单字残句（只合并 ≤2 字的碎片，保留对话节奏）
+    lines = merge_short_lines(lines, min_length=3)
 
-    # Step 5: 合并连续空行
+    # Step 7: 合并连续空行
     lines = collapse_blank_lines(lines)
 
-    # Step 6: 去除首尾空行
+    # Step 8: 去除首尾空行
     result = '\n'.join(lines).strip()
 
-    # Step 7: 长段强制切分（消灭文字墙）
+    # Step 9: 长段强制切分（消灭文字墙）
     result = split_long_paragraphs(result)
 
-    # Step 9: 纠错替换（从 corrections.json 强制修正错词）
+    # Step 10: 纠错替换（从 corrections.json 强制修正错词）
     result = apply_corrections(result)
 
-    # Step 10: 关键词加粗（提升扫读效率）
-    result = bold_keywords(result)
+    # 注意：不加粗关键词。** 标记会干扰下游场景切分和 intent 提取。
 
     return result
 

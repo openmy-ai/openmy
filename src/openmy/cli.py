@@ -821,23 +821,27 @@ def cmd_run(args: argparse.Namespace) -> int:
         console.print("[red]❌ 没有输入音频，也没有现成 raw/transcript 数据[/red]")
         return 1
 
-    # 跳过 clean：raw 转写质量已经足够好，clean 会注入 ** 标记和压缩段落，反而降低质量。
-    # 保留 cmd_clean 命令供手动调用，但 run 流程直接用 raw。
-    console.print("\n[dim]⏭️ 跳过清洗：直接使用原始转写（clean 已冻结）[/dim]")
-
-    # 决定场景切分的输入源：优先 raw，兼容已有 transcript.md
-    segmentation_input = paths["raw"] if paths["raw"].exists() else paths["transcript"]
+    if not paths["transcript"].exists():
+        console.print("\n[bold]🧹 清洗[/bold]")
+        result = cmd_clean(args)
+        if result != 0:
+            console.print("[red]❌ 清洗失败，终止[/red]")
+            return result
+        paths = resolve_day_paths(date_str)
+    else:
+        console.print("\n[dim]⏭️ 跳过清洗：已存在 transcript.md[/dim]")
 
     scenes_data = read_json(paths["scenes"], {}) if paths["scenes"].exists() else {}
     if not paths["scenes"].exists():
         console.print("\n[bold]🔪 场景切分[/bold]")
-        if not segmentation_input.exists():
+        transcript_path = paths["transcript"]
+        if not transcript_path.exists():
             console.print(f"[red]❌ 找不到 {date_str} 的转写文本[/red]")
             return 1
 
         from openmy.services.segmentation.segmenter import segment
 
-        markdown = strip_document_header(segmentation_input.read_text(encoding="utf-8"))
+        markdown = strip_document_header(transcript_path.read_text(encoding="utf-8"))
         with console.status("[bold cyan]🔪 场景切分中..."):
             raw_scenes = segment(markdown)
             result = {
@@ -847,7 +851,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         output_path = ensure_day_dir(date_str) / "scenes.json"
         write_json(output_path, result)
-        console.print(f"[green]✅ 场景切分完成[/green]: {len(raw_scenes)} 个场景（输入: {segmentation_input.name}）")
+        console.print(f"[green]✅ 场景切分完成[/green]: {len(raw_scenes)} 个场景")
         console.print("[dim]ℹ️ 角色归因已冻结，如需手动归因可运行 openmy roles {date_str}[/dim]")
         paths = resolve_day_paths(date_str)
         scenes_data = read_json(paths["scenes"], {})
