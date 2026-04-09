@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OpenMy</title>
-<meta name="description" content="个人每日上下文浏览器">
+<meta name="description" content="个人每日上下文工作台">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
@@ -20,6 +20,10 @@
   --border: #e9e9e7;
   --accent: #2eaadc;
   --accent-light: #e8f4f8;
+  --success: #0f7b6c;
+  --success-bg: #dbeddb;
+  --warning: #d9730d;
+  --warning-bg: #fdecc8;
 
   --role-ai: #529cca;
   --role-ai-bg: #e8f4f8;
@@ -35,8 +39,8 @@
   --role-uncertain-bg: #f0f0ee;
 
   --radius: 6px;
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
-  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-serif: 'Noto Serif SC', Georgia, serif;
   --transition: 0.15s ease;
@@ -52,59 +56,160 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
-
-/* ── 侧边栏 ── */
-.sidebar {
-  background: var(--bg-sidebar); border-right: 1px solid var(--border);
-  padding: 20px 12px; overflow-y: auto; position: sticky; top: 0; height: 100vh;
-  display: flex; flex-direction: column;
+.app {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
 }
+
+.sidebar {
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  padding: 20px 12px;
+  overflow-y: auto;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
 .logo { padding: 4px 8px; margin-bottom: 2px; }
 .logo-title { font-family: var(--font-serif); font-size: 15px; font-weight: 700; }
 .logo-sub { font-size: 11px; color: var(--text-light); margin-top: 1px; }
+
 .search-box { padding: 0 4px; margin: 12px 0; }
-.search-box input {
-  width: 100%; padding: 6px 10px; background: var(--bg);
-  border: 1px solid var(--border); border-radius: var(--radius);
-  color: var(--text); font-size: 13px; font-family: var(--font-body);
-  outline: none; transition: border var(--transition), box-shadow var(--transition);
+.search-box input,
+.field-input,
+.field-select,
+.field-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font-body);
+  outline: none;
+  transition: border var(--transition), box-shadow var(--transition);
 }
-.search-box input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
-.stats { padding: 8px 12px; font-size: 12px; color: var(--text-secondary); display: flex; gap: 12px; }
+
+.search-box input:focus,
+.field-input:focus,
+.field-select:focus,
+.field-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.field-textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.stats {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 12px;
+}
+
 .stat-item { display: flex; align-items: center; gap: 3px; }
 .stat-num { font-weight: 600; color: var(--text); }
-.mini-role-bar { display: flex; height: 3px; border-radius: 2px; overflow: hidden; margin: 4px 12px 8px; gap: 1px; }
+
+.mini-role-bar {
+  display: flex;
+  height: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 4px 12px 8px;
+  gap: 1px;
+}
+
 .mini-role-bar div { height: 100%; min-width: 3px; border-radius: 1px; }
-.role-legend-mini { padding: 0 12px 8px; display: flex; flex-wrap: wrap; gap: 4px 8px; }
-.role-legend-mini span { font-size: 10px; color: var(--text-light); display: flex; align-items: center; gap: 3px; }
-.role-legend-mini .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+
+.role-legend-mini {
+  padding: 0 12px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.role-legend-mini span {
+  font-size: 10px;
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.role-legend-mini .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
 .divider { height: 1px; background: var(--border); margin: 4px 12px 8px; }
 .section-label { font-size: 11px; font-weight: 600; color: var(--text-light); padding: 4px 12px; text-transform: uppercase; }
+
 .date-list { flex: 1; overflow-y: auto; margin-top: 4px; }
 .date-item {
-  display: flex; align-items: center; gap: 8px; padding: 5px 12px;
-  border-radius: var(--radius); cursor: pointer; transition: background var(--transition);
-  font-size: 14px; color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background var(--transition);
+  font-size: 14px;
+  color: var(--text-secondary);
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
 }
+
 .date-item:hover { background: var(--bg-hover); }
 .date-item.active { background: var(--bg-active); color: var(--text); font-weight: 500; }
 .date-item .icon { font-size: 14px; opacity: 0.6; }
 .date-item .meta { margin-left: auto; font-size: 11px; color: var(--text-light); }
 
-/* ── 主内容区 ── */
-.main { max-width: 900px; margin: 0 auto; padding: 40px 48px 80px; width: 100%; }
+.main {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 40px 48px 80px;
+  width: 100%;
+}
+
 .page-header { margin-bottom: 32px; }
 .page-icon { font-size: 36px; margin-bottom: 8px; }
 .page-title { font-family: var(--font-serif); font-size: 32px; font-weight: 700; line-height: 1.2; }
-.page-meta { font-size: 13px; color: var(--text-light); margin-top: 6px; display: flex; gap: 16px; }
+.page-meta { font-size: 13px; color: var(--text-light); margin-top: 6px; display: flex; gap: 16px; flex-wrap: wrap; }
 
-.view-tabs { display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
-.view-tab {
-  padding: 6px 16px; border: none; background: transparent; color: var(--text-secondary);
-  font-size: 14px; font-weight: 500; cursor: pointer; border-radius: var(--radius);
-  transition: all var(--transition);
+.view-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
 }
+
+.view-tab {
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
 .view-tab:hover { background: var(--bg-hover); color: var(--text); }
 .view-tab.active { background: var(--bg-active); color: var(--text); font-weight: 600; }
 .view-content { display: none; }
@@ -112,21 +217,59 @@ body {
 
 .role-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 24px; }
 .role-tag {
-  display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;
-  border-radius: 4px; font-size: 12px; cursor: pointer; border: none;
-  font-family: var(--font-body); transition: opacity var(--transition); opacity: 0.7;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  border: none;
+  font-family: var(--font-body);
+  transition: opacity var(--transition);
+  opacity: 0.7;
 }
+
 .role-tag:hover { opacity: 1; }
 .role-tag.active { opacity: 1; font-weight: 600; }
 
-.callout { background: var(--bg-hover); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 28px; display: flex; gap: 12px; }
+.callout {
+  background: var(--bg-hover);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 28px;
+  display: flex;
+  gap: 12px;
+}
+
 .callout-icon { font-size: 20px; flex-shrink: 0; }
 .callout-body { font-size: 14px; color: var(--text); flex: 1; }
 
-/* Props 三栏元数据卡片 */
-.props-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 24px; }
-.prop-card { background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
-.prop-card-title { font-size: 12px; font-weight: 700; color: var(--text-light); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; text-transform: uppercase; }
+.props-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.prop-card {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.prop-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-light);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+}
+
 .prop-card-title .dot { width: 8px; height: 8px; border-radius: 50%; }
 .prop-item { font-size: 13px; color: var(--text-secondary); padding: 4px 0; border-bottom: 1px dashed var(--border); line-height: 1.5; }
 .prop-item:last-child { border-bottom: none; }
@@ -134,7 +277,6 @@ body {
 .prop-item .project-tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--accent-light); color: var(--accent); font-weight: 500; margin-right: 4px; }
 .prop-count { font-size: 11px; color: var(--text-light); font-weight: 400; }
 
-/* ── 树形时间轴 ── */
 .timeline { position: relative; padding-left: 80px; }
 .timeline::before { content: ''; position: absolute; left: 60px; top: 0; bottom: 0; width: 2px; background: var(--border); }
 .tl-node { position: relative; padding: 0 0 32px 32px; }
@@ -142,34 +284,69 @@ body {
 .tl-node:last-child { padding-bottom: 0; }
 .tl-node:last-child::after { content: ''; position: absolute; left: -22px; top: 14px; bottom: 0; width: 2px; background: var(--bg); z-index: 1; }
 .tl-dot { position: absolute; left: -26px; top: 6px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--border); background: var(--bg); z-index: 2; transition: all 0.2s; }
-.tl-node:hover .tl-dot { transform: scale(1.3); box-shadow: 0 0 0 4px rgba(46,170,220,0.15); }
+.tl-node:hover .tl-dot { transform: scale(1.3); box-shadow: 0 0 0 4px rgba(46, 170, 220, 0.15); }
 .tl-time { position: absolute; left: -80px; top: 3px; width: 50px; text-align: right; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-light); }
 .tl-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; transition: box-shadow 0.2s, border-color 0.2s; }
 .tl-node:hover .tl-card { box-shadow: var(--shadow); border-color: #d0d0ce; }
 .tl-role-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-.role-label { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-.role-label.needs-review { outline: 2px dashed #d9730d; outline-offset: 1px; }
-.addressed-to { font-size: 11px; color: var(--text-secondary); background: var(--bg-sidebar); border: 1px solid var(--border); padding: 2px 8px; border-radius: 10px; font-weight: 500; }
-.addressed-to .addr-icon { margin-right: 2px; }
+
+.role-label,
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.role-label.needs-review { outline: 2px dashed var(--warning); outline-offset: 1px; }
+.status-pill { background: var(--success-bg); color: var(--success); }
+
 .seg-distilled { font-size: 15px; line-height: 1.7; margin-bottom: 10px; color: var(--text); }
 .seg-distilled-placeholder { font-size: 14px; color: var(--text-secondary); font-style: italic; background: var(--bg-sidebar); padding: 8px 12px; border-radius: 4px; border-left: 3px solid var(--border); }
 .raw-controls { display: flex; justify-content: flex-end; }
-.raw-btn {
-  background: var(--bg-sidebar); border: 1px solid var(--border); padding: 4px 10px;
-  border-radius: 4px; font-size: 12px; color: var(--text-secondary); cursor: pointer;
-  display: inline-flex; align-items: center; gap: 4px; transition: all var(--transition);
+.raw-btn,
+.action-btn {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all var(--transition);
 }
+
+.action-btn.primary {
+  background: var(--text);
+  color: #ffffff;
+  border-color: var(--text);
+}
+
+.action-btn:hover,
 .raw-btn:hover { background: var(--border); color: var(--text); }
+
 .seg-raw {
-  margin-top: 12px; padding: 16px; background: var(--bg-sidebar);
-  border-radius: var(--radius); font-size: 14px; line-height: 1.8; color: var(--text-secondary);
-  border: 1px dashed var(--border); display: none;
+  margin-top: 12px;
+  padding: 16px;
+  background: var(--bg-sidebar);
+  border-radius: var(--radius);
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  border: 1px dashed var(--border);
+  display: none;
 }
+
 .seg-raw.visible { display: block; }
 .seg-raw p { margin-bottom: 12px; }
 .seg-raw p:last-child { margin-bottom: 0; }
 
-/* 数据表格 */
 .table-view { width: 100%; overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .data-table th, .data-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
@@ -178,85 +355,93 @@ body {
 .data-table .td-time { font-variant-numeric: tabular-nums; font-weight: 500; }
 .data-table .td-summary { color: var(--text); max-width: 400px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* 图表 */
 .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .chart-card { background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
 .chart-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
 .chart-card canvas { max-height: 260px; }
-.chart-full { grid-column: 1 / -1; }
 
-/* ── Briefing 仪表盘 ── */
 .briefing-banner {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 12px; padding: 24px 28px; margin-bottom: 24px; color: #fff;
-  position: relative; overflow: hidden;
+  border-radius: 12px;
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
 }
+
 .briefing-banner::after {
-  content: ''; position: absolute; top: -30%; right: -10%; width: 200px; height: 200px;
-  background: rgba(255,255,255,0.08); border-radius: 50%;
+  content: '';
+  position: absolute;
+  top: -30%;
+  right: -10%;
+  width: 200px;
+  height: 200px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
 }
-.briefing-banner h2 { font-family: var(--font-serif); font-size: 20px; font-weight: 700; margin-bottom: 6px; }
-.briefing-summary { font-size: 14px; opacity: 0.92; line-height: 1.6; }
-.briefing-stats-row { display: flex; gap: 24px; margin-top: 14px; }
+
+.briefing-banner h2 { font-family: var(--font-serif); font-size: 20px; font-weight: 700; margin-bottom: 6px; position: relative; z-index: 1; }
+.briefing-summary { font-size: 14px; opacity: 0.92; line-height: 1.6; position: relative; z-index: 1; }
+.briefing-stats-row { display: flex; gap: 24px; margin-top: 14px; flex-wrap: wrap; position: relative; z-index: 1; }
 .briefing-stat { display: flex; flex-direction: column; }
 .briefing-stat-num { font-size: 22px; font-weight: 700; }
 .briefing-stat-label { font-size: 11px; opacity: 0.75; }
 
-.briefing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
-@media (max-width: 720px) { .briefing-grid { grid-template-columns: 1fr; } }
-.briefing-card {
-  background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 18px 20px; transition: box-shadow 0.2s;
+.briefing-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
 }
-.briefing-card:hover { box-shadow: var(--shadow); }
+
+.briefing-card,
+.job-card {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  transition: box-shadow 0.2s;
+}
+
+.briefing-card:hover,
+.job-card:hover { box-shadow: var(--shadow); }
+
 .briefing-card-title {
-  font-size: 13px; font-weight: 700; color: var(--text-light); margin-bottom: 12px;
-  display: flex; align-items: center; gap: 6px; text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-light);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
 }
+
 .briefing-card-full { grid-column: 1 / -1; }
 
-.time-block {
-  display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px dashed var(--border);
-  align-items: flex-start;
-}
+.time-block { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px dashed var(--border); align-items: flex-start; }
 .time-block:last-child { border-bottom: none; padding-bottom: 0; }
-.tb-period {
-  font-size: 12px; font-weight: 700; color: var(--accent); white-space: nowrap;
-  min-width: 56px; padding-top: 2px;
-}
+.tb-period { font-size: 12px; font-weight: 700; color: var(--accent); white-space: nowrap; min-width: 56px; padding-top: 2px; }
 .tb-body { flex: 1; }
 .tb-summary { font-size: 14px; color: var(--text); line-height: 1.6; margin-bottom: 6px; }
 .tb-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-.tb-tag {
-  font-size: 10px; padding: 2px 8px; border-radius: 10px;
-  display: inline-flex; align-items: center; gap: 3px;
-}
+.tb-tag { font-size: 10px; padding: 2px 8px; border-radius: 10px; display: inline-flex; align-items: center; gap: 3px; }
 .tb-tag-person { background: #f0f9ff; color: #0369a1; }
 .tb-tag-app { background: #f0fdf4; color: #15803d; }
-.tb-mode-badge {
-  font-size: 9px; padding: 2px 6px; border-radius: 4px; font-weight: 600;
-  margin-left: 6px; vertical-align: middle;
-}
-.tb-mode-dual { background: #dbeafe; color: #1d4ed8; }
-.tb-mode-voice { background: #f0f0ee; color: #787774; }
 
 .event-item {
-  font-size: 13px; color: var(--text-secondary); padding: 6px 0;
-  border-bottom: 1px dashed var(--border); line-height: 1.5;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+  line-height: 1.5;
 }
-.event-item:last-child { border-bottom: none; }
-.event-icon { margin-right: 4px; }
 
+.event-item:last-child { border-bottom: none; }
 .people-grid { display: flex; flex-wrap: wrap; gap: 10px; }
-.people-chip {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
-  padding: 10px 14px; min-width: 140px;
-}
-.people-avatar {
-  width: 32px; height: 32px; border-radius: 50%; display: flex;
-  align-items: center; justify-content: center; font-size: 16px;
-}
+.people-chip { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; min-width: 140px; }
+.people-avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; }
 .people-info { flex: 1; }
 .people-name { font-size: 13px; font-weight: 600; color: var(--text); }
 .people-meta { font-size: 11px; color: var(--text-light); }
@@ -267,66 +452,108 @@ body {
 .app-bar-fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 4px; transition: width 0.6s ease; }
 .app-bar-duration { font-size: 11px; color: var(--text-light); min-width: 60px; text-align: right; }
 
-/* 屏幕佐证徽章（时间轴卡片内） */
-.screen-badge {
-  display: inline-flex; align-items: center; gap: 3px;
-  font-size: 10px; padding: 2px 8px; border-radius: 10px;
-  background: #eff6ff; color: #3b82f6; font-weight: 500;
+.search-stack,
+.form-stack {
+  display: grid;
+  gap: 12px;
 }
-.screen-badge .sb-icon { font-size: 11px; }
 
-/* 搜索 */
-.search-header { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: var(--text); }
-.search-result { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; cursor: pointer; transition: all var(--transition); }
-.search-result:hover { box-shadow: var(--shadow); border-color: var(--accent); }
-.sr-meta { font-size: 12px; color: var(--text-light); margin-bottom: 6px; }
-.sr-context { font-size: 14px; line-height: 1.6; }
-.sr-context mark { background: #fef3c7; color: var(--text); padding: 0 2px; border-radius: 2px; }
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
 
-/* 空状态 */
-.empty { text-align: center; padding: 120px 40px 80px; color: var(--text-light); }
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pipeline-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 16px;
+}
+
+.job-item {
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.job-item:hover { box-shadow: var(--shadow); }
+.job-item.active { border-color: rgba(46, 170, 220, 0.35); background: var(--accent-light); }
+
+.job-log {
+  margin: 0;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-family: "SFMono-Regular", "Menlo", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.muted { color: var(--text-light); }
+
+.empty {
+  text-align: center;
+  padding: 120px 40px 80px;
+  color: var(--text-light);
+}
+
 .empty .icon { font-size: 40px; margin-bottom: 12px; }
 
-@keyframes highlight-flash {
-  0% { box-shadow: 0 0 0 4px #ffedb8; border-color: #f5c43d; }
-  100% { box-shadow: 0 0 0 0 transparent; }
+.empty-state {
+  padding: 18px;
+  border-radius: var(--radius);
+  border: 1px dashed var(--border);
+  color: var(--text-light);
+  background: var(--bg);
 }
-.highlight-target { animation: highlight-flash 2.5s ease-out; }
 
-/* ── 纠错弹框 ── */
-.correct-btn {
-  position: fixed; display: none; padding: 4px 10px;
-  background: var(--text); color: #fff; border: none; border-radius: 4px;
-  font-size: 12px; cursor: pointer; z-index: 1000; box-shadow: var(--shadow);
+.toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 20px;
+  font-size: 13px;
+  z-index: 3000;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
 }
-.correct-btn:hover { opacity: 0.85; }
-.correct-modal {
-  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.3); z-index: 2000; align-items: center; justify-content: center;
-}
-.correct-modal.visible { display: flex; }
-.correct-dialog { background: #fff; border-radius: 12px; padding: 28px 32px; width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
-.correct-dialog h3 { font-size: 16px; font-weight: 600; margin-bottom: 20px; }
-.correct-field { margin-bottom: 16px; }
-.correct-field label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500; }
-.correct-field input {
-  width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
-  font-size: 14px; font-family: var(--font-body); outline: none; transition: border-color var(--transition);
-}
-.correct-field input:focus { border-color: var(--accent); }
-.correct-field .wrong-text { padding: 10px 12px; background: #fff0f0; border: 1px solid #fecaca; border-radius: var(--radius); color: #dc2626; font-size: 14px; text-decoration: line-through; }
-.correct-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-.correct-actions button { padding: 8px 20px; border-radius: var(--radius); border: 1px solid var(--border); background: #fff; cursor: pointer; font-size: 13px; transition: all var(--transition); }
-.correct-actions .btn-submit { background: var(--text); color: #fff; border-color: var(--text); }
-.correct-actions .btn-submit:hover { opacity: 0.85; }
-.correct-actions .btn-cancel:hover { background: var(--bg-hover); }
-.correct-toast {
-  position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
-  background: var(--text); color: #fff; padding: 10px 24px; border-radius: 20px;
-  font-size: 13px; z-index: 3000; opacity: 0; transition: opacity 0.3s; pointer-events: none;
-}
-.correct-toast.visible { opacity: 1; }
 
+.toast.visible { opacity: 1; }
+
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { position: static; height: auto; }
+  .main { padding: 24px 20px 60px; }
+  .view-tabs { overflow-x: auto; padding-bottom: 12px; }
+  .briefing-grid,
+  .props-grid,
+  .charts-grid,
+  .pipeline-layout { grid-template-columns: 1fr; }
+  .timeline { padding-left: 66px; }
+  .timeline::before { left: 46px; }
+  .tl-time { left: -66px; width: 40px; }
+}
 </style>
 </head>
 <body>
@@ -334,9 +561,11 @@ body {
   <aside class="sidebar">
     <div class="logo">
       <div class="logo-title">📓 OpenMy</div>
-      <div class="logo-sub">Daily Context</div>
+      <div class="logo-sub">每日上下文</div>
     </div>
-    <div class="search-box"><input type="text" id="searchInput" placeholder="全局搜索..." /></div>
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="全局搜索..." />
+    </div>
     <div class="stats" id="stats"></div>
     <div class="mini-role-bar" id="globalBar"></div>
     <div class="role-legend-mini" id="globalLegend"></div>
@@ -353,378 +582,537 @@ body {
   </main>
 </div>
 
-<!-- 纠错浮动按钮 -->
-<button class="correct-btn" id="correctBtn" onclick="openCorrectionModal()">✏️ 纠正</button>
-
-<!-- 纠错弹框 -->
-<div class="correct-modal" id="correctModal">
-  <div class="correct-dialog">
-    <h3>✏️ 纠正转写错误</h3>
-    <div class="correct-field">
-      <label>原文（错误）</label>
-      <div class="wrong-text" id="correctWrong"></div>
-    </div>
-    <div class="correct-field">
-      <label>正确写法</label>
-      <input type="text" id="correctRight" placeholder="输入正确的文字..." />
-    </div>
-    <div class="correct-field">
-      <label>备注（可选）</label>
-      <input type="text" id="correctContext" placeholder="例如：宠物名字、人名、专业术语..." />
-    </div>
-    <div class="correct-actions">
-      <button class="btn-cancel" onclick="closeCorrectionModal()">取消</button>
-      <button class="btn-submit" onclick="submitCorrection()">确认纠正</button>
-    </div>
-  </div>
-</div>
-<div class="correct-toast" id="correctToast"></div>
+<div class="toast" id="toast"></div>
 
 <script>
-// 按具体角色配色（addressed_to 为主键）
 const ROLE_STYLES = {
-  '老婆':   { emoji:'👩', color:'#d946ef', bg:'#fdf4ff' },
-  '老公':   { emoji:'👨', color:'#8b5cf6', bg:'#f5f3ff' },
-  '妈妈':   { emoji:'🤱', color:'#ec4899', bg:'#fdf2f8' },
-  '爸爸':   { emoji:'👨‍🦳', color:'#6366f1', bg:'#eef2ff' },
-  '朋友':   { emoji:'🙋', color:'#f59e0b', bg:'#fffbeb' },
-  'AI助手': { emoji:'🤖', color:'var(--role-ai)', bg:'var(--role-ai-bg)' },
-  '商家':   { emoji:'🏪', color:'var(--role-merchant)', bg:'var(--role-merchant-bg)' },
-  '宠物':   { emoji:'🐾', color:'var(--role-pet)', bg:'var(--role-pet-bg)' },
-  '自己':   { emoji:'💭', color:'var(--role-self)', bg:'var(--role-self-bg)' },
+  '老婆': { emoji: '👩', color: '#d946ef', bg: '#fdf4ff' },
+  '老公': { emoji: '👨', color: '#8b5cf6', bg: '#f5f3ff' },
+  '妈妈': { emoji: '🤱', color: '#ec4899', bg: '#fdf2f8' },
+  '爸爸': { emoji: '👨‍🦳', color: '#6366f1', bg: '#eef2ff' },
+  '朋友': { emoji: '🙋', color: '#f59e0b', bg: '#fffbeb' },
+  'AI助手': { emoji: '🤖', color: 'var(--role-ai)', bg: 'var(--role-ai-bg)' },
+  '商家': { emoji: '🏪', color: 'var(--role-merchant)', bg: 'var(--role-merchant-bg)' },
+  '宠物': { emoji: '🐾', color: 'var(--role-pet)', bg: 'var(--role-pet-bg)' },
+  '自己': { emoji: '💭', color: 'var(--role-self)', bg: 'var(--role-self-bg)' },
 };
-const DEFAULT_STYLE = { emoji:'❓', color:'var(--role-uncertain)', bg:'var(--role-uncertain-bg)' };
-function getRoleStyle(addr) { return ROLE_STYLES[addr] || DEFAULT_STYLE; }
-// 保留旧 ROLES 给筛选栏等兼容用
+
+const DEFAULT_STYLE = { emoji: '❓', color: 'var(--role-uncertain)', bg: 'var(--role-uncertain-bg)' };
+
 const ROLES = {
-  '跟AI说':   { emoji:'🤖', color:'var(--role-ai)',           bg:'var(--role-ai-bg)' },
-  '跟商家':   { emoji:'🏪', color:'var(--role-merchant)',     bg:'var(--role-merchant-bg)' },
-  '跟宠物':   { emoji:'🐕', color:'var(--role-pet)',          bg:'var(--role-pet-bg)' },
-  '自言自语': { emoji:'💭', color:'var(--role-self)',         bg:'var(--role-self-bg)' },
-  '跟人聊':   { emoji:'💬', color:'var(--role-interpersonal)',bg:'var(--role-interpersonal-bg)' },
-  '不确定':   { emoji:'—',  color:'var(--role-uncertain)',    bg:'var(--role-uncertain-bg)' },
+  '跟AI说': { emoji: '🤖', color: 'var(--role-ai)', bg: 'var(--role-ai-bg)' },
+  '跟商家': { emoji: '🏪', color: 'var(--role-merchant)', bg: 'var(--role-merchant-bg)' },
+  '跟宠物': { emoji: '🐕', color: 'var(--role-pet)', bg: 'var(--role-pet-bg)' },
+  '自言自语': { emoji: '💭', color: 'var(--role-self)', bg: 'var(--role-self-bg)' },
+  '跟人聊': { emoji: '💬', color: 'var(--role-interpersonal)', bg: 'var(--role-interpersonal-bg)' },
+  '不确定': { emoji: '—', color: 'var(--role-uncertain)', bg: 'var(--role-uncertain-bg)' },
 };
 
-let allDates = [], currentDate = null, currentData = null, activeFilters = new Set(), searchTimer = null;
-let chartInstances = [];
+const PIPELINE_KIND_LABELS = {
+  context: '刷新上下文',
+  clean: '清理文本',
+  roles: '识别对象',
+  distill: '整理摘要',
+  briefing: '生成日报',
+  run: '重新运行',
+};
 
-async function init() {
-  const [dates, stats] = await Promise.all([
-    fetch('/api/dates').then(r=>r.json()),
-    fetch('/api/stats').then(r=>r.json()),
-  ]);
-  allDates = dates;
+const PIPELINE_STATUS_LABELS = {
+  queued: '排队中',
+  running: '运行中',
+  succeeded: '已完成',
+  failed: '失败',
+};
 
-  document.getElementById('stats').innerHTML = `
-    <span class="stat-item"><span class="stat-num">${stats.total_dates}</span>天</span>
-    <span class="stat-item"><span class="stat-num">${stats.total_segments}</span>段</span>
-    <span class="stat-item"><span class="stat-num">${fmtNum(stats.total_words)}</span>字</span>`;
+const state = {
+  allDates: [],
+  stats: null,
+  currentDate: '',
+  currentData: null,
+  currentMeta: null,
+  currentBriefing: null,
+  currentView: 'briefing',
+  activeFilters: new Set(),
+  context: {},
+  loops: [],
+  projects: [],
+  decisions: [],
+  corrections: [],
+  searchResults: [],
+  jobs: [],
+  selectedJobId: '',
+  selectedJobDetail: null,
+  handledCompletedJobs: new Set(),
+  chartInstances: [],
+};
 
-  // 全局角色条
-  const rd = stats.role_distribution || {};
-  const total = Object.values(rd).reduce((a,b)=>a+b,0);
-  const getBarColor = (r) => { const sty = getRoleStyle(r); return typeof sty.color === 'string' && sty.color.startsWith('#') ? sty.color : (sty.color || '#ccc'); };
-  if (total > 0) {
-    document.getElementById('globalBar').innerHTML = Object.entries(rd).map(([r,c])=>`<div style="flex:${c};background:${getBarColor(r)}"></div>`).join('');
-    document.getElementById('globalLegend').innerHTML = Object.entries(rd).map(([r,c])=>`<span><span class="dot" style="background:${getBarColor(r)}"></span>${r} ${c}</span>`).join('');
-  }
+let searchTimer = null;
 
-  // 日期列表
-  let dh = '';
-  allDates.forEach(d => {
-    dh += `<div class="date-item" data-date="${d.date}" onclick="loadDate('${d.date}')">
-      <span class="icon">📄</span> ${d.date} <span class="meta">${d.segments}段</span>
-    </div>`;
-  });
-  document.getElementById('dateList').innerHTML = dh;
-
-  // 搜索
-  document.getElementById('searchInput').addEventListener('input', e => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => doSearch(e.target.value), 300);
-  });
-
-  if (allDates.length > 0) loadDate(allDates[0].date);
+function getRoleStyle(value) {
+  return ROLE_STYLES[value] || DEFAULT_STYLE;
 }
 
-async function loadDate(date, targetId) {
-  currentDate = date;
-  currentData = await fetch(`/api/date/${date}`).then(r=>r.json());
-  activeFilters.clear();
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('visible');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => toast.classList.remove('visible'), 2600);
+}
 
-  document.querySelectorAll('.date-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.date === date);
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function plainText(value) {
+  return String(value || '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/<[^>]+>/g, '')
+    .trim();
+}
+
+function fmtText(value) {
+  const safe = escapeHtml(value || '');
+  return safe.split(/\n+/).map((paragraph) => paragraph.trim() ? `<p>${paragraph}</p>` : '').join('');
+}
+
+function fmtNum(value) {
+  const number = Number(value || 0);
+  if (number >= 10000) return `${(number / 10000).toFixed(1)}万`;
+  if (number >= 1000) return `${(number / 1000).toFixed(1)}k`;
+  return String(number);
+}
+
+function renderEmptyState(text) {
+  return `<div class="empty-state">${escapeHtml(text)}</div>`;
+}
+
+function renderEventList(items, renderItem, emptyText) {
+  if (!items || !items.length) {
+    return renderEmptyState(emptyText);
+  }
+  return items.map(renderItem).join('');
+}
+
+function formatPipelineKind(value) {
+  return PIPELINE_KIND_LABELS[value] || value || '未知任务';
+}
+
+function formatPipelineStatus(value) {
+  return PIPELINE_STATUS_LABELS[value] || value || '未知状态';
+}
+
+function formatPipelineStep(value) {
+  if (!value) return '—';
+  return PIPELINE_KIND_LABELS[value] || value;
+}
+
+async function fetchJson(url, fallback = undefined) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      if (fallback !== undefined) return fallback;
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    if (fallback !== undefined) return fallback;
+    showToast(`请求失败：${error.message}`);
+    throw error;
+  }
+}
+
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || `${response.status} ${response.statusText}`);
+  }
+  return data;
+}
+
+async function init() {
+  document.getElementById('searchInput').addEventListener('input', (event) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => runSearch(event.target.value.trim()), 250);
   });
 
+  document.getElementById('searchInput').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      clearTimeout(searchTimer);
+      runSearch(event.target.value.trim());
+    }
+  });
+
+  await loadSidebar();
+  await Promise.all([
+    loadContext(),
+    refreshCorrectionsFeed(),
+    refreshPipelineJobs(),
+  ]);
+
+  if (state.currentData) {
+    renderDayLayout();
+  }
+
+  setInterval(refreshPipelineJobs, 5000);
+}
+
+async function loadSidebar() {
+  const [dates, stats] = await Promise.all([
+    fetchJson('/api/dates', []),
+    fetchJson('/api/stats', { total_dates: 0, total_segments: 0, total_words: 0, role_distribution: {} }),
+  ]);
+
+  state.allDates = dates || [];
+  state.stats = stats || {};
+  renderSidebar();
+
+  const defaultDate = state.allDates.find((item) => item.is_default)?.date || state.allDates[0]?.date || '';
+  if (defaultDate) {
+    await loadDate(defaultDate);
+  }
+}
+
+function renderSidebar() {
+  const stats = state.stats || {};
+  document.getElementById('stats').innerHTML = `
+    <span class="stat-item"><span class="stat-num">${stats.total_dates || 0}</span>天</span>
+    <span class="stat-item"><span class="stat-num">${stats.total_segments || 0}</span>段</span>
+    <span class="stat-item"><span class="stat-num">${fmtNum(stats.total_words || 0)}</span>字</span>
+  `;
+
+  const roleDistribution = stats.role_distribution || {};
+  const totalRoles = Object.values(roleDistribution).reduce((sum, value) => sum + value, 0);
+  if (totalRoles > 0) {
+    document.getElementById('globalBar').innerHTML = Object.entries(roleDistribution).map(([role, count]) => {
+      const style = getRoleStyle(role);
+      const color = style.color.startsWith('#') ? style.color : '#9b9a97';
+      return `<div style="flex:${count};background:${color}"></div>`;
+    }).join('');
+    document.getElementById('globalLegend').innerHTML = Object.entries(roleDistribution).map(([role, count]) => {
+      const style = getRoleStyle(role);
+      const color = style.color.startsWith('#') ? style.color : '#9b9a97';
+      return `<span><span class="dot" style="background:${color}"></span>${escapeHtml(role)} ${count}</span>`;
+    }).join('');
+  } else {
+    document.getElementById('globalBar').innerHTML = '';
+    document.getElementById('globalLegend').innerHTML = '';
+  }
+
+  const dateList = document.getElementById('dateList');
+  if (!state.allDates.length) {
+    dateList.innerHTML = renderEmptyState('还没有找到可浏览的日期数据。');
+    return;
+  }
+
+  dateList.innerHTML = state.allDates.map((item) => `
+    <button class="date-item ${item.date === state.currentDate ? 'active' : ''}" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
+      <span class="icon">📄</span>
+      ${escapeHtml(item.date)}
+      <span class="meta">${item.segments}段</span>
+    </button>
+  `).join('');
+}
+
+async function loadContext() {
+  const [context, loops, projects, decisions] = await Promise.all([
+    fetchJson('/api/context', {}),
+    fetchJson('/api/context/loops', []),
+    fetchJson('/api/context/projects', []),
+    fetchJson('/api/context/decisions', []),
+  ]);
+
+  state.context = context || {};
+  state.loops = loops || [];
+  state.projects = projects || [];
+  state.decisions = decisions || [];
+
+  if (document.getElementById('view-overview')) {
+    renderOverviewView();
+  }
+  if (document.getElementById('view-corrections')) {
+    renderCorrectionsView();
+  }
+}
+
+async function loadDate(date, focusTime = '') {
+  // Template routes: /api/date/${date}/meta and /api/date/${date}/briefing
+  const [detail, meta, briefing] = await Promise.all([
+    fetchJson(`/api/date/${date}`, null),
+    fetchJson(`/api/date/${date}/meta`, null),
+    fetchJson(`/api/date/${date}/briefing`, null),
+  ]);
+
+  if (!detail) {
+    showToast(`日期 ${date} 不存在`);
+    return;
+  }
+
+  state.currentDate = date;
+  state.currentData = detail;
+  state.currentMeta = meta || detail.meta || {};
+  state.currentBriefing = briefing || null;
+  renderSidebar();
   renderDayLayout();
 
-  if (targetId) {
-    setTimeout(() => {
-      const el = document.getElementById(targetId);
-      if (el) {
-        el.classList.remove('hidden');
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        el.classList.add('highlight-target');
-        const rawBtn = el.querySelector('.raw-btn');
-        if (rawBtn) toggleRawText(rawBtn);
-      }
-    }, 150);
+  if (focusTime) {
+    switchView('timeline');
+    requestAnimationFrame(() => scrollToSegment(focusTime));
   }
 }
 
 function renderDayLayout() {
-  const d = currentData;
-  const m = d.meta;
-  const rc = {};
-  let needsReviewCnt = 0;
+  const detail = state.currentData;
+  const meta = state.currentMeta || {};
+  if (!detail) return;
 
-  d.segments.forEach(s => {
-    const a = s.role?.addressed_to || '未识别';
-    rc[a] = (rc[a]||0) + 1;
-    if (s.role?.needs_review) needsReviewCnt++;
+  const roleCounts = {};
+  let needsReviewCount = 0;
+  detail.segments.forEach((segment) => {
+    const addressedTo = segment.role?.addressed_to || '未识别';
+    roleCounts[addressedTo] = (roleCounts[addressedTo] || 0) + 1;
+    if (segment.role?.needs_review) needsReviewCount += 1;
   });
 
-  let h = '';
-  h += `<div class="page-header">
+  let html = '';
+  html += `<div class="page-header">
     <div class="page-icon">📅</div>
-    <div class="page-title">${d.date}</div>
-    <div class="page-meta"><span>${d.segments.length} 个场景</span><span>${fmtNum(d.word_count)} 字</span></div>
+    <div class="page-title">${escapeHtml(detail.date)}</div>
+    <div class="page-meta">
+      <span>${detail.segments.length} 个场景</span>
+      <span>${fmtNum(detail.word_count || 0)} 字</span>
+      <span>上下文 ${state.context.generated_at ? '已就绪' : '待生成'}</span>
+    </div>
   </div>`;
 
-  if (m?.daily_summary) {
-    h += `<div class="callout"><span class="callout-icon">💡</span><div class="callout-body">${m.daily_summary}</div></div>`;
+  const calloutText = meta.daily_summary || state.context.status_line || '';
+  if (calloutText) {
+    html += `<div class="callout">
+      <span class="callout-icon">💡</span>
+      <div class="callout-body">${escapeHtml(plainText(calloutText))}</div>
+    </div>`;
   }
 
-  // Props 三栏元数据卡片
-  if (m) {
-    const hasEvents = m.events?.length > 0;
-    const hasDecisions = m.decisions?.length > 0;
-    const hasTodos = m.todos?.length > 0;
-    const hasInsights = m.insights?.length > 0;
-    if (hasEvents || hasDecisions || hasTodos || hasInsights) {
-      h += '<div class="props-grid">';
-      if (hasEvents) {
-        h += `<div class="prop-card">
-          <div class="prop-card-title"><span class="dot" style="background:#2eaadc"></span>📌 事件 <span class="prop-count">${m.events.length}</span></div>`;
-        m.events.forEach(e => {
-          h += `<div class="prop-item"><span class="time-tag">${e.time||''}</span><span class="project-tag">${e.project||''}</span>${e.summary}</div>`;
-        });
-        h += '</div>';
-      }
-      if (hasDecisions) {
-        h += `<div class="prop-card">
-          <div class="prop-card-title"><span class="dot" style="background:#d9730d"></span>🎯 决策 <span class="prop-count">${m.decisions.length}</span></div>`;
-        m.decisions.forEach(dd => {
-          h += `<div class="prop-item"><span class="project-tag">${dd.project||''}</span>${dd.what}</div>`;
-        });
-        h += '</div>';
-      }
-      if (hasTodos) {
-        h += `<div class="prop-card">
-          <div class="prop-card-title"><span class="dot" style="background:#0f7b6c"></span>✅ 待办 <span class="prop-count">${m.todos.length}</span></div>`;
-        m.todos.forEach(t => {
-          const pri = t.priority === 'high' ? '🔴' : t.priority === 'medium' ? '🟡' : '⚪';
-          h += `<div class="prop-item">${pri} <span class="project-tag">${t.project||''}</span>${t.task}</div>`;
-        });
-        h += '</div>';
-      }
-      if (hasInsights) {
-        h += `<div class="prop-card">
-          <div class="prop-card-title"><span class="dot" style="background:#9065b0"></span>⚡ 洞察 <span class="prop-count">${m.insights.length}</span></div>`;
-        m.insights.forEach(i => {
-          h += `<div class="prop-item"><span class="project-tag">${i.topic||''}</span>${i.content}</div>`;
-        });
-        h += '</div>';
-      }
-      h += '</div>';
-    }
-  }
+  html += renderMetaPanels(meta);
 
-  // 视图 Tabs
-  h += `<div class="view-tabs">
-    <button class="view-tab active" id="tab-briefing" onclick="switchView('briefing')">📋 日报</button>
-    <button class="view-tab" id="tab-timeline" onclick="switchView('timeline')">🕒 蒸馏时间线</button>
-    <button class="view-tab" id="tab-table" onclick="switchView('table')">📊 数据表格</button>
-    <button class="view-tab" id="tab-charts" onclick="switchView('charts')">📈 可视化</button>
+  html += `<div class="view-tabs">
+    <button class="view-tab" id="tab-overview" onclick="switchView('overview')">🧭 概览</button>
+    <button class="view-tab" id="tab-briefing" onclick="switchView('briefing')">📋 日报</button>
+    <button class="view-tab" id="tab-timeline" onclick="switchView('timeline')">🕒 摘要时间线</button>
+    <button class="view-tab" id="tab-table" onclick="switchView('table')">📊 表格</button>
+    <button class="view-tab" id="tab-charts" onclick="switchView('charts')">📈 图表</button>
+    <button class="view-tab" id="tab-corrections" onclick="switchView('corrections')">✏️ 校正</button>
+    <button class="view-tab" id="tab-pipeline" onclick="switchView('pipeline')">⚙️ 流程</button>
   </div>`;
 
-  // 角色筛选器
-  h += '<div class="role-tags" id="filter-bar">';
-  if (Object.keys(rc).length > 1) {
-    h += `<button class="role-tag active" style="background:var(--bg-tag);color:var(--text)" data-role="all" onclick="filterRole('all')">全部 <span class="cnt">${d.segments.length}</span></button>`;
-    for (const [r,c] of Object.entries(rc)) {
-      const sty = getRoleStyle(r);
-      h += `<button class="role-tag" style="background:${sty.bg};color:${sty.color}" data-role="${r}" onclick="filterRole('${r}')">${sty.emoji} ${r} <span class="cnt">${c}</span></button>`;
-    }
-    if (needsReviewCnt > 0) {
-      h += `<button class="role-tag" style="background:#fff3db;color:#d9730d" data-role="needs_review" onclick="filterRole('needs_review')">🚨 待确认 <span class="cnt">${needsReviewCnt}</span></button>`;
+  html += '<div class="role-tags" id="filter-bar">';
+  if (Object.keys(roleCounts).length > 1) {
+    html += `<button class="role-tag active" style="background:var(--bg-tag);color:var(--text)" data-role="all" onclick="filterRole('all')">全部 <span class="cnt">${detail.segments.length}</span></button>`;
+    Object.entries(roleCounts).forEach(([role, count]) => {
+      const style = getRoleStyle(role);
+      html += `<button class="role-tag" style="background:${style.bg};color:${style.color}" data-role="${escapeHtml(role)}" onclick="filterRole('${escapeHtml(role)}')">${style.emoji} ${escapeHtml(role)} <span class="cnt">${count}</span></button>`;
+    });
+    if (needsReviewCount > 0) {
+      html += `<button class="role-tag" style="background:#fff3db;color:#d9730d" data-role="needs_review" onclick="filterRole('needs_review')">🚨 待确认 <span class="cnt">${needsReviewCount}</span></button>`;
     }
   }
-  h += '</div>';
+  html += '</div>';
 
-  h += `<div id="view-briefing" class="view-content active"></div>`;
-  h += `<div id="view-timeline" class="view-content"></div>`;
-  h += `<div id="view-table" class="view-content"></div>`;
-  h += `<div id="view-charts" class="view-content"></div>`;
+  html += '<div id="view-overview" class="view-content"></div>';
+  html += '<div id="view-briefing" class="view-content"></div>';
+  html += '<div id="view-timeline" class="view-content"></div>';
+  html += '<div id="view-table" class="view-content"></div>';
+  html += '<div id="view-charts" class="view-content"></div>';
+  html += '<div id="view-corrections" class="view-content"></div>';
+  html += '<div id="view-pipeline" class="view-content"></div>';
 
-  document.getElementById('main').innerHTML = h;
+  document.getElementById('main').innerHTML = html;
+  renderOverviewView();
   renderBriefingView();
   renderTimelineView();
   renderTableView();
   renderChartsView();
+  renderCorrectionsView();
+  renderPipelineView();
+  switchView(state.currentView);
 }
 
-function stripMd(t) {
-  if (!t) return '';
-  return t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
-}
+function renderMetaPanels(meta) {
+  const groups = [
+    { key: 'events', title: '📌 事件', dot: '#2eaadc' },
+    { key: 'intents', title: '🧭 意图', dot: '#0f7b6c' },
+    { key: 'facts', title: '🧱 事实', dot: '#64748b' },
+    { key: 'decisions', title: '🎯 决策', dot: '#d9730d' },
+    { key: 'todos', title: '✅ 待办', dot: '#16a34a' },
+    { key: 'insights', title: '⚡ 洞察', dot: '#9065b0' },
+  ];
 
-function getSegmentDistillation(s, meta) {
-  let highlights = [];
-  if (meta) {
-    (meta.events || []).filter(e => e.time === s.time).forEach(e => highlights.push(`📌 <strong>[${e.project||'事件'}]</strong> ${stripMd(e.summary)}`));
-    (meta.decisions || []).filter(dd => dd.time === s.time).forEach(dd => highlights.push(`🎯 <strong>[${dd.project||'决策'}]</strong> ${stripMd(dd.what)}`));
-    (meta.todos || []).filter(t => t.time === s.time).forEach(t => highlights.push(`✅ <strong>[${t.project||'待办'}]</strong> ${stripMd(t.task)}`));
-  }
-  if (highlights.length > 0) return highlights.join('<br>');
-  if (s.summary && s.summary.trim() !== "") return `<div class="seg-distilled-placeholder">💭 ${stripMd(s.summary)}</div>`;
-  return `<div class="seg-distilled-placeholder">" ${stripMd(s.preview)}... "</div>`;
-}
-
-function renderTimelineView() {
-  const d = currentData;
-  let h = '<div class="timeline">';
-  d.segments.forEach(s => {
-    const role = s.role;
-    const addr = role?.addressed_to || '未识别';
-    const sty = getRoleStyle(addr);
-    const nr = role?.needs_review;
-    const segId = `seg-${s.time.replace(':', '-')}`;
-    const distilledHTML = getSegmentDistillation(s, d.meta);
-
-    h += `<div class="tl-node" id="${segId}" data-role="${addr}" data-needs-review="${nr?'true':'false'}">
-      <span class="tl-time">${s.time}</span>
-      <div class="tl-dot" style="border-color:${sty.color};background:${nr?'#fff3db':sty.bg}"></div>
-      <div class="tl-card">
-        <div class="tl-role-row">
-          <span class="role-label ${nr?'needs-review':''}" style="background:${sty.bg};color:${sty.color}">
-            ${sty.emoji} ${addr}
-          </span>
-          ${(s.screen_sessions && s.screen_sessions.length > 0) ? s.screen_sessions.slice(0,2).map(ss => `<span class="screen-badge"><span class="sb-icon">🖥️</span>${ss.app_name}</span>`).join('') : ''}
-          ${(s.role?.source === 'screen_hint') ? '<span class="screen-badge" style="background:#fff7ed;color:#c2410c"><span class="sb-icon">👁️</span>屏幕推断</span>' : ''}
-        </div>
-        <div class="seg-distilled">${distilledHTML}</div>
-        <div class="raw-controls"><button class="raw-btn" onclick="toggleRawText(this)">👁️ 显示原文</button></div>
-        <div class="seg-raw">${fmtText(s.text)}</div>
-      </div>
+  const cards = groups.map((group) => {
+    const items = meta?.[group.key] || [];
+    if (!items.length) return '';
+    return `<div class="prop-card">
+      <div class="prop-card-title"><span class="dot" style="background:${group.dot}"></span>${group.title} <span class="prop-count">${items.length}</span></div>
+      ${items.map((item) => {
+        const time = escapeHtml(item.time || '');
+        const project = escapeHtml(item.project || item.topic || '');
+        const summary = escapeHtml(plainText(item.summary || item.what || item.task || item.content || item.decision || item.fact || item.intent || ''));
+        return `<div class="prop-item">
+          ${time ? `<span class="time-tag">${time}</span>` : ''}
+          ${project ? `<span class="project-tag">${project}</span>` : ''}
+          ${summary}
+        </div>`;
+      }).join('')}
     </div>`;
+  }).filter(Boolean);
+
+  if (!cards.length) return '';
+  return `<div class="props-grid">${cards.join('')}</div>`;
+}
+
+function renderOverviewView() {
+  const node = document.getElementById('view-overview');
+  if (!node) return;
+
+  const context = state.context || {};
+  const ingestion = context.ingestion_health || {};
+
+  node.innerHTML = `
+    <div class="briefing-banner" style="background:linear-gradient(135deg,#0f766e 0%,#1d4ed8 100%)">
+      <h2>🧭 概览</h2>
+      <div class="briefing-summary">${escapeHtml(plainText(context.status_line || '最近的上下文还在整理中。'))}</div>
+      <div class="briefing-stats-row">
+        <div class="briefing-stat"><span class="briefing-stat-num">${state.projects.length}</span><span class="briefing-stat-label">项目</span></div>
+        <div class="briefing-stat"><span class="briefing-stat-num">${state.loops.length}</span><span class="briefing-stat-label">待跟进</span></div>
+        <div class="briefing-stat"><span class="briefing-stat-num">${state.decisions.length}</span><span class="briefing-stat-label">决策</span></div>
+        <div class="briefing-stat"><span class="briefing-stat-num">${(context.today_focus || []).length}</span><span class="briefing-stat-label">今日焦点</span></div>
+      </div>
+    </div>
+
+    <div class="briefing-grid">
+      <div class="briefing-card">
+        <div class="briefing-card-title">🎯 今日焦点</div>
+        ${renderEventList(
+          context.today_focus || [],
+          (item) => `<div class="event-item">${escapeHtml(plainText(item))}</div>`,
+          '今天还没有焦点。'
+        )}
+      </div>
+
+      <div class="briefing-card">
+        <div class="briefing-card-title">🩺 处理状态</div>
+        ${renderEventList(
+          [
+            ingestion.last_processed_date ? `最近处理日期：${ingestion.last_processed_date}` : '',
+            ingestion.last_human_review_at ? `最近人工复核：${ingestion.last_human_review_at}` : '',
+            ingestion.unresolved_scene_ratio_1d !== undefined ? `待复核比率：${ingestion.unresolved_scene_ratio_1d}` : '',
+          ].filter(Boolean),
+          (item) => `<div class="event-item">${escapeHtml(item)}</div>`,
+          '暂时还没有处理状态。'
+        )}
+      </div>
+
+      <div class="briefing-card">
+        <div class="briefing-card-title">📁 当前项目</div>
+        ${renderEventList(
+          state.projects,
+          (project) => `<div class="event-item"><strong>${escapeHtml(project.title || project.project_id)}</strong><br>${escapeHtml(plainText((project.next_actions || []).join(' / ') || project.current_goal || '暂时还没有下一步'))}</div>`,
+          '暂无活跃项目。'
+        )}
+      </div>
+
+      <div class="briefing-card">
+        <div class="briefing-card-title">🔄 待跟进</div>
+        ${renderEventList(
+          state.loops,
+          (loop) => `<div class="event-item"><strong>${escapeHtml(loop.title || loop.loop_id)}</strong><br>${escapeHtml(plainText(loop.close_condition || loop.waiting_on || '等待下一步'))}</div>`,
+          '暂时没有待跟进事项。'
+        )}
+      </div>
+
+      <div class="briefing-card">
+        <div class="briefing-card-title">🧠 最近决策</div>
+        ${renderEventList(
+          state.decisions.slice(0, 8),
+          (decision) => `<div class="event-item"><strong>${escapeHtml(plainText(decision.decision || decision.topic || '未命名决策'))}</strong><br>${escapeHtml(decision.topic || '未分主题')}</div>`,
+          '暂无最近决策。'
+        )}
+      </div>
+
+      <div class="briefing-card">
+        <div class="briefing-card-title">📓 今天摘要</div>
+        ${renderEventList(
+          [
+            state.currentMeta?.daily_summary || '',
+            state.currentBriefing?.summary || '',
+          ].filter(Boolean),
+          (item) => `<div class="event-item">${escapeHtml(plainText(item))}</div>`,
+          '当前日期还没有摘要。'
+        )}
+      </div>
+
+      <div class="briefing-card briefing-card-full">
+        <div class="briefing-card-title">🔍 搜索结果</div>
+        <div class="search-stack">${renderSearchResultsMarkup()}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSearchResultsMarkup() {
+  return renderEventList(
+    state.searchResults,
+    (item) => `<button class="job-item" type="button" onclick="loadDate('${escapeHtml(item.date)}', '${escapeHtml(item.time)}')">
+      <strong>${escapeHtml(item.date)} · ${escapeHtml(item.time)}</strong>
+      <div class="muted">${item.context || escapeHtml(plainText(item.raw_context || ''))}</div>
+    </button>`,
+    '输入关键词后，这里会显示跨日期命中的原文片段。'
+  );
+}
+
+function getSegmentDistillation(segment, meta) {
+  const highlights = [];
+  (meta.events || []).filter((item) => item.time === segment.time).forEach((item) => {
+    highlights.push(`📌 <strong>${escapeHtml(item.project || '事件')}</strong> ${escapeHtml(plainText(item.summary || ''))}`);
   });
-  h += '</div>';
-  document.getElementById('view-timeline').innerHTML = h;
-}
-
-function renderTableView() {
-  const d = currentData;
-  let h = '<div class="table-view"><table class="data-table">';
-  h += '<thead><tr><th width="80">时间</th><th width="120">角色</th><th>内容预览</th><th width="100">操作</th></tr></thead><tbody>';
-  d.segments.forEach(s => {
-    const rl = s.role?.scene_type_label||'不确定';
-    const cfg = ROLES[rl]||ROLES['不确定'];
-    const preview = stripMd(s.preview).substring(0, 50) + '...';
-    const segId = `seg-${s.time.replace(':', '-')}`;
-    h += `<tr>
-      <td class="td-time">${s.time}</td>
-      <td><span style="color:${cfg.color};font-size:12px;font-weight:600">${cfg.emoji} ${rl}</span></td>
-      <td class="td-summary">${preview}</td>
-      <td><button class="raw-btn" onclick="switchView('timeline');loadDate('${d.date}','${segId}')">👉 跳转</button></td>
-    </tr>`;
+  (meta.decisions || []).filter((item) => item.time === segment.time).forEach((item) => {
+    highlights.push(`🎯 <strong>${escapeHtml(item.project || '决策')}</strong> ${escapeHtml(plainText(item.what || item.decision || ''))}`);
   });
-  h += '</tbody></table></div>';
-  document.getElementById('view-table').innerHTML = h;
+  (meta.todos || []).filter((item) => item.time === segment.time).forEach((item) => {
+    highlights.push(`✅ <strong>${escapeHtml(item.project || '待办')}</strong> ${escapeHtml(plainText(item.task || ''))}`);
+  });
+  if (highlights.length > 0) return highlights.join('<br>');
+  if (segment.summary) return `<div class="seg-distilled-placeholder">${escapeHtml(plainText(segment.summary))}</div>`;
+  return `<div class="seg-distilled-placeholder">${escapeHtml(plainText(segment.preview || ''))}</div>`;
 }
 
-function renderChartsView() {
-  let h = '<div class="charts-grid">';
-  h += '<div class="chart-card"><h3>🎭 角色分布</h3><canvas id="chartRoles"></canvas></div>';
-  h += '<div class="chart-card"><h3>🕒 时段热度</h3><canvas id="chartTime"></canvas></div>';
-  h += '</div>';
-  document.getElementById('view-charts').innerHTML = h;
-}
+function renderBriefingView() {
+  const node = document.getElementById('view-briefing');
+  if (!node) return;
 
-function initCharts() {
-  const d = currentData;
-  chartInstances.forEach(c => c.destroy());
-  chartInstances = [];
-
-  const rc = {};
-  d.segments.forEach(s => { const a = s.role?.addressed_to||'未识别'; rc[a] = (rc[a]||0)+1; });
-  const getChartColor = (k) => { const sty = getRoleStyle(k); return typeof sty.color === 'string' && sty.color.startsWith('#') ? sty.color : '#9b9a97'; };
-
-  const c1 = document.getElementById('chartRoles');
-  if (c1) {
-    chartInstances.push(new Chart(c1, {
-      type: 'doughnut',
-      data: { labels: Object.keys(rc), datasets: [{ data: Object.values(rc), backgroundColor: Object.keys(rc).map(k => getChartColor(k)) }] },
-      options: { plugins: { legend: { position: 'bottom' } }, maintainAspectRatio: false }
-    }));
-  }
-
-  const tc = {};
-  d.segments.forEach(s => { const hour = s.time.split(':')[0]+':00'; tc[hour] = (tc[hour]||0)+s.text.length; });
-  const sortedH = Object.keys(tc).sort();
-  const c2 = document.getElementById('chartTime');
-  if (c2) {
-    chartInstances.push(new Chart(c2, {
-      type: 'bar',
-      data: { labels: sortedH, datasets: [{ label: '字数', data: sortedH.map(h => tc[h]), backgroundColor: '#2eaadc', borderRadius: 4 }] },
-      options: { plugins: { legend: { display: false } }, maintainAspectRatio: false }
-    }));
-  }
-}
-
-function switchView(viewName) {
-  document.querySelectorAll('.view-tab').forEach(el => el.classList.remove('active'));
-  document.getElementById(`tab-${viewName}`).classList.add('active');
-  document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
-  document.getElementById(`view-${viewName}`).classList.add('active');
-
-  const filterBar = document.getElementById('filter-bar');
-  filterBar.style.display = viewName === 'timeline' ? 'flex' : 'none';
-  if (viewName === 'charts') setTimeout(initCharts, 50);
-}
-
-// ── Briefing 仪表盘 ──
-let briefingCache = {};
-async function renderBriefingView() {
-  const container = document.getElementById('view-briefing');
-  if (!currentDate) { container.innerHTML = ''; return; }
-
-  // 加载 briefing 数据
-  let briefing = briefingCache[currentDate];
-  if (!briefing) {
-    try {
-      const resp = await fetch(`/api/briefing/${currentDate}`);
-      if (resp.ok) {
-        briefing = await resp.json();
-        briefingCache[currentDate] = briefing;
-      }
-    } catch(e) {}
-  }
-
+  const briefing = state.currentBriefing;
   if (!briefing || briefing.error) {
-    container.innerHTML = `<div class="briefing-banner" style="background:linear-gradient(135deg,#94a3b8,#64748b)">
+    node.innerHTML = `<div class="briefing-banner" style="background:linear-gradient(135deg,#94a3b8,#64748b)">
       <h2>📋 暂无日报</h2>
-      <div class="briefing-summary">${currentDate} 的 Daily Briefing 尚未生成。运行 <code style="background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:4px">python -m openmy.services.briefing ${currentDate}</code> 来生成。</div>
+      <div class="briefing-summary">${escapeHtml(state.currentDate)} 的日报还没生成。你可以去流程里重做日报，或直接重新运行。</div>
     </div>`;
     return;
   }
 
-  let h = '';
-
-  // ── 顶部 Banner ──
-  h += `<div class="briefing-banner">
-    <h2>📋 Daily Briefing</h2>
-    <div class="briefing-summary">${briefing.summary}</div>
+  let html = `<div class="briefing-banner">
+    <h2>📋 今日日报</h2>
+    <div class="briefing-summary">${escapeHtml(plainText(briefing.summary || ''))}</div>
     <div class="briefing-stats-row">
       <div class="briefing-stat"><span class="briefing-stat-num">${briefing.total_scenes || 0}</span><span class="briefing-stat-label">场景</span></div>
       <div class="briefing-stat"><span class="briefing-stat-num">${fmtNum(briefing.total_words || 0)}</span><span class="briefing-stat-label">字数</span></div>
@@ -733,230 +1121,545 @@ async function renderBriefingView() {
     </div>
   </div>`;
 
-  h += '<div class="briefing-grid">';
+  html += '<div class="briefing-grid">';
 
-  // ── 时段块 ──
-  if (briefing.time_blocks && briefing.time_blocks.length > 0) {
-    h += `<div class="briefing-card briefing-card-full">
-      <div class="briefing-card-title">🕒 时段概览</div>`;
-    briefing.time_blocks.forEach(tb => {
-      const modeBadge = tb.mode === 'dual'
-        ? '<span class="tb-mode-badge tb-mode-dual">🖥️+🎤</span>'
-        : '<span class="tb-mode-badge tb-mode-voice">🎤</span>';
-      h += `<div class="time-block">
-        <div class="tb-period">${tb.period.split(' ')[0]}</div>
+  if (briefing.time_blocks?.length) {
+    html += `<div class="briefing-card briefing-card-full">
+      <div class="briefing-card-title">🕒 时段概览</div>
+      ${briefing.time_blocks.map((block) => `<div class="time-block">
+        <div class="tb-period">${escapeHtml((block.period || '').split(' ')[0])}</div>
         <div class="tb-body">
-          <div class="tb-summary">${tb.summary} ${modeBadge} <span style="font-size:11px;color:var(--text-light)">${tb.scene_count}段</span></div>
+          <div class="tb-summary">${escapeHtml(plainText(block.summary || ''))}</div>
           <div class="tb-tags">
-            ${(tb.people_talked_to||[]).map(p => { const sty = getRoleStyle(p); return `<span class="tb-tag tb-tag-person">${sty.emoji} ${p}</span>`; }).join('')}
-            ${(tb.apps_used||[]).map(a => `<span class="tb-tag tb-tag-app">💻 ${a}</span>`).join('')}
+            ${(block.people_talked_to || []).map((person) => {
+              const style = getRoleStyle(person);
+              return `<span class="tb-tag tb-tag-person">${style.emoji} ${escapeHtml(person)}</span>`;
+            }).join('')}
+            ${(block.apps_used || []).map((app) => `<span class="tb-tag tb-tag-app">💻 ${escapeHtml(app)}</span>`).join('')}
           </div>
         </div>
-      </div>`;
-    });
-    h += '</div>';
+      </div>`).join('')}
+    </div>`;
   }
 
-  // ── 人物互动 ──
-  const people = briefing.people_interaction_map || {};
-  if (Object.keys(people).length > 0) {
-    h += `<div class="briefing-card">
+  if (briefing.people_interaction_map && Object.keys(briefing.people_interaction_map).length) {
+    html += `<div class="briefing-card">
       <div class="briefing-card-title">👥 人物互动</div>
-      <div class="people-grid">`;
-    for (const [name, info] of Object.entries(people)) {
-      const sty = getRoleStyle(name);
-      h += `<div class="people-chip">
-        <div class="people-avatar" style="background:${sty.bg};color:${sty.color}">${sty.emoji}</div>
-        <div class="people-info">
-          <div class="people-name">${name}</div>
-          <div class="people-meta">${info.scene_count} 段对话</div>
-        </div>
-      </div>`;
-    }
-    h += '</div></div>';
+      <div class="people-grid">
+        ${Object.entries(briefing.people_interaction_map).map(([name, info]) => {
+          const style = getRoleStyle(name);
+          return `<div class="people-chip">
+            <div class="people-avatar" style="background:${style.bg};color:${style.color}">${style.emoji}</div>
+            <div class="people-info">
+              <div class="people-name">${escapeHtml(name)}</div>
+              <div class="people-meta">${escapeHtml(info.scene_count || 0)} 段对话</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
   }
 
-  // ── App 使用 ──
-  const sessions = briefing.work_sessions || {};
-  if (Object.keys(sessions).length > 0) {
-    h += `<div class="briefing-card">
-      <div class="briefing-card-title">💻 App 使用</div>`;
-    const maxVal = Math.max(...Object.values(sessions).map(v => parseInt(v) || 1));
-    for (const [app, duration] of Object.entries(sessions)) {
-      const numVal = parseInt(duration) || 1;
-      const pct = Math.max(5, (numVal / maxVal) * 100);
-      h += `<div class="app-bar-row">
-        <span class="app-bar-name">${app}</span>
-        <div class="app-bar-track"><div class="app-bar-fill" style="width:${pct}%"></div></div>
-        <span class="app-bar-duration">${duration}</span>
-      </div>`;
-    }
-    h += '</div>';
+  if (briefing.work_sessions && Object.keys(briefing.work_sessions).length) {
+    const maxValue = Math.max(...Object.values(briefing.work_sessions).map((value) => parseInt(value, 10) || 1));
+    html += `<div class="briefing-card">
+      <div class="briefing-card-title">💻 应用使用</div>
+      ${Object.entries(briefing.work_sessions).map(([app, duration]) => {
+        const width = Math.max(6, ((parseInt(duration, 10) || 1) / maxValue) * 100);
+        return `<div class="app-bar-row">
+          <span class="app-bar-name">${escapeHtml(app)}</span>
+          <div class="app-bar-track"><div class="app-bar-fill" style="width:${width}%"></div></div>
+          <span class="app-bar-duration">${escapeHtml(duration)}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
   }
 
-  // ── 关键事件 ──
-  if (briefing.key_events && briefing.key_events.length > 0) {
-    h += `<div class="briefing-card briefing-card-full">
-      <div class="briefing-card-title">📌 关键事件 <span class="prop-count">${briefing.key_events.length}</span></div>`;
-    briefing.key_events.forEach(ev => {
-      h += `<div class="event-item"><span class="event-icon">•</span> ${ev}</div>`;
-    });
-    h += '</div>';
+  if (briefing.key_events?.length) {
+    html += `<div class="briefing-card briefing-card-full">
+      <div class="briefing-card-title">📌 关键事件 <span class="prop-count">${briefing.key_events.length}</span></div>
+      ${briefing.key_events.map((event) => `<div class="event-item">${escapeHtml(plainText(event))}</div>`).join('')}
+    </div>`;
   }
 
-  // ── 决策 ──
-  if (briefing.decisions && briefing.decisions.length > 0) {
-    h += `<div class="briefing-card">
-      <div class="briefing-card-title">🎯 决策 <span class="prop-count">${briefing.decisions.length}</span></div>`;
-    briefing.decisions.forEach(d => {
-      h += `<div class="event-item"><span class="event-icon">🎯</span> ${d}</div>`;
-    });
-    h += '</div>';
+  if (briefing.decisions?.length) {
+    html += `<div class="briefing-card">
+      <div class="briefing-card-title">🎯 决策 <span class="prop-count">${briefing.decisions.length}</span></div>
+      ${briefing.decisions.map((decision) => `<div class="event-item">${escapeHtml(plainText(decision))}</div>`).join('')}
+    </div>`;
   }
 
-  // ── 待办 ──
-  if (briefing.todos_open && briefing.todos_open.length > 0) {
-    h += `<div class="briefing-card">
-      <div class="briefing-card-title">✅ 待办 <span class="prop-count">${briefing.todos_open.length}</span></div>`;
-    briefing.todos_open.forEach(t => {
-      h += `<div class="event-item"><span class="event-icon">☐</span> ${t}</div>`;
-    });
-    h += '</div>';
+  if (briefing.todos_open?.length) {
+    html += `<div class="briefing-card">
+      <div class="briefing-card-title">✅ 待办 <span class="prop-count">${briefing.todos_open.length}</span></div>
+      ${briefing.todos_open.map((todo) => `<div class="event-item">${escapeHtml(plainText(todo))}</div>`).join('')}
+    </div>`;
   }
 
-  h += '</div>'; // close briefing-grid
-  container.innerHTML = h;
+  html += '</div>';
+  node.innerHTML = html;
 }
 
-function toggleRawText(btn) {
-  const rawDiv = btn.parentElement.nextElementSibling;
-  const isHidden = !rawDiv.classList.contains('visible');
-  if (isHidden) {
-    rawDiv.classList.add('visible');
-    btn.innerHTML = '🙈 隐藏原文';
-    btn.style.color = '#fff';
-    btn.style.background = 'var(--text)';
-  } else {
-    rawDiv.classList.remove('visible');
-    btn.innerHTML = '👁️ 显示原文';
-    btn.style.color = 'var(--text-secondary)';
-    btn.style.background = 'var(--bg-sidebar)';
+function renderTimelineView() {
+  const node = document.getElementById('view-timeline');
+  if (!node) return;
+
+  const detail = state.currentData;
+  const meta = state.currentMeta || {};
+  let html = '<div class="timeline">';
+  detail.segments.forEach((segment) => {
+    const addressedTo = segment.role?.addressed_to || '未识别';
+    const style = getRoleStyle(addressedTo);
+    const needsReview = Boolean(segment.role?.needs_review);
+    const distilled = getSegmentDistillation(segment, meta);
+
+    html += `<div class="tl-node" data-role="${escapeHtml(addressedTo)}" data-needs-review="${needsReview ? 'true' : 'false'}" data-segment-time="${escapeHtml(segment.time)}">
+      <span class="tl-time">${escapeHtml(segment.time)}</span>
+      <div class="tl-dot" style="border-color:${style.color};background:${needsReview ? '#fff3db' : style.bg}"></div>
+      <div class="tl-card">
+        <div class="tl-role-row">
+          <span class="role-label ${needsReview ? 'needs-review' : ''}" style="background:${style.bg};color:${style.color}">
+            ${style.emoji} ${escapeHtml(addressedTo)}
+          </span>
+          ${segment.summary ? `<span class="status-pill">${escapeHtml(plainText(segment.summary))}</span>` : ''}
+        </div>
+        <div class="seg-distilled">${distilled}</div>
+        <div class="raw-controls"><button class="raw-btn" type="button" onclick="toggleRawText(this)">👁️ 显示原文</button></div>
+        <div class="seg-raw">${fmtText(segment.text || '')}</div>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  node.innerHTML = html;
+}
+
+function renderTableView() {
+  const node = document.getElementById('view-table');
+  if (!node) return;
+
+  const detail = state.currentData;
+  let html = '<div class="table-view"><table class="data-table">';
+  html += '<thead><tr><th width="80">时间</th><th width="120">角色</th><th>内容预览</th><th width="100">操作</th></tr></thead><tbody>';
+  detail.segments.forEach((segment) => {
+    const label = segment.role?.scene_type_label || '不确定';
+    const config = ROLES[label] || ROLES['不确定'];
+    html += `<tr>
+      <td class="td-time">${escapeHtml(segment.time)}</td>
+      <td><span style="color:${config.color};font-size:12px;font-weight:600">${config.emoji} ${escapeHtml(label)}</span></td>
+      <td class="td-summary">${escapeHtml(plainText(segment.preview || segment.text || ''))}</td>
+      <td><button class="raw-btn" type="button" onclick="switchView('timeline'); scrollToSegment('${escapeHtml(segment.time)}')">👉 跳转</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  node.innerHTML = html;
+}
+
+function renderChartsView() {
+  const node = document.getElementById('view-charts');
+  if (!node) return;
+  node.innerHTML = `<div class="charts-grid">
+    <div class="chart-card"><h3>🎭 角色分布</h3><canvas id="chartRoles"></canvas></div>
+    <div class="chart-card"><h3>🕒 时段热度</h3><canvas id="chartTime"></canvas></div>
+  </div>`;
+}
+
+function initCharts() {
+  if (!state.currentData) return;
+  state.chartInstances.forEach((chart) => chart.destroy());
+  state.chartInstances = [];
+
+  const roleCounts = {};
+  state.currentData.segments.forEach((segment) => {
+    const key = segment.role?.addressed_to || '未识别';
+    roleCounts[key] = (roleCounts[key] || 0) + 1;
+  });
+
+  const roleCanvas = document.getElementById('chartRoles');
+  if (roleCanvas) {
+    state.chartInstances.push(new Chart(roleCanvas, {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(roleCounts),
+        datasets: [{
+          data: Object.values(roleCounts),
+          backgroundColor: Object.keys(roleCounts).map((key) => {
+            const color = getRoleStyle(key).color;
+            return color.startsWith('#') ? color : '#9b9a97';
+          }),
+        }],
+      },
+      options: { plugins: { legend: { position: 'bottom' } }, maintainAspectRatio: false },
+    }));
   }
+
+  const timeCounts = {};
+  state.currentData.segments.forEach((segment) => {
+    const hour = `${String(segment.time).split(':')[0]}:00`;
+    timeCounts[hour] = (timeCounts[hour] || 0) + plainText(segment.text || '').length;
+  });
+
+  const timeCanvas = document.getElementById('chartTime');
+  if (timeCanvas) {
+    const sortedHours = Object.keys(timeCounts).sort();
+    state.chartInstances.push(new Chart(timeCanvas, {
+      type: 'bar',
+      data: {
+        labels: sortedHours,
+        datasets: [{
+          label: '字数',
+          data: sortedHours.map((hour) => timeCounts[hour]),
+          backgroundColor: '#2eaadc',
+          borderRadius: 4,
+        }],
+      },
+      options: { plugins: { legend: { display: false } }, maintainAspectRatio: false },
+    }));
+  }
+}
+
+function optionMarkup(items, getter) {
+  if (!items || !items.length) {
+    return '<option value="">暂无可选项</option>';
+  }
+  return items.map((item) => {
+    const value = getter(item);
+    return `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`;
+  }).join('');
+}
+
+function renderCorrectionsView() {
+  const node = document.getElementById('view-corrections');
+  if (!node) return;
+
+  node.innerHTML = `
+    <div class="briefing-grid">
+      <div class="briefing-card">
+        <div class="briefing-card-title">✏️ 错词校正</div>
+        <div class="form-stack">
+          <div>
+            <label class="form-label" for="typoWrong">原文</label>
+            <input id="typoWrong" class="field-input" type="text" placeholder="原来识别错的文本">
+          </div>
+          <div>
+            <label class="form-label" for="typoRight">改成</label>
+            <input id="typoRight" class="field-input" type="text" placeholder="你希望保留的文本">
+          </div>
+          <div>
+            <label class="form-label" for="typoContext">上下文</label>
+            <textarea id="typoContext" class="field-textarea" placeholder="可选：补一句上下文，帮助后续词典维护。"></textarea>
+          </div>
+          <div class="inline-actions">
+            <button class="action-btn primary" type="button" onclick="submitTypoCorrection()">保存校正</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="briefing-card">
+        <div class="briefing-card-title">🔄 跟进处理</div>
+        <div class="form-stack">
+          <div>
+            <label class="form-label" for="closeLoopSelect">事项</label>
+            <select id="closeLoopSelect" class="field-select">${optionMarkup(state.loops, (item) => item.title || item.loop_id)}</select>
+          </div>
+          <div class="inline-actions">
+            <button class="action-btn" type="button" data-op="close_loop" onclick="submitContextAction('/api/context/loops/close', { query: document.getElementById('closeLoopSelect').value, status: 'done' }, '已标记完成')">标记完成</button>
+            <button class="action-btn" type="button" data-op="reject_loop" onclick="submitContextAction('/api/context/loops/reject', { query: document.getElementById('closeLoopSelect').value }, '已设为不再跟进')">不再跟进</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="briefing-card">
+        <div class="briefing-card-title">📁 项目整理</div>
+        <div class="form-stack">
+          <div>
+            <label class="form-label" for="mergeProjectSource">来源项目</label>
+            <select id="mergeProjectSource" class="field-select">${optionMarkup(state.projects, (item) => item.title || item.project_id)}</select>
+          </div>
+          <div>
+            <label class="form-label" for="mergeProjectTarget">目标项目</label>
+            <select id="mergeProjectTarget" class="field-select">${optionMarkup(state.projects, (item) => item.title || item.project_id)}</select>
+          </div>
+          <div class="inline-actions">
+            <button class="action-btn" type="button" data-op="merge_project" onclick="submitContextAction('/api/context/projects/merge', { source: document.getElementById('mergeProjectSource').value, target: document.getElementById('mergeProjectTarget').value }, '已合并项目')">合并项目</button>
+            <button class="action-btn" type="button" data-op="reject_project" onclick="submitContextAction('/api/context/projects/reject', { query: document.getElementById('mergeProjectSource').value }, '已从项目中移出')">移出项目</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="briefing-card">
+        <div class="briefing-card-title">🧠 决策整理</div>
+        <div class="form-stack">
+          <div>
+            <label class="form-label" for="rejectDecisionSelect">决策</label>
+            <select id="rejectDecisionSelect" class="field-select">${optionMarkup(state.decisions, (item) => item.decision || item.topic || item.decision_id)}</select>
+          </div>
+          <div class="inline-actions">
+            <button class="action-btn" type="button" data-op="reject_decision" onclick="submitContextAction('/api/context/decisions/reject', { query: document.getElementById('rejectDecisionSelect').value }, '已移出决策')">移出决策</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="briefing-card briefing-card-full">
+        <div class="briefing-card-title">📚 当前词典</div>
+        ${renderEventList(
+          state.corrections,
+          (item) => `<div class="event-item"><strong>${escapeHtml(item.wrong)} → ${escapeHtml(item.right)}</strong><br>${escapeHtml(plainText(item.context || '暂无上下文'))}</div>`,
+          '校正规则还没有内容。'
+        )}
+      </div>
+    </div>
+  `;
+}
+
+function renderPipelineView() {
+  const node = document.getElementById('view-pipeline');
+  if (!node) return;
+
+  const detail = state.selectedJobDetail;
+  node.innerHTML = `
+    <div class="briefing-grid">
+      <div class="briefing-card">
+        <div class="briefing-card-title">⚙️ 流程操作</div>
+        <div class="form-stack">
+          <div>
+            <label class="form-label" for="pipelineDateInput">目标日期</label>
+            <input id="pipelineDateInput" class="field-input" type="text" value="${escapeHtml(state.currentDate || '')}" placeholder="YYYY-MM-DD（默认当前日期）">
+          </div>
+          <div class="inline-actions">
+            <button class="action-btn primary" type="button" onclick="createPipelineJob('context')">刷新上下文</button>
+            <button class="action-btn" type="button" onclick="createPipelineJob('clean')">清理文本</button>
+            <button class="action-btn" type="button" onclick="createPipelineJob('roles')">识别对象</button>
+            <button class="action-btn" type="button" onclick="createPipelineJob('distill')">整理摘要</button>
+            <button class="action-btn" type="button" onclick="createPipelineJob('briefing')">生成日报</button>
+            <button class="action-btn" type="button" onclick="createPipelineJob('run')">重新运行</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="briefing-card">
+        <div class="briefing-card-title">📝 流程说明</div>
+        <div class="event-item"><code>刷新上下文</code> 不需要日期，其它流程默认使用当前选中的日期。</div>
+        <div class="event-item">任务完成后会自动轮询，并刷新当前日期的数据。</div>
+        <div class="event-item"><button class="action-btn" type="button" onclick="refreshPipelineJobs()">刷新列表</button></div>
+      </div>
+    </div>
+
+    <div class="pipeline-layout">
+      <div class="job-card">
+        <div class="briefing-card-title">🗂️ 最近运行</div>
+        <div id="pipelineJobsList" class="search-stack">
+          ${renderEventList(
+            state.jobs,
+            (job) => `<button class="job-item ${job.job_id === state.selectedJobId ? 'active' : ''}" type="button" onclick="loadPipelineJobDetail('${escapeHtml(job.job_id)}')">
+              <strong>${escapeHtml(formatPipelineKind(job.kind))}</strong>
+              <div class="muted">${escapeHtml(job.target_date || '全局')} · ${escapeHtml(formatPipelineStatus(job.status))}</div>
+            </button>`,
+            '还没有运行记录。'
+          )}
+        </div>
+      </div>
+
+      <div class="job-card">
+        <div class="briefing-card-title">📜 运行详情</div>
+        <div id="pipelineJobDetail">
+          ${detail ? `
+            <div class="event-item"><strong>流程</strong><br>${escapeHtml(formatPipelineKind(detail.kind))}</div>
+            <div class="event-item"><strong>状态</strong><br>${escapeHtml(formatPipelineStatus(detail.status))}</div>
+            <div class="event-item"><strong>当前步骤</strong><br>${escapeHtml(formatPipelineStep(detail.current_step))}</div>
+            <div class="event-item"><strong>结果文件</strong><br>${escapeHtml((detail.artifacts || []).join(' / ') || '暂无')}</div>
+            <pre class="job-log">${escapeHtml((detail.log_lines || []).join('\n') || '暂无日志')}</pre>
+          ` : renderEmptyState('选择一条运行记录查看详情。')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function switchView(viewName) {
+  state.currentView = viewName;
+  document.querySelectorAll('.view-tab').forEach((node) => {
+    node.classList.toggle('active', node.id === `tab-${viewName}`);
+  });
+  document.querySelectorAll('.view-content').forEach((node) => {
+    node.classList.toggle('active', node.id === `view-${viewName}`);
+  });
+  const filterBar = document.getElementById('filter-bar');
+  if (filterBar) {
+    filterBar.style.display = viewName === 'timeline' ? 'flex' : 'none';
+  }
+  if (viewName === 'charts') {
+    setTimeout(initCharts, 50);
+  }
+}
+
+function toggleRawText(button) {
+  const rawNode = button.parentElement.nextElementSibling;
+  const visible = !rawNode.classList.contains('visible');
+  rawNode.classList.toggle('visible', visible);
+  button.innerHTML = visible ? '🙈 隐藏原文' : '👁️ 显示原文';
+  button.style.color = visible ? '#fff' : 'var(--text-secondary)';
+  button.style.background = visible ? 'var(--text)' : 'var(--bg-sidebar)';
 }
 
 function filterRole(role) {
-  if (role==='all') { activeFilters.clear(); }
-  else { activeFilters.has(role) ? activeFilters.delete(role) : activeFilters.add(role); }
-  document.querySelectorAll('.role-tag').forEach(b => {
-    if (b.dataset.role==='all') b.classList.toggle('active', activeFilters.size===0);
-    else b.classList.toggle('active', activeFilters.has(b.dataset.role));
+  if (role === 'all') {
+    state.activeFilters.clear();
+  } else if (state.activeFilters.has(role)) {
+    state.activeFilters.delete(role);
+  } else {
+    state.activeFilters.add(role);
+  }
+
+  document.querySelectorAll('.role-tag').forEach((button) => {
+    if (button.dataset.role === 'all') {
+      button.classList.toggle('active', state.activeFilters.size === 0);
+    } else {
+      button.classList.toggle('active', state.activeFilters.has(button.dataset.role));
+    }
   });
-  document.querySelectorAll('#view-timeline .tl-node').forEach(el => {
-    if (activeFilters.size === 0) { el.classList.remove('hidden'); return; }
-    let m = false;
-    if (activeFilters.has('needs_review') && el.dataset.needsReview === 'true') m = true;
-    if (activeFilters.has(el.dataset.role)) m = true;
-    el.classList.toggle('hidden', !m);
-  });
-}
 
-async function doSearch(q) {
-  if (!q.trim()) { if (currentDate) loadDate(currentDate); return; }
-  const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`).then(r=>r.json());
-  const main = document.getElementById('main');
-  if (!res.length) { main.innerHTML = `<div class="empty"><div class="icon">🔍</div><p>没有找到"${q}"</p></div>`; return; }
-  main.innerHTML = `<div class="search-header">🔍 "${q}" — ${res.length} 条结果</div>` +
-    res.map(r => {
-      const tid = `seg-${r.time.replace(':','-')}`;
-      return `<div class="search-result" onclick="loadDate('${r.date}','${tid}')">
-        <div class="sr-meta">📄 ${r.date} · ${r.time}</div>
-        <div class="sr-context">${r.context}</div>
-      </div>`;
-    }).join('');
-}
-
-function fmtText(t) {
-  const hl = t.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
-  return hl.split(/\n+/).map(p => p.trim() ? `<p>${p}</p>` : '').join('');
-}
-function fmtNum(n) { return n>=10000?(n/10000).toFixed(1)+'万':n>=1000?(n/1000).toFixed(1)+'k':n.toString(); }
-function stripMd(t) { return (t||'').replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1').replace(/<[^>]+>/g,''); }
-
-// ── 纠错反馈循环 ──
-let selectedWrongText = '';
-
-document.addEventListener('mouseup', (e) => {
-  const correctBtn = document.getElementById('correctBtn');
-  const selection = window.getSelection();
-  const text = selection.toString().trim();
-  if (text.length >= 2 && text.length <= 30) {
-    const anchor = selection.anchorNode;
-    if (anchor && anchor.parentElement && (anchor.parentElement.closest('.seg-raw') || anchor.parentElement.closest('.seg-distilled') || anchor.parentElement.closest('.segment'))) {
-      selectedWrongText = text;
-      correctBtn.style.display = 'block';
-      correctBtn.style.left = (e.clientX + 8) + 'px';
-      correctBtn.style.top = (e.clientY - 32) + 'px';
+  document.querySelectorAll('#view-timeline .tl-node').forEach((node) => {
+    if (state.activeFilters.size === 0) {
+      node.classList.remove('hidden');
       return;
     }
+    let matched = false;
+    if (state.activeFilters.has('needs_review') && node.dataset.needsReview === 'true') matched = true;
+    if (state.activeFilters.has(node.dataset.role)) matched = true;
+    node.classList.toggle('hidden', !matched);
+  });
+}
+
+function scrollToSegment(time) {
+  const nodes = Array.from(document.querySelectorAll('[data-segment-time]'));
+  const target = nodes.find((node) => node.dataset.segmentTime === time);
+  if (!target) return;
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function refreshCorrectionsFeed() {
+  const payload = await fetchJson('/api/corrections', { corrections: [] });
+  state.corrections = payload.corrections || [];
+  if (document.getElementById('view-corrections')) {
+    renderCorrectionsView();
   }
-  setTimeout(() => {
-    if (!document.getElementById('correctModal').classList.contains('visible')) {
-      correctBtn.style.display = 'none';
-    }
-  }, 200);
-});
-
-function openCorrectionModal() {
-  document.getElementById('correctBtn').style.display = 'none';
-  document.getElementById('correctWrong').textContent = selectedWrongText;
-  document.getElementById('correctRight').value = '';
-  document.getElementById('correctContext').value = '';
-  document.getElementById('correctModal').classList.add('visible');
-  setTimeout(() => document.getElementById('correctRight').focus(), 100);
-}
-function closeCorrectionModal() {
-  document.getElementById('correctModal').classList.remove('visible');
-  selectedWrongText = '';
 }
 
-async function submitCorrection() {
-  const wrong = selectedWrongText;
-  const right = document.getElementById('correctRight').value.trim();
-  const context = document.getElementById('correctContext').value.trim();
-  if (!right) { document.getElementById('correctRight').style.borderColor = '#dc2626'; return; }
-  if (wrong === right) { showToast('❌ 纠正前后相同'); return; }
+async function submitTypoCorrection() {
+  const wrong = document.getElementById('typoWrong')?.value.trim() || '';
+  const right = document.getElementById('typoRight')?.value.trim() || '';
+  const context = document.getElementById('typoContext')?.value.trim() || '';
+  if (!wrong || !right) {
+    showToast('原文和改成内容都不能为空');
+    return;
+  }
   try {
-    const res = await fetch('/api/correct', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wrong, right, date: currentDate || '', context, sync_vocab: true })
-    }).then(r => r.json());
-    if (res.success) {
-      closeCorrectionModal();
-      document.querySelectorAll('.seg-raw').forEach(el => {
-        el.innerHTML = el.innerHTML.replaceAll(wrong,
-          `<span style="background:#dcfce7;color:#16a34a;padding:1px 3px;border-radius:3px">${right}</span>`);
-      });
-      let msg = `✅ 已纠正："${wrong}" → "${right}"`;
-      if (res.replaced_in_file > 0) msg += ` (文件中替换 ${res.replaced_in_file} 处)`;
-      showToast(msg);
-    } else { showToast(`❌ ${res.error || '纠正失败'}`); }
-  } catch (err) { showToast(`❌ 网络错误: ${err.message}`); }
+    await postJson('/api/correct/typo', {
+      wrong,
+      right,
+      context,
+      date: state.currentDate,
+      sync_vocab: true,
+    });
+    showToast(`已保存校正：${wrong} → ${right}`);
+    await refreshCorrectionsFeed();
+    if (state.currentDate) {
+      await loadDate(state.currentDate);
+      switchView('corrections');
+    }
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
-function showToast(msg) {
-  const toast = document.getElementById('correctToast');
-  toast.textContent = msg;
-  toast.classList.add('visible');
-  setTimeout(() => toast.classList.remove('visible'), 3000);
+async function submitContextAction(url, payload, successMessage) {
+  try {
+    await postJson(url, payload);
+    showToast(successMessage);
+    await loadContext();
+    renderCorrectionsView();
+    renderOverviewView();
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
-document.addEventListener('keydown', (e) => {
-  const modal = document.getElementById('correctModal');
-  if (!modal.classList.contains('visible')) return;
-  if (e.key === 'Escape') closeCorrectionModal();
-  if (e.key === 'Enter') submitCorrection();
-});
+async function runSearch(explicitQuery = null) {
+  const query = explicitQuery !== null ? explicitQuery : document.getElementById('searchInput').value.trim();
+  if (!query) {
+    state.searchResults = [];
+    if (document.getElementById('view-overview')) renderOverviewView();
+    return;
+  }
+  state.searchResults = await fetchJson(`/api/search?q=${encodeURIComponent(query)}`, []);
+  if (document.getElementById('view-overview')) {
+    renderOverviewView();
+  }
+  switchView('overview');
+}
+
+async function createPipelineJob(kind) {
+  const explicitDate = document.getElementById('pipelineDateInput')?.value.trim() || '';
+  const payload = { kind };
+  if (kind !== 'context') {
+    payload.target_date = explicitDate || state.currentDate || '';
+  }
+
+  try {
+    const job = await postJson('/api/pipeline/jobs', payload);
+    state.selectedJobId = job.job_id;
+    showToast(`已开始：${formatPipelineKind(kind)}`);
+    await refreshPipelineJobs();
+    switchView('pipeline');
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function refreshPipelineJobs() {
+  state.jobs = await fetchJson('/api/pipeline/jobs', []);
+  if (state.selectedJobId && !state.jobs.find((job) => job.job_id === state.selectedJobId)) {
+    state.selectedJobId = '';
+    state.selectedJobDetail = null;
+  }
+  if (!state.selectedJobId && state.jobs.length) {
+    state.selectedJobId = state.jobs[0].job_id;
+  }
+  if (state.selectedJobId) {
+    await loadPipelineJobDetail(state.selectedJobId, false);
+  }
+  if (document.getElementById('view-pipeline')) {
+    renderPipelineView();
+  }
+}
+
+async function loadPipelineJobDetail(jobId, rerender = true) {
+  const detail = await fetchJson(`/api/pipeline/jobs/${jobId}`, null);
+  if (!detail) return;
+  state.selectedJobId = jobId;
+  state.selectedJobDetail = detail;
+
+  if (detail.status === 'succeeded' && !state.handledCompletedJobs.has(detail.job_id)) {
+    state.handledCompletedJobs.add(detail.job_id);
+    await handleJobCompletion(detail);
+  }
+
+  if (rerender && document.getElementById('view-pipeline')) {
+    renderPipelineView();
+  }
+}
+
+async function handleJobCompletion(job) {
+  if (job.kind === 'context') {
+    await loadContext();
+    showToast('上下文已刷新');
+    return;
+  }
+  if (job.target_date && job.target_date === state.currentDate) {
+    await loadDate(state.currentDate);
+    showToast(`${formatPipelineKind(job.kind)}已完成，并已刷新当前日期`);
+  }
+}
 
 init();
 </script>

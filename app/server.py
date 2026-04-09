@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from datetime import datetime
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -24,10 +25,13 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 SRC_DIR = ROOT_DIR / 'src'
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from app.job_runner import JobRunner
 from openmy.services.cleaning.cleaner import sync_correction_to_vocab
 from openmy.services.segmentation.segmenter import parse_time_segments
 
@@ -47,6 +51,7 @@ PORT = 8420
 TIME_HEADER_RE = re.compile(r'^##\s+(\d{1,2}:\d{2})', re.MULTILINE)
 DATE_RE = re.compile(r'^(\d{4}-\d{2}-\d{2})$')
 DATE_MD_RE = re.compile(r'^(\d{4}-\d{2}-\d{2})\.md$')
+JOB_RUNNER = JobRunner()
 
 
 def list_dates() -> list[str]:
@@ -61,15 +66,49 @@ def list_dates() -> list[str]:
         match = DATE_MD_RE.match(path.name)
         if match:
             dates.add(match.group(1))
-    return sorted(dates, reverse=True)
+    return sort_dates_for_display(list(dates))
+
+
+def parse_date_value(value: str):
+    try:
+        return datetime.strptime(value, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
+def sort_dates_for_display(dates: list[str], today: str | None = None) -> list[str]:
+    ordered_dates = sorted(set(dates), reverse=True)
+    if not ordered_dates:
+        return []
+
+    today_value = parse_date_value(today) if today else datetime.now().date()
+    if today and today_value is None:
+        return ordered_dates
+
+    non_future_dates = []
+    future_dates = []
+    for value in ordered_dates:
+        parsed = parse_date_value(value)
+        if parsed and parsed <= today_value:
+            non_future_dates.append(value)
+        else:
+            future_dates.append(value)
+    return non_future_dates + future_dates
+
+
+def choose_default_date(dates: list[str], today: str | None = None) -> str | None:
+    ordered_dates = sort_dates_for_display(dates, today=today)
+    return ordered_dates[0] if ordered_dates else None
 
 
 def resolve_day_paths(date: str) -> dict[str, Path]:
     day_dir = DATA_ROOT / date
+    dated_meta_path = day_dir / f'{date}.meta.json'
+    legacy_meta_path = day_dir / 'meta.json'
     paths = {
         'transcript': day_dir / 'transcript.md',
         'raw': day_dir / 'transcript.raw.md',
-        'meta': day_dir / 'meta.json',
+        'meta': dated_meta_path if dated_meta_path.exists() or not legacy_meta_path.exists() else legacy_meta_path,
         'scenes': day_dir / 'scenes.json',
     }
     if paths['transcript'].exists():
@@ -90,6 +129,309 @@ def load_json(path: Path):
         return json.loads(path.read_text(encoding='utf-8'))
     except Exception:
         return None
+
+
+def load_active_context_snapshot() -> dict:
+    return load_json(DATA_ROOT / 'active_context.json') or {}
+
+
+def load_active_context_model():
+    from openmy.services.context.active_context import ActiveContext
+
+    ctx_path = DATA_ROOT / 'active_context.json'
+    if not ctx_path.exists():
+        return None
+    return ActiveContext.load(ctx_path)
+
+
+def get_context_payload() -> dict:
+    snapshot = load_active_context_snapshot()
+    rolling_context = snapshot.get('rolling_context', {})
+    realtime_context = snapshot.get('realtime_context', {})
+    return {
+        'generated_at': snapshot.get('generated_at'),
+        'status_line': snapshot.get('status_line', ''),
+        'today_focus': realtime_context.get('today_focus', []),
+        'today_state': realtime_context.get('today_state', {}),
+        'latest_scene_refs': realtime_context.get('latest_scene_refs', []),
+        'pending_followups_today': realtime_context.get('pending_followups_today', []),
+        'ingestion_health': realtime_context.get('ingestion_health', {}),
+        'active_projects': rolling_context.get('active_projects', []),
+        'open_loops': rolling_context.get('open_loops', []),
+        'recent_decisions': rolling_context.get('recent_decisions', []),
+        'stable_profile': snapshot.get('stable_profile', {}),
+    }
+
+
+def get_context_loops_payload() -> list[dict]:
+    return get_context_payload().get('open_loops', [])
+
+
+def get_context_projects_payload() -> list[dict]:
+    return get_context_payload().get('active_projects', [])
+
+
+def get_context_decisions_payload() -> list[dict]:
+    return get_context_payload().get('recent_decisions', [])
+
+
+def _normalize_match_text(text: str) -> str:
+    return re.sub(r'\s+', '', str(text or '')).strip().lower()
+
+
+def _score_match(query: str, *candidates: str) -> int:
+    normalized_query = _normalize_match_text(query)
+    if not normalized_query:
+        return -1
+
+    best = -1
+    for candidate in candidates:
+        normalized_candidate = _normalize_match_text(candidate)
+        if not normalized_candidate:
+            continue
+        if normalized_query == normalized_candidate:
+            return 1000 + len(normalized_candidate)
+        if normalized_query in normalized_candidate:
+            best = max(best, 500 - max(0, len(normalized_candidate) - len(normalized_query)))
+        elif normalized_candidate in normalized_query:
+            best = max(best, 100 - max(0, len(normalized_query) - len(normalized_candidate)))
+    return best
+
+
+def _resolve_item(items: list, query: str, candidate_getter):
+    best_item = None
+    best_score = -1
+    for item in items:
+        score = _score_match(query, *candidate_getter(item))
+        if score > best_score:
+            best_score = score
+            best_item = item
+    if best_score < 0:
+        return None
+    return best_item
+
+
+def refresh_active_context_snapshot() -> dict:
+    from openmy.services.context.consolidation import consolidate
+    from openmy.services.context.corrections import apply_corrections, load_corrections
+
+    ctx_path = DATA_ROOT / 'active_context.json'
+    corrections = load_corrections(DATA_ROOT)
+    existing = load_active_context_model()
+
+    if existing is not None:
+        ctx = apply_corrections(existing, corrections) if corrections else existing
+    else:
+        ctx = consolidate(DATA_ROOT)
+
+    ctx.save(ctx_path)
+    return ctx.to_dict()
+
+
+def _append_context_correction(op: str, target_type: str, target_id: str, payload: dict | None = None, reason: str = '') -> None:
+    from openmy.services.context.corrections import append_correction, create_correction_event
+
+    event = create_correction_event(
+        actor='user',
+        op=op,
+        target_type=target_type,
+        target_id=target_id,
+        payload=payload,
+        reason=reason,
+    )
+    append_correction(DATA_ROOT, event)
+
+
+def handle_close_loop(data: dict) -> dict:
+    query = str(data.get('query', '')).strip()
+    status = str(data.get('status', 'done')).strip() or 'done'
+    ctx = load_active_context_model()
+    if ctx is None:
+        return {'success': False, 'error': 'active_context.json 不存在，请先生成 context。'}
+
+    loop = _resolve_item(ctx.rolling_context.open_loops, query, lambda item: [item.loop_id, item.id, item.title])
+    if loop is None:
+        return {'success': False, 'error': f'没找到待办：{query}'}
+
+    target_id = loop.loop_id or loop.id or loop.title
+    _append_context_correction(
+        op='close_loop',
+        target_type='loop',
+        target_id=target_id,
+        payload={'status': status, 'target_title': loop.title},
+        reason=str(data.get('reason', '')).strip(),
+    )
+    refreshed = refresh_active_context_snapshot()
+    return {'success': True, 'target_id': target_id, 'context': refreshed}
+
+
+def handle_reject_loop(data: dict) -> dict:
+    query = str(data.get('query', '')).strip()
+    ctx = load_active_context_model()
+    if ctx is None:
+        return {'success': False, 'error': 'active_context.json 不存在，请先生成 context。'}
+
+    loop = _resolve_item(ctx.rolling_context.open_loops, query, lambda item: [item.loop_id, item.id, item.title])
+    if loop is None:
+        return {'success': False, 'error': f'没找到待办：{query}'}
+
+    target_id = loop.loop_id or loop.id or loop.title
+    _append_context_correction(
+        op='reject_loop',
+        target_type='loop',
+        target_id=target_id,
+        payload={'target_title': loop.title},
+        reason=str(data.get('reason', '')).strip(),
+    )
+    refreshed = refresh_active_context_snapshot()
+    return {'success': True, 'target_id': target_id, 'context': refreshed}
+
+
+def handle_merge_project(data: dict) -> dict:
+    source_query = str(data.get('source', '')).strip()
+    target_query = str(data.get('target', '')).strip()
+    ctx = load_active_context_model()
+    if ctx is None:
+        return {'success': False, 'error': 'active_context.json 不存在，请先生成 context。'}
+
+    source_project = _resolve_item(ctx.rolling_context.active_projects, source_query, lambda item: [item.project_id, item.id, item.title])
+    target_project = _resolve_item(ctx.rolling_context.active_projects, target_query, lambda item: [item.project_id, item.id, item.title])
+    if source_project is None or target_project is None:
+        return {'success': False, 'error': '找不到要合并的项目。'}
+
+    source_id = source_project.project_id or source_project.id or source_project.title
+    target_id = target_project.project_id or target_project.id or target_project.title
+    _append_context_correction(
+        op='merge_project',
+        target_type='project',
+        target_id=source_id,
+        payload={
+            'target_title': source_project.title,
+            'merge_into': target_id,
+            'merge_into_title': target_project.title,
+        },
+        reason=str(data.get('reason', '')).strip(),
+    )
+    refreshed = refresh_active_context_snapshot()
+    return {'success': True, 'target_id': source_id, 'context': refreshed}
+
+
+def handle_reject_project(data: dict) -> dict:
+    query = str(data.get('query', '')).strip()
+    ctx = load_active_context_model()
+    if ctx is None:
+        return {'success': False, 'error': 'active_context.json 不存在，请先生成 context。'}
+
+    project = _resolve_item(ctx.rolling_context.active_projects, query, lambda item: [item.project_id, item.id, item.title])
+    if project is None:
+        return {'success': False, 'error': f'没找到项目：{query}'}
+
+    target_id = project.project_id or project.id or project.title
+    _append_context_correction(
+        op='reject_project',
+        target_type='project',
+        target_id=target_id,
+        payload={'target_title': project.title},
+        reason=str(data.get('reason', '')).strip(),
+    )
+    refreshed = refresh_active_context_snapshot()
+    return {'success': True, 'target_id': target_id, 'context': refreshed}
+
+
+def handle_reject_decision(data: dict) -> dict:
+    query = str(data.get('query', '')).strip()
+    ctx = load_active_context_model()
+    if ctx is None:
+        return {'success': False, 'error': 'active_context.json 不存在，请先生成 context。'}
+
+    decision = _resolve_item(
+        ctx.rolling_context.recent_decisions,
+        query,
+        lambda item: [item.decision_id, item.id, item.decision, item.topic],
+    )
+    if decision is None:
+        return {'success': False, 'error': f'没找到决策：{query}'}
+
+    target_id = decision.decision_id or decision.id or decision.decision
+    _append_context_correction(
+        op='reject_decision',
+        target_type='decision',
+        target_id=target_id,
+        payload={'target_title': decision.decision},
+        reason=str(data.get('reason', '')).strip(),
+    )
+    refreshed = refresh_active_context_snapshot()
+    return {'success': True, 'target_id': target_id, 'context': refreshed}
+
+
+def build_pipeline_command(kind: str, target_date: str | None) -> list[str]:
+    commands = {
+        'context': [sys.executable, '-m', 'openmy', 'context'],
+        'run': [sys.executable, '-m', 'openmy', 'run', target_date or ''],
+        'clean': [sys.executable, '-m', 'openmy', 'clean', target_date or ''],
+        'roles': [sys.executable, '-m', 'openmy', 'roles', target_date or ''],
+        'distill': [sys.executable, '-m', 'openmy', 'distill', target_date or ''],
+        'briefing': [sys.executable, '-m', 'openmy', 'briefing', target_date or ''],
+    }
+    return commands[kind]
+
+
+def run_pipeline_job_command(kind: str, target_date: str | None, handle) -> None:
+    command = build_pipeline_command(kind, target_date)
+    handle.step(f'{kind} running')
+    handle.log(' '.join(command))
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        cwd=ROOT_DIR,
+    )
+    for line in result.stdout.splitlines():
+        if line.strip():
+            handle.log(line)
+    for line in result.stderr.splitlines():
+        if line.strip():
+            handle.log(line)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f'{kind} failed')
+
+    artifact_map = {
+        'context': [str(DATA_ROOT / 'active_context.json')],
+        'run': [
+            str(DATA_ROOT / (target_date or '') / 'scenes.json'),
+            str(DATA_ROOT / (target_date or '') / 'daily_briefing.json'),
+        ],
+        'clean': [str(DATA_ROOT / (target_date or '') / 'transcript.md')],
+        'roles': [str(DATA_ROOT / (target_date or '') / 'scenes.json')],
+        'distill': [str(DATA_ROOT / (target_date or '') / 'scenes.json')],
+        'briefing': [str(DATA_ROOT / (target_date or '') / 'daily_briefing.json')],
+    }
+    for artifact in artifact_map.get(kind, []):
+        handle.add_artifact(artifact)
+
+
+def handle_create_pipeline_job(data: dict) -> dict:
+    kind = str(data.get('kind', '')).strip()
+    target_date = str(data.get('target_date', '')).strip() or None
+    valid_kinds = {'context', 'run', 'clean', 'roles', 'distill', 'briefing'}
+    if kind not in valid_kinds:
+        return {'success': False, 'error': f'不支持的 pipeline kind: {kind}'}
+    if kind != 'context' and not target_date:
+        return {'success': False, 'error': 'target_date 不能为空'}
+
+    return JOB_RUNNER.create_job(
+        kind=kind,
+        target_date=target_date,
+        run_fn=lambda handle: run_pipeline_job_command(kind, target_date, handle),
+    )
+
+
+def get_pipeline_jobs_payload(limit: int = 20) -> list[dict]:
+    return JOB_RUNNER.list_jobs(limit=limit)
+
+
+def get_pipeline_job_payload(job_id: str):
+    return JOB_RUNNER.get_job(job_id)
 
 
 def parse_segments(content: str) -> list[dict]:
@@ -250,11 +592,19 @@ def get_date_detail(date: str):
     }
 
 
+def get_date_meta_payload(date: str):
+    return load_json(resolve_day_paths(date)['meta'])
+
+
 def get_briefing(date: str):
     briefing_path = DATA_ROOT / date / 'daily_briefing.json'
     if not briefing_path.exists():
         return None
     return load_json(briefing_path)
+
+
+def get_date_briefing_payload(date: str):
+    return get_briefing(date)
 
 
 def get_corrections():
@@ -327,7 +677,15 @@ class BrainHandler(SimpleHTTPRequestHandler):
         path = parsed.path
         params = parse_qs(parsed.query)
 
-        if path == '/api/dates':
+        if path == '/api/context':
+            self.json_response(get_context_payload())
+        elif path == '/api/context/loops':
+            self.json_response(get_context_loops_payload())
+        elif path == '/api/context/projects':
+            self.json_response(get_context_projects_payload())
+        elif path == '/api/context/decisions':
+            self.json_response(get_context_decisions_payload())
+        elif path == '/api/dates':
             self.json_response(get_all_dates())
         elif path == '/api/search':
             query = params.get('q', [''])[0]
@@ -341,6 +699,29 @@ class BrainHandler(SimpleHTTPRequestHandler):
                 self.json_response(briefing)
             else:
                 self.json_response({'error': 'no briefing', 'date': date}, status=404)
+        elif path.startswith('/api/date/') and path.endswith('/meta'):
+            date = path.removeprefix('/api/date/').removesuffix('/meta')
+            payload = get_date_meta_payload(date)
+            if payload:
+                self.json_response(payload)
+            else:
+                self.json_response({'error': 'no meta', 'date': date}, status=404)
+        elif path.startswith('/api/date/') and path.endswith('/briefing'):
+            date = path.removeprefix('/api/date/').removesuffix('/briefing')
+            payload = get_date_briefing_payload(date)
+            if payload:
+                self.json_response(payload)
+            else:
+                self.json_response({'error': 'no briefing', 'date': date}, status=404)
+        elif path == '/api/pipeline/jobs':
+            self.json_response(get_pipeline_jobs_payload())
+        elif path.startswith('/api/pipeline/jobs/'):
+            job_id = path.removeprefix('/api/pipeline/jobs/')
+            payload = get_pipeline_job_payload(job_id)
+            if payload:
+                self.json_response(payload)
+            else:
+                self.json_response({'error': 'job not found', 'job_id': job_id}, status=404)
         elif path.startswith('/api/date/'):
             date = path.split('/api/date/')[-1]
             detail = get_date_detail(date)
@@ -369,6 +750,26 @@ class BrainHandler(SimpleHTTPRequestHandler):
 
         if path == '/api/correct':
             self.json_response(handle_correction(data))
+        elif path == '/api/correct/typo':
+            self.json_response(handle_correction(data))
+        elif path == '/api/context/loops/close':
+            payload = handle_close_loop(data)
+            self.json_response(payload, status=200 if payload.get('success') else 400)
+        elif path == '/api/context/loops/reject':
+            payload = handle_reject_loop(data)
+            self.json_response(payload, status=200 if payload.get('success') else 400)
+        elif path == '/api/context/projects/merge':
+            payload = handle_merge_project(data)
+            self.json_response(payload, status=200 if payload.get('success') else 400)
+        elif path == '/api/context/projects/reject':
+            payload = handle_reject_project(data)
+            self.json_response(payload, status=200 if payload.get('success') else 400)
+        elif path == '/api/context/decisions/reject':
+            payload = handle_reject_decision(data)
+            self.json_response(payload, status=200 if payload.get('success') else 400)
+        elif path == '/api/pipeline/jobs':
+            payload = handle_create_pipeline_job(data)
+            self.json_response(payload, status=200 if payload.get('job_id') else 400)
         else:
             self.send_error(404, '未知接口')
 
