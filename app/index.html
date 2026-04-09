@@ -986,7 +986,6 @@ function renderOverviewView() {
   if (!node) return;
 
   const context = state.context || {};
-  const ingestion = context.ingestion_health || {};
 
   node.innerHTML = `
     <div class="briefing-banner" style="background:linear-gradient(135deg,#0f766e 0%,#1d4ed8 100%)">
@@ -1001,65 +1000,24 @@ function renderOverviewView() {
     </div>
 
     <div class="briefing-grid">
-      <div class="briefing-card">
-        <div class="briefing-card-title">🎯 今日焦点</div>
-        ${renderEventList(
-          context.today_focus || [],
-          (item) => `<div class="event-item">${escapeHtml(plainText(item))}</div>`,
-          '今天还没有焦点。'
-        )}
-      </div>
-
-      <div class="briefing-card">
-        <div class="briefing-card-title">🩺 处理状态</div>
-        ${renderEventList(
-          [
-            ingestion.last_processed_date ? `最近处理日期：${ingestion.last_processed_date}` : '',
-            ingestion.last_human_review_at ? `最近人工复核：${ingestion.last_human_review_at}` : '',
-            ingestion.unresolved_scene_ratio_1d !== undefined ? `待复核比率：${ingestion.unresolved_scene_ratio_1d}` : '',
-          ].filter(Boolean),
-          (item) => `<div class="event-item">${escapeHtml(item)}</div>`,
-          '暂时还没有处理状态。'
-        )}
-      </div>
-
-      <div class="briefing-card">
-        <div class="briefing-card-title">📁 当前项目</div>
-        ${renderEventList(
-          state.projects,
-          (project) => `<div class="event-item"><strong>${escapeHtml(project.title || project.project_id)}</strong><br>${escapeHtml(plainText((project.next_actions || []).join(' / ') || project.current_goal || '暂时还没有下一步'))}</div>`,
-          '暂无活跃项目。'
-        )}
-      </div>
-
-      <div class="briefing-card">
-        <div class="briefing-card-title">🔄 待跟进</div>
-        ${renderEventList(
-          state.loops,
-          (loop) => `<div class="event-item"><strong>${escapeHtml(loop.title || loop.loop_id)}</strong><br>${escapeHtml(plainText(loop.close_condition || loop.waiting_on || '等待下一步'))}</div>`,
-          '暂时没有待跟进事项。'
-        )}
-      </div>
-
-      <div class="briefing-card">
-        <div class="briefing-card-title">🧠 最近决策</div>
-        ${renderEventList(
-          state.decisions.slice(0, 8),
-          (decision) => `<div class="event-item"><strong>${escapeHtml(plainText(decision.decision || decision.topic || '未命名决策'))}</strong><br>${escapeHtml(decision.topic || '未分主题')}</div>`,
-          '暂无最近决策。'
-        )}
-      </div>
-
-      <div class="briefing-card">
-        <div class="briefing-card-title">📓 今天摘要</div>
-        ${renderEventList(
-          [
-            state.currentMeta?.daily_summary || '',
-            state.currentBriefing?.summary || '',
-          ].filter(Boolean),
-          (item) => `<div class="event-item">${escapeHtml(plainText(item))}</div>`,
-          '当前日期还没有摘要。'
-        )}
+      <div class="briefing-card briefing-card-full">
+        <div class="briefing-card-title" onclick="this.parentElement.classList.toggle('collapsed')" style="cursor:pointer">📁 项目 · 跟进 · 决策 <span style="float:right;color:var(--text-light);font-size:12px">▼ 点击展开</span></div>
+        <div class="collapsible-body" style="display:none">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:8px">
+            <div>
+              <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:6px">📁 项目 (${state.projects.length})</div>
+              ${state.projects.map(p => `<div class="event-item">${escapeHtml(p.title || p.project_id)}</div>`).join('') || '<div class="empty-state">暂无</div>'}
+            </div>
+            <div>
+              <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:6px">🔄 待跟进 (${state.loops.length})</div>
+              ${state.loops.map(l => `<div class="event-item">${escapeHtml(l.title || l.loop_id)}</div>`).join('') || '<div class="empty-state">暂无</div>'}
+            </div>
+            <div>
+              <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:6px">🧠 决策 (${state.decisions.length})</div>
+              ${state.decisions.slice(0, 5).map(d => `<div class="event-item">${escapeHtml(plainText(d.decision || d.topic || ''))}</div>`).join('') || '<div class="empty-state">暂无</div>'}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="briefing-card briefing-card-full">
@@ -1068,6 +1026,18 @@ function renderOverviewView() {
       </div>
     </div>
   `;
+
+  // 展开/折叠逻辑
+  node.querySelectorAll('.briefing-card-title[onclick]').forEach(title => {
+    title.addEventListener('click', () => {
+      const body = title.nextElementSibling;
+      if (body) {
+        const isHidden = body.style.display === 'none';
+        body.style.display = isHidden ? 'block' : 'none';
+        title.querySelector('span').textContent = isHidden ? '▲ 收起' : '▼ 点击展开';
+      }
+    });
+  });
 }
 
 function renderSearchResultsMarkup() {
@@ -1126,10 +1096,18 @@ function renderBriefingView() {
   if (briefing.time_blocks?.length) {
     html += `<div class="briefing-card briefing-card-full">
       <div class="briefing-card-title">🕒 时段概览</div>
-      ${briefing.time_blocks.map((block) => `<div class="time-block">
+      ${briefing.time_blocks.map((block) => {
+        const fullText = plainText(block.summary || '');
+        const truncated = fullText.length > 80 ? fullText.slice(0, 80) + '…' : fullText;
+        const needsTruncate = fullText.length > 80;
+        return `<div class="time-block">
         <div class="tb-period">${escapeHtml((block.period || '').split(' ')[0])}</div>
         <div class="tb-body">
-          <div class="tb-summary">${escapeHtml(plainText(block.summary || ''))}</div>
+          <div class="tb-summary">
+            <span class="tb-short">${escapeHtml(truncated)}</span>
+            ${needsTruncate ? `<span class="tb-full" style="display:none">${escapeHtml(fullText)}</span>
+            <button class="raw-btn" style="margin-left:4px;font-size:11px" onclick="const p=this.parentElement;const s=p.querySelector('.tb-short');const f=p.querySelector('.tb-full');const v=f.style.display==='none';f.style.display=v?'inline':'none';s.style.display=v?'none':'inline';this.textContent=v?'收起':'展开'">展开</button>` : ''}
+          </div>
           <div class="tb-tags">
             ${(block.people_talked_to || []).map((person) => {
               const style = getRoleStyle(person);
@@ -1138,7 +1116,8 @@ function renderBriefingView() {
             ${(block.apps_used || []).map((app) => `<span class="tb-tag tb-tag-app">💻 ${escapeHtml(app)}</span>`).join('')}
           </div>
         </div>
-      </div>`).join('')}
+      </div>`;
+      }).join('')}
     </div>`;
   }
 
@@ -1333,20 +1312,22 @@ function renderCorrectionsView() {
 
   node.innerHTML = `
     <div class="briefing-grid">
-      <div class="briefing-card">
+      <div class="briefing-card briefing-card-full">
         <div class="briefing-card-title">✏️ 错词校正</div>
         <div class="form-stack">
-          <div>
-            <label class="form-label" for="typoWrong">原文</label>
-            <input id="typoWrong" class="field-input" type="text" placeholder="原来识别错的文本">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div>
+              <label class="form-label" for="typoWrong">原文</label>
+              <input id="typoWrong" class="field-input" type="text" placeholder="识别错的文本">
+            </div>
+            <div>
+              <label class="form-label" for="typoRight">改成</label>
+              <input id="typoRight" class="field-input" type="text" placeholder="正确文本">
+            </div>
           </div>
           <div>
-            <label class="form-label" for="typoRight">改成</label>
-            <input id="typoRight" class="field-input" type="text" placeholder="你希望保留的文本">
-          </div>
-          <div>
-            <label class="form-label" for="typoContext">上下文</label>
-            <textarea id="typoContext" class="field-textarea" placeholder="可选：补一句上下文，帮助后续词典维护。"></textarea>
+            <label class="form-label" for="typoContext">上下文（可选）</label>
+            <input id="typoContext" class="field-input" type="text" placeholder="补一句上下文，帮助词典维护">
           </div>
           <div class="inline-actions">
             <button class="action-btn primary" type="button" onclick="submitTypoCorrection()">保存校正</button>
@@ -1354,58 +1335,46 @@ function renderCorrectionsView() {
         </div>
       </div>
 
-      <div class="briefing-card">
-        <div class="briefing-card-title">🔄 跟进处理</div>
-        <div class="form-stack">
-          <div>
-            <label class="form-label" for="closeLoopSelect">事项</label>
-            <select id="closeLoopSelect" class="field-select">${optionMarkup(state.loops, (item) => item.title || item.loop_id)}</select>
-          </div>
-          <div class="inline-actions">
-            <button class="action-btn" type="button" data-op="close_loop" onclick="submitContextAction('/api/context/loops/close', { query: document.getElementById('closeLoopSelect').value, status: 'done' }, '已标记完成')">标记完成</button>
-            <button class="action-btn" type="button" data-op="reject_loop" onclick="submitContextAction('/api/context/loops/reject', { query: document.getElementById('closeLoopSelect').value }, '已设为不再跟进')">不再跟进</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="briefing-card">
-        <div class="briefing-card-title">📁 项目整理</div>
-        <div class="form-stack">
-          <div>
-            <label class="form-label" for="mergeProjectSource">来源项目</label>
-            <select id="mergeProjectSource" class="field-select">${optionMarkup(state.projects, (item) => item.title || item.project_id)}</select>
-          </div>
-          <div>
-            <label class="form-label" for="mergeProjectTarget">目标项目</label>
-            <select id="mergeProjectTarget" class="field-select">${optionMarkup(state.projects, (item) => item.title || item.project_id)}</select>
-          </div>
-          <div class="inline-actions">
-            <button class="action-btn" type="button" data-op="merge_project" onclick="submitContextAction('/api/context/projects/merge', { source: document.getElementById('mergeProjectSource').value, target: document.getElementById('mergeProjectTarget').value }, '已合并项目')">合并项目</button>
-            <button class="action-btn" type="button" data-op="reject_project" onclick="submitContextAction('/api/context/projects/reject', { query: document.getElementById('mergeProjectSource').value }, '已从项目中移出')">移出项目</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="briefing-card">
-        <div class="briefing-card-title">🧠 决策整理</div>
-        <div class="form-stack">
-          <div>
-            <label class="form-label" for="rejectDecisionSelect">决策</label>
-            <select id="rejectDecisionSelect" class="field-select">${optionMarkup(state.decisions, (item) => item.decision || item.topic || item.decision_id)}</select>
-          </div>
-          <div class="inline-actions">
-            <button class="action-btn" type="button" data-op="reject_decision" onclick="submitContextAction('/api/context/decisions/reject', { query: document.getElementById('rejectDecisionSelect').value }, '已移出决策')">移出决策</button>
+      <div class="briefing-card briefing-card-full">
+        <div class="briefing-card-title" style="cursor:pointer" onclick="toggleAccordion(this)">🔧 高级操作（跟进 · 项目 · 决策） <span style="float:right;color:var(--text-light);font-size:12px">▼ 展开</span></div>
+        <div class="accordion-body" style="display:none">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:12px">
+            <div>
+              <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:8px">🔄 跟进处理</div>
+              <select id="closeLoopSelect" class="field-select" style="margin-bottom:8px">${optionMarkup(state.loops, (item) => item.title || item.loop_id)}</select>
+              <div class="inline-actions">
+                <button class="action-btn" type="button" onclick="submitContextAction('/api/context/loops/close', { query: document.getElementById('closeLoopSelect').value, status: 'done' }, '已标记完成')">完成</button>
+                <button class="action-btn" type="button" onclick="submitContextAction('/api/context/loops/reject', { query: document.getElementById('closeLoopSelect').value }, '已设为不再跟进')">移除</button>
+              </div>
+            </div>
+            <div>
+              <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:8px">📁 项目整理</div>
+              <select id="mergeProjectSource" class="field-select" style="margin-bottom:4px">${optionMarkup(state.projects, (item) => item.title || item.project_id)}</select>
+              <select id="mergeProjectTarget" class="field-select" style="margin-bottom:8px">${optionMarkup(state.projects, (item) => item.title || item.project_id)}</select>
+              <div class="inline-actions">
+                <button class="action-btn" type="button" onclick="submitContextAction('/api/context/projects/merge', { source: document.getElementById('mergeProjectSource').value, target: document.getElementById('mergeProjectTarget').value }, '已合并')">合并</button>
+                <button class="action-btn" type="button" onclick="submitContextAction('/api/context/projects/reject', { query: document.getElementById('mergeProjectSource').value }, '已移出')">移出</button>
+              </div>
+            </div>
+            <div>
+              <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:8px">🧠 决策整理</div>
+              <select id="rejectDecisionSelect" class="field-select" style="margin-bottom:8px">${optionMarkup(state.decisions, (item) => item.decision || item.topic || item.decision_id)}</select>
+              <div class="inline-actions">
+                <button class="action-btn" type="button" onclick="submitContextAction('/api/context/decisions/reject', { query: document.getElementById('rejectDecisionSelect').value }, '已移出')">移出决策</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       <div class="briefing-card briefing-card-full">
-        <div class="briefing-card-title">📚 当前词典</div>
+        <div class="briefing-card-title">📚 当前词典 (${state.corrections.length})</div>
         ${renderEventList(
-          state.corrections,
-          (item) => `<div class="event-item"><strong>${escapeHtml(item.wrong)} → ${escapeHtml(item.right)}</strong><br>${escapeHtml(plainText(item.context || '暂无上下文'))}</div>`,
+          state.corrections.slice(0, 10),
+          (item) => `<div class="event-item"><strong>${escapeHtml(item.wrong)} → ${escapeHtml(item.right)}</strong> <span style="color:var(--text-light);font-size:11px">${escapeHtml(item.context || '')}</span></div>`,
           '校正规则还没有内容。'
         )}
+        ${state.corrections.length > 10 ? `<div class="empty-state">还有 ${state.corrections.length - 10} 条…</div>` : ''}
       </div>
     </div>
   `;
@@ -1570,6 +1539,15 @@ async function submitTypoCorrection() {
   } catch (error) {
     showToast(error.message);
   }
+}
+
+function toggleAccordion(titleEl) {
+  const body = titleEl.nextElementSibling;
+  if (!body) return;
+  const isHidden = body.style.display === 'none';
+  body.style.display = isHidden ? 'block' : 'none';
+  const arrow = titleEl.querySelector('span');
+  if (arrow) arrow.textContent = isHidden ? '▲ 收起' : '▼ 展开';
 }
 
 async function submitContextAction(url, payload, successMessage) {

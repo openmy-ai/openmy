@@ -49,11 +49,11 @@ class TestFrontendShell(unittest.TestCase):
         self.assertIn("待办", self.content)
 
     def test_index_exposes_correction_actions(self):
-        self.assertIn("close_loop", self.content)
-        self.assertIn("reject_loop", self.content)
-        self.assertIn("merge_project", self.content)
-        self.assertIn("reject_project", self.content)
-        self.assertIn("reject_decision", self.content)
+        self.assertIn("loops/close", self.content)
+        self.assertIn("loops/reject", self.content)
+        self.assertIn("projects/merge", self.content)
+        self.assertIn("projects/reject", self.content)
+        self.assertIn("decisions/reject", self.content)
         self.assertIn("submitTypoCorrection", self.content)
 
     def test_index_contains_pipeline_job_panel(self):
