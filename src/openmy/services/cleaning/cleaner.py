@@ -14,7 +14,7 @@ import re
 import sys
 from pathlib import Path
 
-from openmy.config import GEMINI_MODEL, THINKING_LEVEL_CLEAN
+from openmy.config import GEMINI_MODEL, CLEAN_TEMPERATURE, CLEAN_THINKING_LEVEL, TIME_HEADER_LOSS_THRESHOLD
 
 try:
     from google import genai
@@ -76,8 +76,8 @@ def clean_with_gemini_api(
             model=model,
             contents=prompt,
             config={
-                "temperature": 0.1,
-                "thinking_config": {"thinking_level": THINKING_LEVEL_CLEAN},
+                "temperature": CLEAN_TEMPERATURE,
+                "thinking_config": {"thinking_level": CLEAN_THINKING_LEVEL},
             },
         )
     except Exception as exc:
@@ -133,7 +133,7 @@ def validate_time_headers(raw_text: str, cleaned_text: str) -> str:
         print("  ⚠️ 清洗后时间头全部丢失，回退到原文", file=sys.stderr)
         return raw_text
 
-    if len(clean_headers) < len(raw_headers) * 0.5:
+    if len(clean_headers) < len(raw_headers) * TIME_HEADER_LOSS_THRESHOLD:
         print(f"  ⚠️ 清洗后时间头从 {len(raw_headers)} 个减少到 {len(clean_headers)} 个", file=sys.stderr)
 
     return cleaned_text
