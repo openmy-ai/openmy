@@ -65,7 +65,7 @@ corrections.jsonl         ← append-only 修正历史，查询时自动叠加
 音频文件
   ↓ 去静音+压缩+切块 (services/ingest/audio_pipeline.py)
   ↓ 转写 (adapters/transcription/gemini_cli.py)
-  ↓ 清洗 (services/cleaning/cleaner.py) ← 待优化：当前版本会注入 ** 标记
+  ↓ 语义清洗 (services/cleaning/cleaner.py → Gemini CLI)
   ↓ 场景切分 (services/segmentation/segmenter.py)
   ↓ 蒸馏 (services/distillation/distiller.py)
   ↓ 结构化提取: intents+facts (services/extraction/extractor.py)
