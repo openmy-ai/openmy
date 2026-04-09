@@ -69,6 +69,11 @@ def segment(markdown: str) -> list[SceneBlock]:
     return split_into_scenes(parse_time_segments(markdown))
 
 
+def build_scenes_payload(scenes: list[SceneBlock]) -> dict[str, list[dict]]:
+    """序列化场景列表，保持和下游 readers 的 payload 结构一致。"""
+    return {"scenes": [asdict(scene) for scene in scenes]}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description='Segment cleaned markdown into scene blocks.')
     parser.add_argument('input_file', help='Markdown transcript file')
@@ -88,10 +93,7 @@ def main() -> None:
 
     scenes = segment(markdown)
     output_path = Path(args.output) if args.output else input_path.with_suffix('.segments.json')
-    output_path.write_text(
-        json.dumps([asdict(scene) for scene in scenes], ensure_ascii=False, indent=2),
-        encoding='utf-8',
-    )
+    output_path.write_text(json.dumps(build_scenes_payload(scenes), ensure_ascii=False, indent=2), encoding='utf-8')
     print(f'✓ 输出: {output_path}', file=sys.stderr)
 
 

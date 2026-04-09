@@ -234,6 +234,56 @@ class TestConsolidation(unittest.TestCase):
             decision_texts = {item.decision for item in ctx.rolling_context.recent_decisions}
             self.assertIn("先做 Intent，再做前端。", decision_texts)
 
+    def test_consolidate_prefers_day_dir_meta_written_by_extract(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            self.write_json(
+                data_root / "2026-04-08" / "scenes.json",
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "scene_001",
+                            "time_start": "10:00",
+                            "time_end": "10:20",
+                            "summary": "提醒给张总回电话，并检查鸡蛋库存。",
+                            "role": {"addressed_to": "", "needs_review": False},
+                        }
+                    ]
+                },
+            )
+            self.write_json(
+                data_root / "2026-04-08" / "2026-04-08.meta.json",
+                {
+                    "daily_summary": "今天主要在处理合同回电和生活采购。",
+                    "events": [{"time": "15:00", "project": "合同对接", "summary": "准备联系张总。"}],
+                    "intents": [
+                        {
+                            "intent_id": "intent_001",
+                            "kind": "action_item",
+                            "what": "给张总回电话，对齐合同细节",
+                            "status": "open",
+                            "who": {"kind": "user", "label": "老板"},
+                            "confidence_label": "high",
+                            "confidence_score": 0.95,
+                            "needs_review": False,
+                            "evidence_quote": "提醒我给张总回个电话。",
+                            "source_scene_id": "scene_001",
+                            "topic": "合同对接",
+                            "project_hint": "合同对接",
+                        }
+                    ],
+                    "facts": [{"fact_type": "observation", "content": "冰箱库存待确认。", "topic": "生活采购"}],
+                },
+            )
+
+            ctx = consolidate(data_root)
+
+            loop_titles = {item.title for item in ctx.rolling_context.open_loops}
+            self.assertIn("给张总回电话，对齐合同细节", loop_titles)
+
 
 class TestRenderer(unittest.TestCase):
     def make_context(self) -> ActiveContext:

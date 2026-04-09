@@ -69,7 +69,7 @@ def _resolve_paths(project_root: Path, data_root: Path, date_str: str) -> dict[s
     return {
         "scenes": day_dir / "scenes.json" if (day_dir / "scenes.json").exists() else project_root / f"{date_str}.scenes.json",
         "briefing": day_dir / "daily_briefing.json",
-        "meta": project_root / f"{date_str}.meta.json",
+        "meta": day_dir / f"{date_str}.meta.json" if (day_dir / f"{date_str}.meta.json").exists() else project_root / f"{date_str}.meta.json",
     }
 
 
