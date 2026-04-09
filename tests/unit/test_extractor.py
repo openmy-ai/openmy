@@ -111,6 +111,60 @@ class TestExtractorCompatibility(unittest.TestCase):
 
 
 class TestExtractorCallGemini(unittest.TestCase):
+    def test_normalize_extraction_payload_resolves_relative_due_dates_against_reference_date(self):
+        payload = extractor.normalize_extraction_payload(
+            {
+                "daily_summary": "ok",
+                "events": [],
+                "intents": [
+                    {
+                        "intent_id": "intent_001",
+                        "kind": "action_item",
+                        "what": "提醒给张总回电话",
+                        "status": "open",
+                        "who": {"kind": "user", "label": "老板"},
+                        "confidence_label": "high",
+                        "confidence_score": 0.95,
+                        "needs_review": False,
+                        "evidence_quote": "明天下午三点提醒我给张总回电话。",
+                        "source_scene_id": "scene_001",
+                        "topic": "合同对接",
+                        "due": {
+                            "raw_text": "明天下午三点",
+                            "iso_date": "2023-10-27T15:00:00",
+                            "granularity": "time",
+                        },
+                    }
+                ],
+                "facts": [],
+                "role_hints": [],
+            },
+            reference_date="2026-04-08",
+        )
+
+        due = payload["intents"][0]["due"]
+        self.assertEqual(due["iso_date"], "2026-04-09T15:00:00")
+        self.assertEqual(due["granularity"], "time")
+
+    @patch("openmy.services.extraction.extractor.call_gemini")
+    def test_run_extraction_passes_reference_date_to_gemini(self, call_gemini):
+        call_gemini.return_value = {
+            "daily_summary": "ok",
+            "events": [],
+            "intents": [],
+            "facts": [],
+            "role_hints": [],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            input_path = Path(tmp_dir) / "cleaned.md"
+            input_path.write_text("今天记一下。", encoding="utf-8")
+
+            result = extractor.run_extraction(input_path, date="2026-04-08", dry_run=True, api_key="test-key")
+
+        self.assertIsNotNone(result)
+        call_gemini.assert_called_once_with("今天记一下。", "test-key", extractor.DEFAULT_MODEL, "2026-04-08")
+
     @patch("openmy.services.extraction.extractor.genai.Client")
     def test_call_gemini_uses_sdk_and_parses_json(self, client_cls):
         client = client_cls.return_value
@@ -119,10 +173,11 @@ class TestExtractorCallGemini(unittest.TestCase):
             ensure_ascii=False,
         )
 
-        payload = extractor.call_gemini("你好", api_key="test-key", model="gemini-test")
+        payload = extractor.call_gemini("你好", api_key="test-key", model="gemini-test", reference_date="2026-04-08")
 
         self.assertEqual(payload["daily_summary"], "ok")
         self.assertTrue(client.models.generate_content.called)
+        self.assertIn("2026-04-08", client.models.generate_content.call_args.kwargs["contents"])
 
 
 if __name__ == "__main__":

@@ -23,11 +23,11 @@ import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from openmy.domain.intent import Fact, Intent
+from openmy.domain.intent import DueDate, Fact, Intent
 
 try:
     from google import genai
@@ -39,6 +39,24 @@ except ImportError:  # pragma: no cover - 本地缺依赖时给测试留钩子
 
 
 DEFAULT_MODEL = "gemini-3.1-flash-lite-preview"
+CN_NUMBER_MAP = {
+    "零": 0,
+    "〇": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+}
+TIME_COLON_RE = re.compile(r"(?P<hour>\d{1,2})[:：](?P<minute>\d{2})")
+TIME_POINT_RE = re.compile(
+    r"(?P<hour>[零〇一二两三四五六七八九十\d]{1,3})(?:点|时)(?:(?P<minute>[零〇一二两三四五六七八九十\d]{1,2})分?)?(?P<half>半)?"
+)
 
 EXTRACT_PROMPT = """你是 OpenMy 的结构化提取器，要把一天的口述转写拆成“未来约束”和“已经发生/已经知道”的两类信息。
 
@@ -97,6 +115,113 @@ EXTRACT_PROMPT = """你是 OpenMy 的结构化提取器，要把一天的口述�
   ]
 }
 """
+
+
+def _parse_reference_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _parse_chinese_number(token: str) -> int | None:
+    token = (token or "").strip()
+    if not token:
+        return None
+    if token.isdigit():
+        return int(token)
+    if token == "十":
+        return 10
+    if "十" in token:
+        left, right = token.split("十", 1)
+        tens = 1 if not left else CN_NUMBER_MAP.get(left)
+        ones = 0 if not right else CN_NUMBER_MAP.get(right)
+        if tens is None or ones is None:
+            return None
+        return tens * 10 + ones
+    if len(token) == 1:
+        return CN_NUMBER_MAP.get(token)
+    return None
+
+
+def _extract_relative_day_offset(raw_text: str) -> int | None:
+    if not raw_text:
+        return None
+    if "大后天" in raw_text:
+        return 3
+    if "后天" in raw_text or "后日" in raw_text:
+        return 2
+    if "明天" in raw_text or "明日" in raw_text:
+        return 1
+    if any(keyword in raw_text for keyword in ("今天", "今日", "今晚", "今早", "今晨", "今下午", "今上午")):
+        return 0
+    return None
+
+
+def _extract_time_parts(raw_text: str) -> tuple[int, int] | None:
+    colon_match = TIME_COLON_RE.search(raw_text)
+    if colon_match:
+        return int(colon_match.group("hour")), int(colon_match.group("minute"))
+
+    point_match = TIME_POINT_RE.search(raw_text)
+    if not point_match:
+        return None
+
+    hour = _parse_chinese_number(point_match.group("hour"))
+    minute_token = point_match.group("minute")
+    minute = _parse_chinese_number(minute_token) if minute_token else 0
+    if point_match.group("half"):
+        minute = 30
+    if hour is None or minute is None:
+        return None
+
+    if any(keyword in raw_text for keyword in ("下午", "晚上", "傍晚", "今晚")) and 1 <= hour < 12:
+        hour += 12
+    elif "中午" in raw_text and 1 <= hour < 11:
+        hour += 12
+    elif any(keyword in raw_text for keyword in ("凌晨",)) and hour == 12:
+        hour = 0
+
+    return hour, minute
+
+
+def _resolve_relative_due(raw_text: str, reference_date: str | None) -> tuple[str, str] | None:
+    base_date = _parse_reference_date(reference_date)
+    offset = _extract_relative_day_offset(raw_text)
+    if base_date is None or offset is None:
+        return None
+
+    target_date = base_date + timedelta(days=offset)
+    time_parts = _extract_time_parts(raw_text)
+    if time_parts is None:
+        return target_date.isoformat(), "day"
+
+    hour, minute = time_parts
+    target_dt = datetime.combine(target_date, datetime.min.time()).replace(hour=hour, minute=minute)
+    return target_dt.strftime("%Y-%m-%dT%H:%M:%S"), "time"
+
+
+def _normalize_due_date(due: DueDate, reference_date: str | None) -> DueDate:
+    resolved = _resolve_relative_due(due.raw_text, reference_date)
+    if not resolved:
+        return due
+    iso_date, granularity = resolved
+    return DueDate(raw_text=due.raw_text, iso_date=iso_date, granularity=granularity)
+
+
+def _build_extract_prompt(text: str, reference_date: str | None) -> str:
+    if reference_date:
+        date_hint = (
+            f"\n\n时间基准：\n"
+            f"- 今天这批录音对应的基准日期是 {reference_date}（Asia/Shanghai）。\n"
+            f"- 像“今天 / 明天 / 后天 / 今晚 / 明天下午三点”这类相对时间，必须相对于这个基准日期解释。\n"
+            f"- 如果无法可靠换算成公历时间，`due.iso_date` 留空，不要编造历史日期或随便猜一个旧日期。"
+        )
+    else:
+        date_hint = ""
+    return f"{EXTRACT_PROMPT}{date_hint}\n\n以下是今天的录音转写：\n\n{text}"
 
 
 def _strip_code_fences(raw_text: str) -> str:
@@ -208,7 +333,7 @@ def _insights_from_facts(facts: list[Fact]) -> list[dict[str, Any]]:
     return insights
 
 
-def normalize_extraction_payload(data: dict[str, Any]) -> dict[str, Any]:
+def normalize_extraction_payload(data: dict[str, Any], reference_date: str | None = None) -> dict[str, Any]:
     payload = dict(data if isinstance(data, dict) else {})
 
     events = []
@@ -227,6 +352,26 @@ def normalize_extraction_payload(data: dict[str, Any]) -> dict[str, Any]:
         Intent.from_dict(raw)
         for raw in payload.get("intents", [])
         if isinstance(raw, dict)
+    ]
+    intents = [
+        Intent(
+            intent_id=intent.intent_id,
+            kind=intent.kind,
+            what=intent.what,
+            status=intent.status,
+            who=intent.who,
+            confidence_label=intent.confidence_label,
+            confidence_score=intent.confidence_score,
+            needs_review=intent.needs_review,
+            evidence_quote=intent.evidence_quote,
+            source_scene_id=intent.source_scene_id,
+            topic=intent.topic,
+            speech_act=intent.speech_act,
+            due=_normalize_due_date(intent.due, reference_date),
+            project_hint=intent.project_hint,
+            source_recording_id=intent.source_recording_id,
+        )
+        for intent in intents
     ]
     facts = [
         Fact.from_dict(raw)
@@ -271,14 +416,14 @@ def build_legacy_compatible_payload(data: dict[str, Any]) -> dict[str, Any]:
     return compat
 
 
-def call_gemini(text: str, api_key: str, model: str = DEFAULT_MODEL) -> dict | None:
+def call_gemini(text: str, api_key: str, model: str = DEFAULT_MODEL, reference_date: str | None = None) -> dict | None:
     """调 Gemini API 提取结构化数据。"""
     if getattr(genai, "Client", None) is None:
         print("Gemini SDK 不可用：缺少 google-genai", file=sys.stderr)
         return None
 
     client = genai.Client(api_key=api_key)
-    prompt = f"{EXTRACT_PROMPT}\n\n以下是今天的录音转写：\n\n{text}"
+    prompt = _build_extract_prompt(text, reference_date)
 
     try:
         response = client.models.generate_content(
@@ -299,7 +444,7 @@ def call_gemini(text: str, api_key: str, model: str = DEFAULT_MODEL) -> dict | N
         return None
 
     try:
-        return normalize_extraction_payload(json.loads(raw_text))
+        return normalize_extraction_payload(json.loads(raw_text), reference_date=reference_date)
     except json.JSONDecodeError as exc:
         print(f"解析 Gemini 响应失败: {exc}", file=sys.stderr)
         print(raw_text[:500], file=sys.stderr)
@@ -452,7 +597,7 @@ def run_extraction(
     print(f"📖 读取 {input_path.name}: {len(text)} 字", file=sys.stderr)
     print(f"🤖 调用 Gemini ({model}) 提取结构化摘要...", file=sys.stderr)
 
-    data = call_gemini(text, final_api_key, model)
+    data = call_gemini(text, final_api_key, model, final_date)
     if not data:
         print("❌ 提取失败", file=sys.stderr)
         return None

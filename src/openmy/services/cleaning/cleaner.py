@@ -641,12 +641,12 @@ def clean_text(text: str) -> str:
 
 
 def main():
-    if len(sys.argv) != 3:
-        print("用法: python3 clean.py <input.txt> <output.txt>", file=sys.stderr)
+    if len(sys.argv) not in {2, 3}:
+        print("用法: python3 clean.py <input.txt> [output.txt]", file=sys.stderr)
         sys.exit(1)
 
     input_path = Path(sys.argv[1])
-    output_path = Path(sys.argv[2])
+    output_path = Path(sys.argv[2]) if len(sys.argv) == 3 else None
 
     if not input_path.exists():
         print(f"文件不存在: {input_path}", file=sys.stderr)
@@ -664,7 +664,10 @@ def main():
     removed = before_chars - after_chars
     pct = (removed / before_chars * 100) if before_chars > 0 else 0
 
-    output_path.write_text(cleaned, encoding='utf-8')
+    if output_path is not None:
+        output_path.write_text(cleaned, encoding='utf-8')
+    else:
+        print(cleaned)
 
     print(f"清洗完成: {before_chars} → {after_chars} 字 (去除 {removed} 字, {pct:.1f}%)",
           file=sys.stderr)

@@ -779,50 +779,18 @@ def cmd_agent(args: argparse.Namespace) -> int:
 
 def transcribe_audio_files(date_str: str, audio_files: list[str]) -> int:
     """把本地音频文件转成 raw transcript。"""
-    from openmy.adapters.transcription.gemini_cli import load_vocab_terms, run_gemini_cli
+    from openmy.services.ingest.audio_pipeline import transcribe_audio_files as run_ingest_pipeline
 
-    vocab_file = ROOT_DIR / "src" / "openmy" / "resources" / "vocab.txt"
-    vocab_terms = load_vocab_terms(vocab_file)
-    gemini_home = Path.home() / ".gemini"
+    try:
+        output_path = run_ingest_pipeline(
+            date_str=date_str,
+            audio_files=audio_files,
+            output_dir=ensure_day_dir(date_str),
+        )
+    except Exception as exc:
+        console.print(f"[red]❌ 转写失败[/red]: {exc}")
+        return 1
 
-    rendered_parts: list[str] = [
-        f"# {date_str} 上下文（原始）",
-        "",
-        "> 来源：OpenMy CLI 音频导入",
-        f"> 转写时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}",
-        f"> 音频文件数：{len(audio_files)} 段",
-        "",
-        "---",
-        "",
-    ]
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("{task.description}"),
-        BarColumn(),
-        TextColumn("{task.completed}/{task.total}"),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("转写音频...", total=len(audio_files))
-        for audio_name in audio_files:
-            audio_path = Path(audio_name).expanduser().resolve()
-            if not audio_path.is_file():
-                console.print(f"[red]❌ 音频文件不存在[/red]: {audio_path}")
-                return 1
-
-            transcript = run_gemini_cli(
-                audio_path=audio_path,
-                model="gemini-3-flash-preview",
-                vocab_terms=vocab_terms,
-                timeout_seconds=1800,
-                gemini_home=gemini_home,
-            )
-            rendered_parts.extend([f"## {parse_audio_time(audio_path)}", "", transcript.strip(), ""])
-            progress.advance(task)
-
-    output_path = ensure_day_dir(date_str) / "transcript.raw.md"
-    output_path.write_text("\n".join(rendered_parts).strip() + "\n", encoding="utf-8")
     console.print(f"[green]✅ 原始转写已生成[/green]: {output_path}")
     return 0
 

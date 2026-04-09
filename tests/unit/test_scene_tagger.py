@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """test_scene_tagger.py — 场景切分和角色标注测试"""
 
+import json
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 from openmy.domain.models import RoleTag, SceneBlock
 from openmy.services.roles.resolver import (
@@ -12,6 +17,9 @@ from openmy.services.roles.resolver import (
     tag_scene_role,
 )
 from openmy.services.segmentation.segmenter import parse_time_segments, split_into_scenes
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class TestParseTimeSegments(unittest.TestCase):
@@ -33,6 +41,37 @@ class TestParseTimeSegments(unittest.TestCase):
         segs = parse_time_segments(md)
         self.assertEqual(len(segs), 1)
         self.assertEqual(segs[0]["time"], "13:00")
+
+
+class TestSegmenterCli(unittest.TestCase):
+    def test_cli_writes_object_payload_with_scenes_key(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "cleaned.md"
+            output_path = Path(tmpdir) / "scenes.json"
+            input_path.write_text("## 12:12\n\n你好老婆", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "openmy.services.segmentation.segmenter",
+                    str(input_path),
+                    "--output",
+                    str(output_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=PROJECT_ROOT,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertIsInstance(payload, dict)
+            self.assertIn("scenes", payload)
+            self.assertEqual(len(payload["scenes"]), 1)
+            self.assertEqual(payload["scenes"][0]["scene_id"], "s01")
+            self.assertIn("text", payload["scenes"][0])
 
 
 class TestDeclarations(unittest.TestCase):

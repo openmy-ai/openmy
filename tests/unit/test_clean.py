@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 from openmy.services.cleaning import cleaner as clean
 
@@ -170,6 +174,25 @@ class ProfanityFilterTest(unittest.TestCase):
         result = clean.remove_profanity(text)
         self.assertNotIn("卧槽", result)
         self.assertIn("厉害", result)
+
+
+class CleanCliCompatibilityTest(unittest.TestCase):
+    def test_module_supports_stdout_mode_with_single_input_arg(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "transcript.md"
+            input_path.write_text("我将为您转写 `demo.wav`。\n\n嗯\n老婆，晚上吃火锅。", encoding="utf-8")
+
+            result = subprocess.run(
+                [sys.executable, "-m", "openmy.services.cleaning.cleaner", str(input_path)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=Path(__file__).resolve().parents[2],
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("老婆", result.stdout)
+            self.assertNotIn("我将为您转写", result.stdout)
 
 
 if __name__ == "__main__":
