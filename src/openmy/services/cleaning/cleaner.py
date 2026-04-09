@@ -1,96 +1,178 @@
 #!/usr/bin/env python3
 """
-cleaner.py — 用 Gemini API 对转写文本做语义级清洗
+cleaner.py — 规则引擎清洗 + corrections.json 确定性纠错
 
 设计原则：
-- 清洗全部交给大模型，不用正则硬编码
+- 纯本地处理，不调 API，零成本、秒完成
 - 只降噪，不改语义
 - 保留脏话（真实语气证据）、背景音标注、自然分段
+- 保护时间头（## HH:MM）和角色信号词
 """
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
 
-from openmy.config import GEMINI_MODEL, CLEAN_TEMPERATURE, CLEAN_THINKING_LEVEL, TIME_HEADER_LOSS_THRESHOLD
+from openmy.config import TIME_HEADER_LOSS_THRESHOLD
 
-try:
-    from google import genai
-except ImportError:
-    class _GenAIStub:
-        Client = None
-    genai = _GenAIStub()
-
-CLEAN_PROMPT = """你是一个录音转写文本的清洗助手。下面是一段语音转写的原始文本，请帮我清洗。
-
-## 你要做的事
-
-1. **修正明显的转写错误**：音近字、同音替换（例如"寄养费"应该是"降费"，"阿加塔"应该是"阿维塔"）
-2. **去掉 AI 转写引擎的系统前缀**：如"我这就为您转写..."、"针对音频文件..."、"转写如下"等机械文本
-3. **去掉纯语气废词行**：整行只有"嗯"、"啊"、"哦"的行直接删掉
-4. **去掉重复行**：连续出现的完全相同的行只保留一次
-5. **去掉 [音乐] 标记**
-6. **保留错词示例句**：如果原文是在举例说明某个词被转写错了，比如"寄养费被转写成了降费""阿加塔其实是阿维塔"，这是在描述错误，不要把示例里的错词改掉
-
-## 你绝对不能做的事
-
-1. **不要加任何格式标记**：不加粗（**）、不加引号、不加列表符号
-2. **不要删脏话**：脏话是真实语气，必须保留
-3. **不要改写/润色/总结**：保留原话，不要把口语改成书面语
-4. **不要删背景音标注**：（打火机声）（狗吠声）（背景粤语对话）这些全部保留
-5. **不要合并段落**：保留原始的分行和分段结构
-6. **不要删时间头**：## HH:MM 格式的行必须原封不动保留
-7. **不要加任何说明文字**：直接输出清洗后的文本，不要写"以下是清洗结果"之类的前缀
-
-## 输出要求
-
-直接输出清洗后的纯文本，格式与输入完全一致。
-
----
-
-原始转写文本：
-
-{text}"""
-
-
-def clean_with_gemini_api(
-    text: str,
-    model: str = GEMINI_MODEL,
-    api_key: str | None = None,
-) -> str:
-    """调 Gemini API 做语义级清洗"""
-    if getattr(genai, 'Client', None) is None:
-        raise RuntimeError("Gemini SDK 不可用：缺少 google-genai 依赖，运行 pip install google-genai")
-
-    final_api_key = api_key or os.environ.get("GEMINI_API_KEY")
-    if not final_api_key:
-        raise RuntimeError("清洗需要 GEMINI_API_KEY 环境变量")
-
-    client = genai.Client(api_key=final_api_key)
-    prompt = CLEAN_PROMPT.format(text=text)
-
-    try:
-        response = client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config={
-                "temperature": CLEAN_TEMPERATURE,
-                "thinking_config": {"thinking_level": CLEAN_THINKING_LEVEL},
-            },
-        )
-    except Exception as exc:
-        raise RuntimeError(f"Gemini API 清洗失败: {exc}") from exc
-
-    result = getattr(response, 'text', '') or ''
-    if not result.strip():
-        raise RuntimeError("Gemini API 清洗没有返回内容")
-
-    return result.strip()
-
-
+# ── 时间头保护 ────────────────────────────────────────────
 TIME_HEADER_RE = re.compile(r'^##\s+\d{1,2}:\d{2}', re.MULTILINE)
+
+# ── 废词/语气词模式（独立成行时删除）─────────────────────
+FILLER_PATTERNS = [
+    # 语气词（独立出现时删除）
+    r'^[嗯啊呃哦哈嘿唉诶呢嘛吧呀哇噢额]+[，。、！？\s]*$',
+    # 口头禅（独立出现时删除）
+    r'^(那个|就是说|就是|然后|所以说|对对对|对对|是的是的|好的好的|OK|ok|嗯嗯|啊啊|哈哈|呵呵)[，。、！？\s]*$',
+    # 无意义重复
+    r'^(那那那|这这这|就就就|然后然后|所以所以)[，。、！？\s]*$',
+]
+COMPILED_FILLERS = [re.compile(p) for p in FILLER_PATTERNS]
+
+# ── 句中废词（轻度清理，只处理最高频的）─────────────────
+INLINE_FILLERS = [
+    (r'嗯+[，、]', ''),           # "嗯，然后" → "然后"
+    (r'啊+[，、]', ''),           # "啊，就是" → "就是"
+    (r'那个[，、]+那个[，、]*', ''),  # "那个，那个，" → ""
+    (r'[，、]*(嗯|啊|然后|那个)[，。、！？\s]*$', ''),  # 句尾残留废词
+    (r'就是说[，、]+', ''),       # "就是说，" → ""
+    (r'然后[，、]+然后[，、]*', '然后'),  # "然后，然后" → "然后"
+]
+COMPILED_INLINE = [(re.compile(p), r) for p, r in INLINE_FILLERS]
+
+# ── AI 转写引擎前缀（整行删除）─────────────────────────
+AI_PREAMBLE_PATTERNS = [
+    re.compile(r'^.*为您.*转写.*$', re.MULTILINE),
+    re.compile(r'^.*针对.*音频文件.*$', re.MULTILINE),
+    re.compile(r'^.*转写如下.*$', re.MULTILINE),
+    re.compile(r'^.*已经转写完成.*$', re.MULTILINE),
+    re.compile(r'^.*sub_\d+\.wav.*$', re.MULTILINE),
+    re.compile(r'`sub_\d+\.wav`'),
+]
+
+# ── [音乐] 标记 ────────────────────────────────────────
+MUSIC_RE = re.compile(r'\[音乐\]')
+
+# ── 段落切分阈值 ────────────────────────────────────────
+MAX_PARAGRAPH_CHARS = 500
+SENTENCE_SPLIT_RE = re.compile(r'(?<=[。！？!?.])\s*')
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  清洗步骤
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def is_filler_line(line: str) -> bool:
+    """整行是废词就返回 True"""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    # 保护时间头
+    if TIME_HEADER_RE.match(stripped):
+        return False
+    return any(p.match(stripped) for p in COMPILED_FILLERS)
+
+
+def clean_inline(line: str) -> str:
+    """句中废词清理"""
+    stripped = line.strip()
+    if not stripped or TIME_HEADER_RE.match(stripped) or stripped.startswith('#'):
+        return line
+    for pattern, replacement in COMPILED_INLINE:
+        line = pattern.sub(replacement, line)
+    return line
+
+
+def remove_ai_preamble(text: str) -> str:
+    """清除 AI 转写引擎的系统前缀"""
+    for pattern in AI_PREAMBLE_PATTERNS:
+        text = pattern.sub('', text)
+    return text
+
+
+def remove_music_markers(text: str) -> str:
+    """清除 [音乐] 标记"""
+    return MUSIC_RE.sub('', text)
+
+
+def deduplicate_lines(lines: list[str]) -> list[str]:
+    """去除连续重复行"""
+    result: list[str] = []
+    for line in lines:
+        if result and line.strip() == result[-1].strip() and line.strip():
+            continue
+        result.append(line)
+    return result
+
+
+def merge_short_lines(lines: list[str], min_length: int = 3) -> list[str]:
+    """合并过短的碎句到上一行（只合并 ≤min_length 字的碎片）"""
+    result: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        # 空行、时间头、标题不合并
+        if not stripped or TIME_HEADER_RE.match(stripped) or stripped.startswith('#'):
+            result.append(line)
+            continue
+        # 太短的碎句合并到上一行
+        if len(stripped) < min_length and result and result[-1].strip():
+            result[-1] = result[-1].rstrip() + stripped
+        else:
+            result.append(line)
+    return result
+
+
+def collapse_blank_lines(lines: list[str]) -> list[str]:
+    """连续空行最多保留 1 个"""
+    result: list[str] = []
+    prev_blank = False
+    for line in lines:
+        is_blank = not line.strip()
+        if is_blank and prev_blank:
+            continue
+        result.append(line)
+        prev_blank = is_blank
+    return result
+
+
+def split_long_paragraphs(text: str) -> str:
+    """长段落（>500字）在句号处强制切分"""
+    lines = text.split('\n')
+    result: list[str] = []
+    for line in lines:
+        if len(line) > MAX_PARAGRAPH_CHARS and not TIME_HEADER_RE.match(line.strip()):
+            sentences = SENTENCE_SPLIT_RE.split(line)
+            current = ''
+            for sent in sentences:
+                if len(current) + len(sent) > MAX_PARAGRAPH_CHARS and current:
+                    result.append(current)
+                    current = sent
+                else:
+                    current += sent
+            if current:
+                result.append(current)
+        else:
+            result.append(line)
+    return '\n'.join(result)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  纠错替换
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CORRECTIONS_FILE = Path(__file__).resolve().parent.parent.parent / 'resources' / 'corrections.json'
+
+
+def load_corrections() -> list[dict]:
+    """加载纠错词典"""
+    if not CORRECTIONS_FILE.exists():
+        return []
+    try:
+        data = json.loads(CORRECTIONS_FILE.read_text(encoding='utf-8'))
+        return data.get('corrections', [])
+    except Exception:
+        return []
 
 
 def apply_corrections(text: str) -> str:
@@ -121,48 +203,6 @@ def apply_corrections(text: str) -> str:
     return "\n".join(corrected_lines)
 
 
-def validate_time_headers(raw_text: str, cleaned_text: str) -> str:
-    """校验清洗输出是否保留了时间头。如果时间头全丢了，回退到原文。"""
-    raw_headers = TIME_HEADER_RE.findall(raw_text)
-    if not raw_headers:
-        return cleaned_text  # 原文就没时间头，不需要校验
-
-    clean_headers = TIME_HEADER_RE.findall(cleaned_text)
-    if not clean_headers:
-        # 时间头全丢了，Gemini 没遵守约束，回退原文
-        print("  ⚠️ 清洗后时间头全部丢失，回退到原文", file=sys.stderr)
-        return raw_text
-
-    if len(clean_headers) < len(raw_headers) * TIME_HEADER_LOSS_THRESHOLD:
-        print(f"  ⚠️ 清洗后时间头从 {len(raw_headers)} 个减少到 {len(clean_headers)} 个", file=sys.stderr)
-
-    return cleaned_text
-
-
-def clean_text(text: str, api_key: str | None = None) -> str:
-    """清洗入口：Gemini API 语义清洗 + corrections.json 确定性兜底"""
-    cleaned = clean_with_gemini_api(text, api_key=api_key)
-    cleaned = validate_time_headers(text, cleaned)
-    cleaned = apply_corrections(cleaned)
-    return cleaned
-
-
-# ── 纠错相关工具（保留，供 correct 命令使用）────────────────
-
-CORRECTIONS_FILE = Path(__file__).resolve().parent.parent.parent / 'resources' / 'corrections.json'
-
-
-def load_corrections() -> list[dict]:
-    """加载纠错词典"""
-    if not CORRECTIONS_FILE.exists():
-        return []
-    try:
-        data = json.loads(CORRECTIONS_FILE.read_text(encoding='utf-8'))
-        return data.get('corrections', [])
-    except Exception:
-        return []
-
-
 def sync_correction_to_vocab(wrong: str, right: str, context: str = ''):
     """将纠正同步写入 vocab.txt（事前预防层）"""
     vocab_file = Path(__file__).resolve().parent.parent.parent / 'resources' / 'vocab.txt'
@@ -183,6 +223,54 @@ def sync_correction_to_vocab(wrong: str, right: str, context: str = ''):
         existing = existing.rstrip() + '\n\n# ── 常见音近易错词（自动添加）──────────────────────────────────\n' + entry
 
     vocab_file.write_text(existing, encoding='utf-8')
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  主入口
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def clean_text(text: str, api_key: str | None = None) -> str:
+    """完整清洗流程（纯规则引擎，不调 API）。
+
+    设计原则：
+    - 只降噪，不改语义
+    - 不删脏话（真实语气是上下文证据）
+    - 不加粗、不改词（除纠错词典）
+    - 保留自然分段和对话节奏
+    """
+    # Step 1: 清除 AI 转写引擎的系统前缀
+    text = remove_ai_preamble(text)
+
+    # Step 2: 清除 [音乐] 标记
+    text = remove_music_markers(text)
+
+    lines = text.split('\n')
+
+    # Step 3: 去除纯废词行
+    lines = [l for l in lines if not is_filler_line(l)]
+
+    # Step 4: 行内废词清理
+    lines = [clean_inline(l) for l in lines]
+
+    # Step 5: 去除连续重复行
+    lines = deduplicate_lines(lines)
+
+    # Step 6: 合并单字残句（只合并 ≤2 字的碎片，保留对话节奏）
+    lines = merge_short_lines(lines, min_length=3)
+
+    # Step 7: 合并连续空行
+    lines = collapse_blank_lines(lines)
+
+    # Step 8: 去除首尾空行
+    result = '\n'.join(lines).strip()
+
+    # Step 9: 长段强制切分（消灭文字墙）
+    result = split_long_paragraphs(result)
+
+    # Step 10: 纠错替换（从 corrections.json 强制修正错词）
+    result = apply_corrections(result)
+
+    return result
 
 
 def main():

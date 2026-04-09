@@ -28,14 +28,8 @@ TRANSCRIBE_TIMEOUT = 900
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  清洗 (clean)
+#  清洗 (clean) — 纯规则引擎，不调 API
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# 清洗用的 temperature（越低越保守，不容易改原文语义）
-CLEAN_TEMPERATURE = 0.1
-
-# 清洗的思考级别（清洗是简单任务，low 省 token）
-CLEAN_THINKING_LEVEL = "low"
 
 # 时间头丢失阈值：清洗后时间头少于原文的这个比例时，打警告
 TIME_HEADER_LOSS_THRESHOLD = 0.5

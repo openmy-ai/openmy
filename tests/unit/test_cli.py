@@ -234,8 +234,7 @@ class TestOpenMyCli(unittest.TestCase):
             self.cleanup_day_dir(date_str)
 
     def test_cli_clean_generates_output(self):
-        """openmy clean 应该从 raw 生成 transcript.md（mock Gemini API）。"""
-        from unittest.mock import patch
+        """openmy clean 应该从 raw 生成 transcript.md（规则引擎，不调 API）。"""
         import argparse
 
         date_str = "2099-01-03"
@@ -244,17 +243,15 @@ class TestOpenMyCli(unittest.TestCase):
         (day_dir / "transcript.raw.md").write_text(raw_text, encoding="utf-8")
 
         try:
-            with patch(
-                "openmy.services.cleaning.cleaner.clean_with_gemini_api",
-                return_value="## 10:00\n\n老婆，今天去散步。",
-            ):
-                from openmy.cli import cmd_clean
-                args = argparse.Namespace(date=date_str)
-                result = cmd_clean(args)
-                self.assertEqual(result, 0)
+            from openmy.cli import cmd_clean
+            args = argparse.Namespace(date=date_str)
+            result = cmd_clean(args)
+            self.assertEqual(result, 0)
 
             transcript = (day_dir / "transcript.md").read_text(encoding="utf-8")
             self.assertIn("老婆", transcript)
+            # 规则引擎应该删掉独立的"嗯"行
+            self.assertNotIn("\n嗯\n", transcript)
         finally:
             self.cleanup_day_dir(date_str)
 
