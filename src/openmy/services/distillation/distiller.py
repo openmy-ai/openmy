@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from google import genai
 
-from openmy.config import GEMINI_MODEL
+from openmy.config import GEMINI_MODEL, THINKING_LEVEL_DISTILL
 
 def summarize_scene(text: str, api_key: str, model: str) -> str:
     client = genai.Client(api_key=api_key)
@@ -26,7 +26,10 @@ def summarize_scene(text: str, api_key: str, model: str) -> str:
     response = client.models.generate_content(
         model=model,
         contents=prompt,
-        config=genai.types.GenerateContentConfig(temperature=0.2)
+        config={
+            "temperature": 0.2,
+            "thinking_config": {"thinking_level": THINKING_LEVEL_DISTILL},
+        },
     )
     return response.text.strip().replace('**', '').replace('\n', ' ')
 

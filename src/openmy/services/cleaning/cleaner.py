@@ -14,7 +14,7 @@ import re
 import sys
 from pathlib import Path
 
-from openmy.config import GEMINI_MODEL
+from openmy.config import GEMINI_MODEL, THINKING_LEVEL_CLEAN
 
 try:
     from google import genai
@@ -77,6 +77,7 @@ def clean_with_gemini_api(
             contents=prompt,
             config={
                 "temperature": 0.1,
+                "thinking_config": {"thinking_level": THINKING_LEVEL_CLEAN},
             },
         )
     except Exception as exc:
