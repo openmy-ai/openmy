@@ -234,7 +234,7 @@ class TestOpenMyCli(unittest.TestCase):
             self.cleanup_day_dir(date_str)
 
     def test_cli_clean_generates_output(self):
-        """openmy clean 应该从 raw 生成 transcript.md（mock Gemini CLI）。"""
+        """openmy clean 应该从 raw 生成 transcript.md（mock Gemini API）。"""
         from unittest.mock import patch
         import argparse
 
@@ -245,7 +245,7 @@ class TestOpenMyCli(unittest.TestCase):
 
         try:
             with patch(
-                "openmy.services.cleaning.cleaner.clean_with_gemini_cli",
+                "openmy.services.cleaning.cleaner.clean_with_gemini_api",
                 return_value="## 10:00\n\n老婆，今天去散步。",
             ):
                 from openmy.cli import cmd_clean
