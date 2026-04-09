@@ -1,198 +1,106 @@
 #!/usr/bin/env python3
-import subprocess
-import sys
-import tempfile
+"""
+test_clean.py — 清洗模块测试
+
+cleaner 现在全部交给 Gemini CLI 做语义级清洗，
+所以测试用 mock 验证调用行为，而不是测正则规则。
+"""
 import unittest
+from unittest.mock import patch, MagicMock
 from pathlib import Path
 
 from openmy.services.cleaning import cleaner as clean
 
 
-class CleanLyricsTest(unittest.TestCase):
-    def test_removes_long_english_lyric_sentence(self):
-        text = (
-            "这是中文说明。 "
-            "I love you like a love song baby I love you like a love song baby. "
-            "这里继续中文讨论。"
+class CleanTextCallsGeminiCLITest(unittest.TestCase):
+    """验证 clean_text 会调用 Gemini CLI"""
+
+    @patch('openmy.services.cleaning.cleaner.clean_with_gemini_cli')
+    def test_clean_text_delegates_to_gemini(self, mock_gemini):
+        mock_gemini.return_value = "清洗后的文本"
+        result = clean.clean_text("原始文本")
+        mock_gemini.assert_called_once_with("原始文本")
+        self.assertEqual(result, "清洗后的文本")
+
+
+class CleanPromptTest(unittest.TestCase):
+    """验证 prompt 模板包含关键约束"""
+
+    def test_prompt_prohibits_bold(self):
+        self.assertIn("不加粗", clean.CLEAN_PROMPT)
+
+    def test_prompt_preserves_profanity(self):
+        self.assertIn("不要删脏话", clean.CLEAN_PROMPT)
+
+    def test_prompt_preserves_time_headers(self):
+        self.assertIn("## HH:MM", clean.CLEAN_PROMPT)
+
+    def test_prompt_preserves_background_sounds(self):
+        self.assertIn("背景音标注", clean.CLEAN_PROMPT)
+
+    def test_prompt_has_text_placeholder(self):
+        self.assertIn("{text}", clean.CLEAN_PROMPT)
+
+
+class GeminiCLICallTest(unittest.TestCase):
+    """验证 Gemini CLI 调用的参数和错误处理"""
+
+    @patch('openmy.services.cleaning.cleaner.prepare_isolated_home')
+    @patch('subprocess.run')
+    def test_successful_call(self, mock_run, mock_home):
+        mock_home.return_value = Path("/tmp/fake-home")
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="  清洗后文本  ",
+            stderr="",
         )
-        cleaned = clean.clean_text(text)
-        self.assertIn("这是中文说明", cleaned)
-        self.assertIn("这里继续中文讨论", cleaned)
-        self.assertNotIn("love song", cleaned)
 
-    def test_keeps_product_terms_and_short_english_phrases(self):
-        text = "这个插件里面有个配置叫 Cloud AI。然后 window mover 这个插件也要看一下。"
-        cleaned = clean.clean_text(text)
-        self.assertIn("Cloud AI", cleaned)
-        self.assertIn("window mover", cleaned)
+        result = clean.clean_with_gemini_cli("原始文本")
+        self.assertEqual(result, "清洗后文本")
 
-    def test_removes_lyric_sentence_without_spaces_after_periods(self):
-        text = "这是中文说明。I love you like a love song baby.这里继续中文讨论。"
-        cleaned = clean.clean_text(text)
-        self.assertIn("这是中文说明", cleaned)
-        self.assertIn("这里继续中文讨论", cleaned)
-        self.assertNotIn("love song", cleaned)
+        # 验证调用了 gemini 命令
+        call_args = mock_run.call_args
+        cmd = call_args[0][0]
+        self.assertEqual(cmd[0], "gemini")
+        self.assertIn("-m", cmd)
+        self.assertIn("--output-format", cmd)
+        self.assertIn("text", cmd)
 
-    def test_removes_mostly_english_chorus_paragraph(self):
-        text = (
-            "I I, there's no place I'd rather be. I I, there's no place I'd rather be.\n\n"
-            "我们还是先把技能书插件做好。"
+    @patch('openmy.services.cleaning.cleaner.prepare_isolated_home')
+    @patch('subprocess.run')
+    def test_nonzero_exit_raises(self, mock_run, mock_home):
+        mock_home.return_value = Path("/tmp/fake-home")
+        mock_run.return_value = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="error message",
         )
-        cleaned = clean.clean_text(text)
-        self.assertNotIn("there's no place", cleaned)
-        self.assertIn("我们还是先把技能书插件做好", cleaned)
 
-    def test_removes_short_english_fragments_inside_lyric_paragraph(self):
-        text = (
-            "先说中文需求。 "
-            "I love you like a love song baby. "
-            "And I keep hitting you. "
-            "然后继续说中文结论。"
+        with self.assertRaises(RuntimeError) as ctx:
+            clean.clean_with_gemini_cli("原始文本")
+        self.assertIn("清洗失败", str(ctx.exception))
+
+    @patch('openmy.services.cleaning.cleaner.prepare_isolated_home')
+    @patch('subprocess.run')
+    def test_empty_output_raises(self, mock_run, mock_home):
+        mock_home.return_value = Path("/tmp/fake-home")
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="",
+            stderr="",
         )
-        cleaned = clean.clean_text(text)
-        self.assertIn("先说中文需求", cleaned)
-        self.assertIn("然后继续说中文结论", cleaned)
-        self.assertNotIn("I keep hitting you", cleaned)
 
-    def test_removes_single_word_english_fragments_in_lyric_context(self):
-        text = "先说中文。 I love you like a love song baby. Oh, yeah. Stay. 然后继续中文。"
-        cleaned = clean.clean_text(text)
-        self.assertIn("先说中文", cleaned)
-        self.assertIn("然后继续中文", cleaned)
-        self.assertNotIn("Oh, yeah", cleaned)
-        self.assertNotIn("Stay", cleaned)
+        with self.assertRaises(RuntimeError) as ctx:
+            clean.clean_with_gemini_cli("原始文本")
+        self.assertIn("没有返回内容", str(ctx.exception))
 
 
-class CleanMusicMarkerTest(unittest.TestCase):
-    def test_removes_pure_music_marker_line(self):
-        text = "这是中文口述。\n[音乐]\n继续说话。"
-        cleaned = clean.clean_text(text)
-        self.assertIn("这是中文口述", cleaned)
-        self.assertIn("继续说话", cleaned)
-        self.assertNotIn("[音乐]", cleaned)
+class CorrectionUtilsTest(unittest.TestCase):
+    """纠错工具函数保留，验证基本功能"""
 
-    def test_removes_inline_music_marker(self):
-        text = "说话内容 [音乐] 然后继续说话。"
-        cleaned = clean.clean_text(text)
-        self.assertIn("说话内容", cleaned)
-        self.assertIn("然后继续说话", cleaned)
-        self.assertNotIn("[音乐]", cleaned)
-
-    def test_removes_repeated_music_markers(self):
-        text = "[音乐] [音乐] [音乐]"
-        cleaned = clean.clean_text(text)
-        self.assertNotIn("[音乐]", cleaned)
-
-    def test_removes_music_marker_with_punctuation(self):
-        text = "[音乐]。\n我继续说重要的事情。"
-        cleaned = clean.clean_text(text)
-        self.assertNotIn("[音乐]", cleaned)
-        self.assertIn("我继续说重要的事情", cleaned)
-
-
-class CleanTimeHeaderTest(unittest.TestCase):
-    def test_preserves_time_headers(self):
-        text = "## 10:40\n\n这是一段口述内容。\n\n## 11:27\n\n这是另一段口述。"
-        cleaned = clean.clean_text(text)
-        self.assertIn("## 10:40", cleaned)
-        self.assertIn("## 11:27", cleaned)
-        self.assertIn("这是一段口述内容", cleaned)
-
-    def test_time_header_not_merged_into_previous_line(self):
-        text = "说完了。\n## 14:09\n继续说话。"
-        cleaned = clean.clean_text(text)
-        lines = cleaned.split('\n')
-        time_lines = [line for line in lines if line.strip().startswith('## 14:09')]
-        self.assertEqual(len(time_lines), 1)
-
-
-class SplitLongParagraphsTest(unittest.TestCase):
-    def test_splits_long_paragraph(self):
-        sentences = [f"这是第{i}个用来测试段落切分功能的完整句子包含足够多的汉字来确保超过阈值。" for i in range(20)]
-        long_text = ''.join(sentences)
-        self.assertGreater(len(long_text), 500, f"测试输入只有{len(long_text)}字")
-        result = clean.split_long_paragraphs(long_text, max_chars=500)
-        paragraphs = [paragraph for paragraph in result.split('\n\n') if paragraph.strip()]
-        self.assertGreater(len(paragraphs), 1)
-
-    def test_keeps_short_paragraph(self):
-        text = "这是一段很短的文字。不需要切分。"
-        result = clean.split_long_paragraphs(text, max_chars=500)
-        paragraphs = [paragraph for paragraph in result.split('\n\n') if paragraph.strip()]
-        self.assertEqual(len(paragraphs), 1)
-
-    def test_protects_time_headers(self):
-        text = "## 14:30\n\n" + "这是一段很长的文字。" * 30
-        result = clean.split_long_paragraphs(text, max_chars=500)
-        self.assertIn("## 14:30", result)
-
-
-class BoldKeywordsTest(unittest.TestCase):
-    def test_bolds_english_proper_nouns(self):
-        text = "我在用 StreamDeck 配置技能书，然后用 Obsidian 做笔记。"
-        result = clean.bold_keywords(text)
-        self.assertIn("**StreamDeck**", result)
-        self.assertIn("**Obsidian**", result)
-
-    def test_skips_common_english_words(self):
-        text = "I like this tool very much and it is good."
-        result = clean.bold_keywords(text)
-        self.assertNotIn("**like**", result)
-        self.assertNotIn("**good**", result)
-        self.assertNotIn("**this**", result)
-
-    def test_bolds_high_freq_chinese_terms(self):
-        text = "技能书很好用。我喜欢技能书。技能书是核心功能。然后技能书还能扩展。"
-        result = clean.bold_keywords(text)
-        self.assertIn("**技能书**", result)
-
-
-class ProfanityFilterTest(unittest.TestCase):
-    def test_removes_inline_profanity(self):
-        text = "我操他妈这个功能太好了"
-        result = clean.remove_profanity(text)
-        self.assertNotIn("操", result)
-        self.assertNotIn("他妈", result)
-        self.assertIn("功能", result)
-
-    def test_removes_pure_profanity_line(self):
-        text = "这是正常内容。\n傻逼\n继续说话。"
-        result = clean.remove_profanity(text)
-        self.assertNotIn("傻逼", result)
-        self.assertIn("正常内容", result)
-        self.assertIn("继续说话", result)
-
-    def test_protects_time_headers(self):
-        text = "## 14:30\n我操这个太牛逼了"
-        result = clean.remove_profanity(text)
-        self.assertIn("## 14:30", result)
-        self.assertNotIn("我操", result)
-        self.assertNotIn("牛逼", result)
-
-    def test_removes_wo_cao(self):
-        text = "卧槽这也太厉害了吧"
-        result = clean.remove_profanity(text)
-        self.assertNotIn("卧槽", result)
-        self.assertIn("厉害", result)
-
-
-class CleanCliCompatibilityTest(unittest.TestCase):
-    def test_module_supports_stdout_mode_with_single_input_arg(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            input_path = Path(tmpdir) / "transcript.md"
-            input_path.write_text("我将为您转写 `demo.wav`。\n\n嗯\n老婆，晚上吃火锅。", encoding="utf-8")
-
-            result = subprocess.run(
-                [sys.executable, "-m", "openmy.services.cleaning.cleaner", str(input_path)],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                cwd=Path(__file__).resolve().parents[2],
-            )
-
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("老婆", result.stdout)
-            self.assertNotIn("我将为您转写", result.stdout)
+    def test_load_corrections_returns_list_when_missing(self):
+        result = clean.load_corrections()
+        self.assertIsInstance(result, list)
 
 
 if __name__ == "__main__":

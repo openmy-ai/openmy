@@ -234,23 +234,25 @@ class TestOpenMyCli(unittest.TestCase):
             self.cleanup_day_dir(date_str)
 
     def test_cli_clean_generates_output(self):
-        """openmy clean 应该从 raw 生成 transcript.md。"""
+        """openmy clean 应该从 raw 生成 transcript.md（mock Gemini CLI）。"""
+        from unittest.mock import patch
+        import argparse
+
         date_str = "2099-01-03"
         day_dir = self.make_day_dir(date_str)
-        (day_dir / "transcript.raw.md").write_text(
-            "# 2099-01-03 原始\n\n---\n\n## 10:00\n\n嗯\n老婆，今天去散步。",
-            encoding="utf-8",
-        )
+        raw_text = "# 2099-01-03 原始\n\n---\n\n## 10:00\n\n嗯\n老婆，今天去散步。"
+        (day_dir / "transcript.raw.md").write_text(raw_text, encoding="utf-8")
 
         try:
-            result = subprocess.run(
-                [sys.executable, "-m", "openmy", "clean", date_str],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                cwd=PROJECT_ROOT,
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
+            with patch(
+                "openmy.services.cleaning.cleaner.clean_with_gemini_cli",
+                return_value="## 10:00\n\n老婆，今天去散步。",
+            ):
+                from openmy.cli import cmd_clean
+                args = argparse.Namespace(date=date_str)
+                result = cmd_clean(args)
+                self.assertEqual(result, 0)
+
             transcript = (day_dir / "transcript.md").read_text(encoding="utf-8")
             self.assertIn("老婆", transcript)
         finally:
