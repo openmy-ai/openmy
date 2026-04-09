@@ -416,6 +416,98 @@ def build_legacy_compatible_payload(data: dict[str, Any]) -> dict[str, Any]:
     return compat
 
 
+# ── 提取输出的 JSON Schema（传给 Gemini API 做结构化约束）──────────
+EXTRACTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "daily_summary": {"type": "string", "description": "三句以内的人话总结"},
+        "events": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "time": {"type": "string"},
+                    "project": {"type": "string"},
+                    "summary": {"type": "string"},
+                },
+                "required": ["time", "project", "summary"],
+            },
+        },
+        "intents": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "intent_id": {"type": "string"},
+                    "kind": {"type": "string", "enum": ["action_item", "commitment", "open_question", "decision"]},
+                    "what": {"type": "string"},
+                    "status": {"type": "string", "enum": ["open", "active", "done"]},
+                    "who": {
+                        "type": "object",
+                        "properties": {
+                            "kind": {"type": "string", "enum": ["user", "agent", "other_person", "shared", "unclear"]},
+                            "label": {"type": "string"},
+                        },
+                        "required": ["kind", "label"],
+                    },
+                    "confidence_label": {"type": "string", "enum": ["high", "medium", "low"]},
+                    "confidence_score": {"type": "number"},
+                    "needs_review": {"type": "boolean"},
+                    "evidence_quote": {"type": "string"},
+                    "source_scene_id": {"type": "string"},
+                    "topic": {"type": "string"},
+                    "speech_act": {"type": "string", "enum": ["self_instruction", "delegation", "question", "decision"]},
+                    "due": {
+                        "type": "object",
+                        "properties": {
+                            "raw_text": {"type": "string"},
+                            "iso_date": {"type": "string"},
+                            "granularity": {"type": "string", "enum": ["none", "day", "time"]},
+                        },
+                        "required": ["raw_text", "iso_date", "granularity"],
+                    },
+                    "project_hint": {"type": "string"},
+                    "source_recording_id": {"type": "string"},
+                },
+                "required": ["intent_id", "kind", "what", "status", "who", "confidence_label", "confidence_score",
+                             "needs_review", "evidence_quote", "source_scene_id", "topic", "speech_act", "due",
+                             "project_hint", "source_recording_id"],
+            },
+        },
+        "facts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "fact_type": {"type": "string", "enum": ["observation", "idea", "preference", "relation", "project_update"]},
+                    "content": {"type": "string"},
+                    "topic": {"type": "string"},
+                    "confidence_label": {"type": "string", "enum": ["high", "medium", "low"]},
+                    "confidence_score": {"type": "number"},
+                    "source_scene_id": {"type": "string"},
+                },
+                "required": ["fact_type", "content", "topic", "confidence_label", "confidence_score", "source_scene_id"],
+            },
+        },
+        "role_hints": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "time": {"type": "string"},
+                    "role": {"type": "string"},
+                    "basis": {"type": "string", "enum": ["explicit", "inferred"]},
+                    "confidence": {"type": "number"},
+                    "evidence": {"type": "string"},
+                },
+                "required": ["time", "role", "basis", "confidence", "evidence"],
+            },
+        },
+    },
+    "required": ["daily_summary", "events", "intents", "facts", "role_hints"],
+}
+
+
 def call_gemini(text: str, api_key: str, model: str = GEMINI_MODEL, reference_date: str | None = None) -> dict | None:
     """调 Gemini API 提取结构化数据。"""
     if getattr(genai, "Client", None) is None:
@@ -432,6 +524,7 @@ def call_gemini(text: str, api_key: str, model: str = GEMINI_MODEL, reference_da
             config={
                 "temperature": 0.2,
                 "response_mime_type": "application/json",
+                "response_json_schema": EXTRACTION_SCHEMA,
             },
         )
     except Exception as exc:
