@@ -1,0 +1,2 @@
+{"correction_id": "corr_20260408_165901_937591", "created_at": "2026-04-08T16:59:01.937591+08:00", "actor": "user", "op": "reject_decision", "target_type": "decision", "target_id": "decision_lunch", "payload": {"target_title": "中午改吃河南蒸菜"}, "reason": ""}
+{"correction_id": "corr_20260408_222117_776007", "created_at": "2026-04-08T22:21:17.776007+08:00", "actor": "user", "op": "reject_loop", "target_type": "loop", "target_id": "loop_检查冰箱是否有鸡蛋", "payload": {"target_title": "检查冰箱是否有鸡蛋"}, "reason": ""}

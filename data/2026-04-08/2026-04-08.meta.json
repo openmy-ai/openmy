@@ -1,0 +1,214 @@
+{
+  "daily_summary": "用户正在全力开发名为“OpenMy”的个人上下文引擎项目，旨在将日常录音转化为结构化的AI可用数据。目前重点在于完善纠错系统架构，并计划通过TDD测试跑通从录音输入到文档输出的全流程。",
+  "events": [
+    {
+      "time": "13:15",
+      "project": "OpenMy",
+      "summary": "讨论项目更名及架构设计"
+    },
+    {
+      "time": "15:15",
+      "project": "OpenMy",
+      "summary": "探讨系统架构及纠错机制"
+    },
+    {
+      "time": "20:51",
+      "project": "OpenMy",
+      "summary": "规划录音管道的TDD测试流程"
+    }
+  ],
+  "intents": [
+    {
+      "intent_id": "intent_001",
+      "kind": "decision",
+      "what": "将项目正式更名为 OpenMy",
+      "status": "done",
+      "who": {
+        "kind": "user",
+        "label": "用户",
+        "entity_id": null
+      },
+      "confidence_label": "high",
+      "confidence_score": 1.0,
+      "needs_review": false,
+      "evidence_quote": "OpenMy 怎么样？我觉得我开源这产品名。对。可以。OpenMy 叫。",
+      "source_scene_id": "scene_1315",
+      "topic": "项目命名",
+      "speech_act": "decision",
+      "due": {
+        "raw_text": "今天",
+        "iso_date": "2026-04-08",
+        "granularity": "day"
+      },
+      "project_hint": "OpenMy",
+      "source_recording_id": "rec_20260408"
+    },
+    {
+      "intent_id": "intent_002",
+      "kind": "action_item",
+      "what": "优先开发并完善纠错系统",
+      "status": "active",
+      "who": {
+        "kind": "user",
+        "label": "用户",
+        "entity_id": null
+      },
+      "confidence_label": "high",
+      "confidence_score": 0.9,
+      "needs_review": false,
+      "evidence_quote": "我们先把这个纠错系统做了。",
+      "source_scene_id": "scene_1545",
+      "topic": "纠错系统",
+      "speech_act": "self_instruction",
+      "due": {
+        "raw_text": "近期",
+        "iso_date": "",
+        "granularity": "none"
+      },
+      "project_hint": "OpenMy",
+      "source_recording_id": "rec_20260408"
+    },
+    {
+      "intent_id": "intent_003",
+      "kind": "action_item",
+      "what": "执行录音管道的TDD测试",
+      "status": "active",
+      "who": {
+        "kind": "user",
+        "label": "用户",
+        "entity_id": null
+      },
+      "confidence_label": "high",
+      "confidence_score": 0.95,
+      "needs_review": false,
+      "evidence_quote": "让Codex去做整体的这个TDD测试",
+      "source_scene_id": "scene_2051",
+      "topic": "测试",
+      "speech_act": "self_instruction",
+      "due": {
+        "raw_text": "今天",
+        "iso_date": "2026-04-08",
+        "granularity": "day"
+      },
+      "project_hint": "OpenMy",
+      "source_recording_id": "rec_20260408"
+    },
+    {
+      "intent_id": "intent_004",
+      "kind": "action_item",
+      "what": "生成工作交接单",
+      "status": "open",
+      "who": {
+        "kind": "user",
+        "label": "用户",
+        "entity_id": null
+      },
+      "confidence_label": "high",
+      "confidence_score": 0.9,
+      "needs_review": false,
+      "evidence_quote": "给我生成一个等会儿我回来的工作交接单",
+      "source_scene_id": "scene_1645",
+      "topic": "工作交接",
+      "speech_act": "self_instruction",
+      "due": {
+        "raw_text": "今天",
+        "iso_date": "2026-04-08",
+        "granularity": "day"
+      },
+      "project_hint": "OpenMy",
+      "source_recording_id": "rec_20260408"
+    }
+  ],
+  "facts": [
+    {
+      "fact_type": "project_update",
+      "content": "项目正式更名为 OpenMy",
+      "topic": "项目命名",
+      "confidence_label": "high",
+      "confidence_score": 1.0,
+      "source_scene_id": "scene_1315"
+    },
+    {
+      "fact_type": "observation",
+      "content": "系统主要依赖录音作为数据源",
+      "topic": "系统架构",
+      "confidence_label": "high",
+      "confidence_score": 0.9,
+      "source_scene_id": "scene_1515"
+    }
+  ],
+  "role_hints": [
+    {
+      "time": "13:15",
+      "role": "自己",
+      "basis": "explicit",
+      "confidence": 1.0,
+      "evidence": "用户本人"
+    },
+    {
+      "time": "13:15",
+      "role": "AI",
+      "basis": "explicit",
+      "confidence": 1.0,
+      "evidence": "对话中的Agent/Codex"
+    },
+    {
+      "time": "17:15",
+      "role": "家人",
+      "basis": "explicit",
+      "confidence": 1.0,
+      "evidence": "提到妻子"
+    }
+  ],
+  "legacy_todos": [
+    {
+      "task": "优先开发并完善纠错系统",
+      "priority": "high",
+      "project": "OpenMy"
+    },
+    {
+      "task": "执行录音管道的TDD测试",
+      "priority": "high",
+      "project": "OpenMy"
+    },
+    {
+      "task": "生成工作交接单",
+      "priority": "high",
+      "project": "OpenMy"
+    }
+  ],
+  "todos": [
+    {
+      "task": "优先开发并完善纠错系统",
+      "priority": "high",
+      "project": "OpenMy"
+    },
+    {
+      "task": "执行录音管道的TDD测试",
+      "priority": "high",
+      "project": "OpenMy"
+    },
+    {
+      "task": "生成工作交接单",
+      "priority": "high",
+      "project": "OpenMy"
+    }
+  ],
+  "decisions": [
+    {
+      "project": "OpenMy",
+      "what": "将项目正式更名为 OpenMy",
+      "why": "OpenMy 怎么样？我觉得我开源这产品名。对。可以。OpenMy 叫。"
+    }
+  ],
+  "insights": [
+    {
+      "topic": "项目命名",
+      "content": "项目正式更名为 OpenMy"
+    },
+    {
+      "topic": "系统架构",
+      "content": "系统主要依赖录音作为数据源"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{"time": "2026-04-08T16:58:02.133571", "context_seq": 1, "status_line": "最近3天主要推进 日常事务；当前有 0 个待办未闭环；高频互动对象是 老婆。", "open_loop_count": 0, "top_entities": ["老婆"]}
+{"time": "2026-04-08T16:59:01.841727", "context_seq": 2, "status_line": "最近2天主要推进 日常事务；当前有 0 个待办未闭环；高频互动对象是 暂无。", "open_loop_count": 0, "top_entities": []}
+{"time": "2026-04-08T22:19:09.124029", "context_seq": 2, "status_line": "最近主要推进 日常事务；当前有 0 个待办未闭环；高频互动对象是 暂无。", "open_loop_count": 0, "top_entities": []}
+{"time": "2026-04-08T22:19:17.596054", "context_seq": 3, "status_line": "最近主要推进 日常事务；当前有 0 个待办未闭环；高频互动对象是 暂无。", "open_loop_count": 0, "top_entities": []}
+{"time": "2026-04-08T22:19:17.715697", "context_seq": 4, "status_line": "最近主要推进 日常事务；当前有 0 个待办未闭环；高频互动对象是 暂无。", "open_loop_count": 0, "top_entities": []}
+{"time": "2026-04-08T22:20:47.361233", "context_seq": 5, "status_line": "最近主要推进 合同对接、生活；当前有 2 个待办未闭环；高频互动对象是 暂无。", "open_loop_count": 2, "top_entities": []}
+{"time": "2026-04-08T22:20:47.362236", "context_seq": 5, "status_line": "最近主要推进 合同对接、生活；当前有 2 个待办未闭环；高频互动对象是 暂无。", "open_loop_count": 2, "top_entities": []}
+{"time": "2026-04-08T22:20:47.368241", "context_seq": 6, "status_line": "最近主要推进 合同对接、生活；当前有 2 个待办未闭环；高频互动对象是 暂无。", "open_loop_count": 2, "top_entities": []}
+{"time": "2026-04-08T22:21:17.880756", "context_seq": 7, "status_line": "最近主要推进 合同对接、生活；当前有 1 个待办未闭环；高频互动对象是 暂无。", "open_loop_count": 1, "top_entities": []}
+{"time": "2026-04-09T00:33:01.523845", "context_seq": 8, "status_line": "最近主要推进 OpenMy；当前有 6 个待办未闭环；高频互动对象是 AI助手、老婆。", "open_loop_count": 6, "top_entities": ["AI助手", "老婆"]}
+{"time": "2026-04-09T00:33:01.626634", "context_seq": 9, "status_line": "最近主要推进 OpenMy；当前有 6 个待办未闭环；高频互动对象是 AI助手、老婆。", "open_loop_count": 6, "top_entities": ["AI助手", "老婆"]}
+{"time": "2026-04-09T00:49:56.675355", "context_seq": 10, "status_line": "最近主要推进 OpenMy；当前有 6 个待办未闭环；高频互动对象是 AI助手、老婆。", "open_loop_count": 6, "top_entities": ["AI助手", "老婆"]}
+{"time": "2026-04-09T14:24:38.140706", "context_seq": 11, "status_line": "最近主要推进 OpenMy；当前有 9 个待办未闭环；高频互动对象是 暂无。", "open_loop_count": 9, "top_entities": []}
+{"time": "2026-04-09T14:24:38.200618", "context_seq": 12, "status_line": "最近主要推进 OpenMy；当前有 9 个待办未闭环；高频互动对象是 暂无。", "open_loop_count": 9, "top_entities": []}

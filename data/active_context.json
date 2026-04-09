@@ -1,0 +1,581 @@
+{
+  "schema_version": "active_context.v1",
+  "user_id": "user_zhousefu",
+  "generated_at": "2026-04-09T14:24:38.200618",
+  "context_seq": 12,
+  "materialized_from_event_seq": 12,
+  "default_delta_window_days": 3,
+  "status_line": "最近主要推进 OpenMy；当前有 9 个待办未闭环；高频互动对象是 暂无。",
+  "stable_profile": {
+    "identity": {
+      "canonical_name": "周瑟夫",
+      "preferred_name": "周瑟夫",
+      "primary_language": "zh-CN",
+      "timezone": "Asia/Shanghai",
+      "roles": [
+        "solo_founder",
+        "builder"
+      ]
+    },
+    "communication_contract": {
+      "answer_language": "zh-CN",
+      "answer_style": "direct_compact",
+      "tone": "plain",
+      "avoid": [
+        "long_bullet_lists",
+        "empty_empathy",
+        "english_syntax_chinese"
+      ],
+      "prefer": [
+        "short_paragraphs",
+        "specific_recommendations"
+      ]
+    },
+    "enduring_preferences": [],
+    "durable_constraints": [],
+    "routine_signals": [],
+    "key_people_registry": [
+      {
+        "id": "entity_ai助手",
+        "confidence": 0.9,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "2026-04-08T23:59:59+08:00",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "entity_id": "AI助手",
+        "display_name": "AI助手",
+        "canonical_name": "",
+        "relation_type": "ai",
+        "aliases": [
+          "AI助手"
+        ],
+        "default_address_style": ""
+      }
+    ]
+  },
+  "rolling_context": {
+    "recent_changes": [
+      {
+        "change_id": "chg_2099_04_08_今天主要聊了录音转写的问题_发现好多错误_比如_寄养费_被",
+        "changed_at": "2099-04-08T23:59:59+08:00",
+        "change_type": "new_decision",
+        "summary": "今天主要聊了录音转写的问题，发现好多错误，比如“寄养费”被转成“降费”，“阿加塔”成了“阿维塔”，怀疑是Gemini Flash的准确率有问题。我们决定项目先做Click版本，把前端可视化放后面，免得耽误时间，但强调“Click 也有很多可以美观的”。  我还吐槽了GPT额度，说“天天我跟这个额度斗智斗勇”，并提到了刘操和老婆的一些生活片段。最后，我们决定让GPT Pro研究Agent想了解什么，并把产品名定为“OpenMy”。",
+        "affected_ids": [
+          "decision_今天主要聊了录音转写的问题_发现好多错误_比如_寄养费_被转成_降费_阿加塔_成"
+        ],
+        "salience": 0.8
+      },
+      {
+        "change_id": "chg_2099_04_08_今天跟朋友聊_我在github上查了我的项目_发现竟然没有",
+        "changed_at": "2099-04-08T23:59:59+08:00",
+        "change_type": "new_decision",
+        "summary": "今天跟朋友聊，我在GitHub上查了我的项目，发现竟然没有同类产品，我开玩笑说“那我就成GitHub第一人了”。我们还聊到创业目的，朋友问“你自己创业目的就是为了给大厂收购？”，我肯定地说“对啊。当然啦”，并举了OpenCloud被OpenAI十亿收购的例子，澄清了收购是公司而非个人。最后，我决定要去申请一个域名，但今天网速实在太不给力了，烦死了。",
+        "affected_ids": [
+          "decision_今天跟朋友聊_我在github上查了我的项目_发现竟然没有同类产品_我开玩笑说_"
+        ],
+        "salience": 0.8
+      },
+      {
+        "change_id": "chg_2099_04_08_今天听了段录音_主要是在讨论一个agent系统_说话的人_",
+        "changed_at": "2099-04-08T23:59:59+08:00",
+        "change_type": "new_decision",
+        "summary": "今天听了段录音，主要是在讨论一个agent系统。说话的人（我）提到要演示agent如何读取上下文信息，并询问一个路径图文档的存放位置。  他们重点讨论了纠错系统，比如agent怎么处理像“购买17元头等舱香烟”这种不重要的待办，强调用户不应该直接用终端命令，而是让agent在对话中完成，原话是：“我本质上我不希望用户有任何的终端命令去改，他只需要在这个agent的对话窗口里面让agent去改就行了呀。” 他们决定先做好纠错系统。  另外，说话人觉得信息不同步，特别是skill.md很久没更新了，所以做了一个重要决定：“必须把所有的这个名字全部统一，就叫OpenMy”，担心不统一会越改越乱，但同时也担心改名会出问题。",
+        "affected_ids": [
+          "decision_今天听了段录音_主要是在讨论一个agent系统_说话的人_我_提到要演示agen"
+        ],
+        "salience": 0.8
+      },
+      {
+        "change_id": "chg_2099_04_08_今天_开发者和ai助手主要围绕开发者正在做的_openmy",
+        "changed_at": "2099-04-08T23:59:59+08:00",
+        "change_type": "new_decision",
+        "summary": "今天，开发者和AI助手主要围绕开发者正在做的“OpenMy”项目（之前叫DayTape）展开讨论，这个项目旨在将生活录音编译成AI可用的上下文，最终目标是成为“终极数字版的人的上下文”。开发者提到项目后期“角色识别”是最大的难点，并探讨了开源后的商业化模式（比如“双授权模式”）以及如何将项目打造成“个人IP的引流工具”。他们还聊了人类上下文的设计原理，并决定当前先专注于跑通录音到结构化上下文的转换。",
+        "affected_ids": [
+          "decision_今天_开发者和ai助手主要围绕开发者正在做的_openmy_项目_之前叫dayt"
+        ],
+        "salience": 0.8
+      },
+      {
+        "change_id": "chg_2099_04_08_今天这位朋友聊到一个为阿尔茨海默症患者设计的_伟大的项目_",
+        "changed_at": "2099-04-08T23:59:59+08:00",
+        "change_type": "new_decision",
+        "summary": "今天这位朋友聊到一个为阿尔茨海默症患者设计的“伟大的项目”，他觉得这比他以前的“垃圾”项目都好，连查理·维德都觉得很棒，而且他找遍了市场，发现这是“唯一解决方案”。但他担心项目超出开发能力，尤其在“无感”使用和数据导出方面。期间，他被狗踩到腿上，还提到自己“一点都不饿”，因为“在思考”，并决定“下周”回来，建议别人回复消息时直接说“这几天在忙什么”。",
+        "affected_ids": [
+          "decision_今天这位朋友聊到一个为阿尔茨海默症患者设计的_伟大的项目_他觉得这比他以前的_垃"
+        ],
+        "salience": 0.8
+      },
+      {
+        "change_id": "chg_2099_04_08_这段录音听起来像是一群朋友在厨房里忙活_可能在做鱼吃_有人",
+        "changed_at": "2099-04-08T23:59:59+08:00",
+        "change_type": "new_decision",
+        "summary": "这段录音听起来像是一群朋友在厨房里忙活，可能在做鱼吃。有人在关心食物有没有煮过火，还提醒说别把鱼弄得太碎。其中一个人吃得特别香，被开玩笑说“你在干嘛，你在这个狂吃”。他们还讨论了要不要放胡椒，以及够不够味。最后，有人决定“那我自己吃啦”，并提到要把什么东西揉满弄进去，感觉像是在准备一道很丰盛的菜！",
+        "affected_ids": [
+          "decision_这段录音听起来像是一群朋友在厨房里忙活_可能在做鱼吃_有人在关心食物有没有煮过火"
+        ],
+        "salience": 0.8
+      },
+      {
+        "change_id": "chg_2099_04_08_今天_说话的人给大家演示了他平时常用的一个工具_他展示了如",
+        "changed_at": "2099-04-08T23:59:59+08:00",
+        "change_type": "new_decision",
+        "summary": "今天，说话的人给大家演示了他平时常用的一个工具。他展示了如何通过输入斜杠、选择“深度调研”，然后提问（比如“2026 年 4 月份，目前全球最先进的 AI 智能体有哪些？”）来使用它。这个工具不只是简单回答，它会先全网搜索、出大纲，最后生成一份“非常完整的报告”。他说这只是今天演示的第一步。",
+        "affected_ids": [
+          "decision_今天_说话的人给大家演示了他平时常用的一个工具_他展示了如何通过输入斜杠_选择_"
+        ],
+        "salience": 0.8
+      }
+    ],
+    "active_projects": [
+      {
+        "id": "project_openmy",
+        "confidence": 0.85,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "project_id": "project_openmy",
+        "title": "OpenMy",
+        "status": "active",
+        "priority": "high",
+        "current_goal": "将项目正式更名为 OpenMy",
+        "next_actions": [
+          "嘿，先别动！我得问问你，你知道我让你回滚的是哪个前端版本吗？我的意思是回到咱们聊这事儿之前那个时间点的前端界面。  另外，记得把前端所有改动都备份好，然后生成一个交接日志。我刚才让Gemini CLI做了个前端改动，但说实话，我感觉“不如你写那个前端”。所以，咱们得想想别的方案，往把东西调整成适合本地用的方向走，我觉得这个方向“很好”。",
+          "今天，有人在看前端页面时发现，时间线里不该出现 Markdown 标记。他解释说，虽然这些是原文展开后的关键词，但“不应该出现在这个时间线的蒸流，蒸流的关键字里面”。他觉得正确的逻辑应该是像“5点14”那样，直接显示摘要，而不是这些标记。所以，这个前端显示 Markdown 标记的问题需要调整。",
+          "今天录音里，说话的人提了几个事。首先，角色功能可以先放一放，因为“角色的识别很难有一个特别好的路由方案”。接着，前端的“蒸馏”很重要，要用13.12那种归档方式，而不是简单放原文。他还提到，繁中CC和Gemini Click共用Gemini MD对他影响很大，问你有没有办法，但先别改动。最后，请你看看Codex对工作通报的看法，也先不要做改动。"
+        ],
+        "blockers": [],
+        "momentum": "steady",
+        "last_touched_at": "2026-04-08T23:59:59+08:00"
+      }
+    ],
+    "open_loops": [
+      {
+        "id": "loop_今天录音里主要聊了三件事_首先_发现ocr识别出来的信息有点问题_比如终端页面没",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "2026-04-07T23:59:59+08:00",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "loop_id": "loop_今天录音里主要聊了三件事_首先_发现ocr识别出来的信息有点问题_比如终端页面没",
+        "title": "今天录音里主要聊了三件事。首先，发现OCR识别出来的信息有点问题，比如终端页面没刷新，却一直报错“找不到路径”，说话人正在想这是为什么。接着，提到了“乐察窗”被IC收购后一年能赚29个亿，并强调了“如何保证你们三个人都严格遵守这套规则”的重要性。最后，有个待办事项：要把项目最新状态更新到Obsidian，并记得上传到GitHub，但要确保写好再发。",
+        "loop_type": "todo",
+        "status": "open",
+        "owner": "self",
+        "due_hint": "",
+        "priority": "medium",
+        "waiting_on": "",
+        "close_condition": ""
+      },
+      {
+        "id": "loop_今天录音里_说话的人提了几个事_首先_角色功能可以先放一放_因为_角色的识别很难",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "2026-04-07T23:59:59+08:00",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "loop_id": "loop_今天录音里_说话的人提了几个事_首先_角色功能可以先放一放_因为_角色的识别很难",
+        "title": "今天录音里，说话的人提了几个事。首先，角色功能可以先放一放，因为“角色的识别很难有一个特别好的路由方案”。接着，前端的“蒸馏”很重要，要用13.12那种归档方式，而不是简单放原文。他还提到，繁中CC和Gemini Click共用Gemini MD对他影响很大，问你有没有办法，但先别改动。最后，请你看看Codex对工作通报的看法，也先不要做改动。",
+        "loop_type": "todo",
+        "status": "open",
+        "owner": "self",
+        "due_hint": "",
+        "priority": "medium",
+        "waiting_on": "",
+        "close_condition": ""
+      },
+      {
+        "id": "loop_今天我跟码说_让他详细解释一下我们这个skill的执行流程和启动入口_比如怎么从",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "2099-04-08T23:59:59+08:00",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "loop_id": "loop_今天我跟码说_让他详细解释一下我们这个skill的执行流程和启动入口_比如怎么从",
+        "title": "今天我跟码说，让他详细解释一下我们这个skill的执行流程和启动入口，比如怎么从麦克风读取文件。我让他用一个音频文件演示整个流程，包括纠偏逻辑。  我发现目前的纠错系统和蒸馏逻辑可能都有问题，比如“同步状态日志到Obsidian”我都不清楚。我强调“我们是不需要用户去跟任何的终端去互动的”，而是让Agent完成所有操作。  我给“你”布置了几个待办：以新用户视角找出三个最迷惑的点，并用Super Power方式重写一个标准skill架构。同时，我们还要继续深入聊纠错系统，因为“这个事情可能是我们所有的内容里面最重要的一个东西”。",
+        "loop_type": "todo",
+        "status": "open",
+        "owner": "self",
+        "due_hint": "",
+        "priority": "medium",
+        "waiting_on": "",
+        "close_condition": ""
+      },
+      {
+        "id": "loop_今天_有人在看前端页面时发现_时间线里不该出现_markdown_标记_他解释说",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "2026-04-07T23:59:59+08:00",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "loop_id": "loop_今天_有人在看前端页面时发现_时间线里不该出现_markdown_标记_他解释说",
+        "title": "今天，有人在看前端页面时发现，时间线里不该出现 Markdown 标记。他解释说，虽然这些是原文展开后的关键词，但“不应该出现在这个时间线的蒸流，蒸流的关键字里面”。他觉得正确的逻辑应该是像“5点14”那样，直接显示摘要，而不是这些标记。所以，这个前端显示 Markdown 标记的问题需要调整。",
+        "loop_type": "todo",
+        "status": "open",
+        "owner": "self",
+        "due_hint": "",
+        "priority": "medium",
+        "waiting_on": "",
+        "close_condition": ""
+      },
+      {
+        "id": "loop_优先开发并完善纠错系统",
+        "confidence": 0.9,
+        "source_rank": "declared",
+        "first_seen_at": "",
+        "last_seen_at": "2026-04-08T23:59:59+08:00",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "loop_id": "loop_优先开发并完善纠错系统",
+        "title": "优先开发并完善纠错系统",
+        "loop_type": "actionable",
+        "status": "open",
+        "owner": "user",
+        "due_hint": "",
+        "priority": "high",
+        "waiting_on": "",
+        "close_condition": ""
+      },
+      {
+        "id": "loop_嘿_先别动_我得问问你_你知道我让你回滚的是哪个前端版本吗_我的意思是回到咱们聊",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "2026-04-07T23:59:59+08:00",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "loop_id": "loop_嘿_先别动_我得问问你_你知道我让你回滚的是哪个前端版本吗_我的意思是回到咱们聊",
+        "title": "嘿，先别动！我得问问你，你知道我让你回滚的是哪个前端版本吗？我的意思是回到咱们聊这事儿之前那个时间点的前端界面。  另外，记得把前端所有改动都备份好，然后生成一个交接日志。我刚才让Gemini CLI做了个前端改动，但说实话，我感觉“不如你写那个前端”。所以，咱们得想想别的方案，往把东西调整成适合本地用的方向走，我觉得这个方向“很好”。",
+        "loop_type": "todo",
+        "status": "open",
+        "owner": "self",
+        "due_hint": "",
+        "priority": "medium",
+        "waiting_on": "",
+        "close_condition": ""
+      },
+      {
+        "id": "loop_执行录音管道的tdd测试",
+        "confidence": 0.95,
+        "source_rank": "declared",
+        "first_seen_at": "",
+        "last_seen_at": "2026-04-08T23:59:59+08:00",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "loop_id": "loop_执行录音管道的tdd测试",
+        "title": "执行录音管道的TDD测试",
+        "loop_type": "actionable",
+        "status": "open",
+        "owner": "user",
+        "due_hint": "",
+        "priority": "high",
+        "waiting_on": "",
+        "close_condition": ""
+      },
+      {
+        "id": "loop_生成工作交接单",
+        "confidence": 0.9,
+        "source_rank": "declared",
+        "first_seen_at": "",
+        "last_seen_at": "2026-04-08T23:59:59+08:00",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "loop_id": "loop_生成工作交接单",
+        "title": "生成工作交接单",
+        "loop_type": "actionable",
+        "status": "open",
+        "owner": "user",
+        "due_hint": "",
+        "priority": "high",
+        "waiting_on": "",
+        "close_condition": ""
+      },
+      {
+        "id": "loop_这段录音里_说话者_我_和另一个人_你_主要讨论了工作上的事情_说话者让对方查看",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "2026-04-07T23:59:59+08:00",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "loop_id": "loop_这段录音里_说话者_我_和另一个人_你_主要讨论了工作上的事情_说话者让对方查看",
+        "title": "这段录音里，说话者（“我”）和另一个人（“你”）主要讨论了工作上的事情。说话者让对方查看反重力技能文档，并强调技能需要精简，因为“有很多已经用不上的 skill 了”。  他提出，如果看不到前端显示，就不知道对方做了什么，因此要求对方“用人话”解释改动，并列出从今天开始的工作时间轴。说话者自己今天下午要继续工作并办理交接，还生成了一个时间轴让对方核对架构。  期间，他们还确认了前端架构，并提到了端口占用和对方网络卡顿的问题，说话者还开玩笑说“你那屋太难受了”和“有老鼠”。",
+        "loop_type": "todo",
+        "status": "open",
+        "owner": "self",
+        "due_hint": "",
+        "priority": "medium",
+        "waiting_on": "",
+        "close_condition": ""
+      }
+    ],
+    "recent_decisions": [
+      {
+        "id": "decision_今天主要聊了录音转写的问题_发现好多错误_比如_寄养费_被转成_降费_阿加塔_成",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "decision_id": "decision_今天主要聊了录音转写的问题_发现好多错误_比如_寄养费_被转成_降费_阿加塔_成",
+        "topic": "briefing",
+        "decision": "今天主要聊了录音转写的问题，发现好多错误，比如“寄养费”被转成“降费”，“阿加塔”成了“阿维塔”，怀疑是Gemini Flash的准确率有问题。我们决定项目先做Click版本，把前端可视化放后面，免得耽误时间，但强调“Click 也有很多可以美观的”。  我还吐槽了GPT额度，说“天天我跟这个额度斗智斗勇”，并提到了刘操和老婆的一些生活片段。最后，我们决定让GPT Pro研究Agent想了解什么，并把产品名定为“OpenMy”。",
+        "scope": "project",
+        "effective_from": "2099-04-08T12:00:00+08:00",
+        "supersedes": []
+      },
+      {
+        "id": "decision_今天跟朋友聊_我在github上查了我的项目_发现竟然没有同类产品_我开玩笑说_",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "decision_id": "decision_今天跟朋友聊_我在github上查了我的项目_发现竟然没有同类产品_我开玩笑说_",
+        "topic": "briefing",
+        "decision": "今天跟朋友聊，我在GitHub上查了我的项目，发现竟然没有同类产品，我开玩笑说“那我就成GitHub第一人了”。我们还聊到创业目的，朋友问“你自己创业目的就是为了给大厂收购？”，我肯定地说“对啊。当然啦”，并举了OpenCloud被OpenAI十亿收购的例子，澄清了收购是公司而非个人。最后，我决定要去申请一个域名，但今天网速实在太不给力了，烦死了。",
+        "scope": "project",
+        "effective_from": "2099-04-08T12:00:00+08:00",
+        "supersedes": []
+      },
+      {
+        "id": "decision_今天听了段录音_主要是在讨论一个agent系统_说话的人_我_提到要演示agen",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "decision_id": "decision_今天听了段录音_主要是在讨论一个agent系统_说话的人_我_提到要演示agen",
+        "topic": "briefing",
+        "decision": "今天听了段录音，主要是在讨论一个agent系统。说话的人（我）提到要演示agent如何读取上下文信息，并询问一个路径图文档的存放位置。  他们重点讨论了纠错系统，比如agent怎么处理像“购买17元头等舱香烟”这种不重要的待办，强调用户不应该直接用终端命令，而是让agent在对话中完成，原话是：“我本质上我不希望用户有任何的终端命令去改，他只需要在这个agent的对话窗口里面让agent去改就行了呀。” 他们决定先做好纠错系统。  另外，说话人觉得信息不同步，特别是skill.md很久没更新了，所以做了一个重要决定：“必须把所有的这个名字全部统一，就叫OpenMy”，担心不统一会越改越乱，但同时也担心改名会出问题。",
+        "scope": "project",
+        "effective_from": "2099-04-08T12:00:00+08:00",
+        "supersedes": []
+      },
+      {
+        "id": "decision_今天_开发者和ai助手主要围绕开发者正在做的_openmy_项目_之前叫dayt",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "decision_id": "decision_今天_开发者和ai助手主要围绕开发者正在做的_openmy_项目_之前叫dayt",
+        "topic": "briefing",
+        "decision": "今天，开发者和AI助手主要围绕开发者正在做的“OpenMy”项目（之前叫DayTape）展开讨论，这个项目旨在将生活录音编译成AI可用的上下文，最终目标是成为“终极数字版的人的上下文”。开发者提到项目后期“角色识别”是最大的难点，并探讨了开源后的商业化模式（比如“双授权模式”）以及如何将项目打造成“个人IP的引流工具”。他们还聊了人类上下文的设计原理，并决定当前先专注于跑通录音到结构化上下文的转换。",
+        "scope": "project",
+        "effective_from": "2099-04-08T12:00:00+08:00",
+        "supersedes": []
+      },
+      {
+        "id": "decision_今天这位朋友聊到一个为阿尔茨海默症患者设计的_伟大的项目_他觉得这比他以前的_垃",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "decision_id": "decision_今天这位朋友聊到一个为阿尔茨海默症患者设计的_伟大的项目_他觉得这比他以前的_垃",
+        "topic": "briefing",
+        "decision": "今天这位朋友聊到一个为阿尔茨海默症患者设计的“伟大的项目”，他觉得这比他以前的“垃圾”项目都好，连查理·维德都觉得很棒，而且他找遍了市场，发现这是“唯一解决方案”。但他担心项目超出开发能力，尤其在“无感”使用和数据导出方面。期间，他被狗踩到腿上，还提到自己“一点都不饿”，因为“在思考”，并决定“下周”回来，建议别人回复消息时直接说“这几天在忙什么”。",
+        "scope": "project",
+        "effective_from": "2099-04-08T12:00:00+08:00",
+        "supersedes": []
+      },
+      {
+        "id": "decision_这段录音听起来像是一群朋友在厨房里忙活_可能在做鱼吃_有人在关心食物有没有煮过火",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "decision_id": "decision_这段录音听起来像是一群朋友在厨房里忙活_可能在做鱼吃_有人在关心食物有没有煮过火",
+        "topic": "briefing",
+        "decision": "这段录音听起来像是一群朋友在厨房里忙活，可能在做鱼吃。有人在关心食物有没有煮过火，还提醒说别把鱼弄得太碎。其中一个人吃得特别香，被开玩笑说“你在干嘛，你在这个狂吃”。他们还讨论了要不要放胡椒，以及够不够味。最后，有人决定“那我自己吃啦”，并提到要把什么东西揉满弄进去，感觉像是在准备一道很丰盛的菜！",
+        "scope": "project",
+        "effective_from": "2099-04-08T12:00:00+08:00",
+        "supersedes": []
+      },
+      {
+        "id": "decision_今天_说话的人给大家演示了他平时常用的一个工具_他展示了如何通过输入斜杠_选择_",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "decision_id": "decision_今天_说话的人给大家演示了他平时常用的一个工具_他展示了如何通过输入斜杠_选择_",
+        "topic": "briefing",
+        "decision": "今天，说话的人给大家演示了他平时常用的一个工具。他展示了如何通过输入斜杠、选择“深度调研”，然后提问（比如“2026 年 4 月份，目前全球最先进的 AI 智能体有哪些？”）来使用它。这个工具不只是简单回答，它会先全网搜索、出大纲，最后生成一份“非常完整的报告”。他说这只是今天演示的第一步。",
+        "scope": "project",
+        "effective_from": "2099-04-08T12:00:00+08:00",
+        "supersedes": []
+      },
+      {
+        "id": "decision_将项目正式更名为_openmy",
+        "confidence": 1.0,
+        "source_rank": "declared",
+        "first_seen_at": "",
+        "last_seen_at": "",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "decision_id": "decision_将项目正式更名为_openmy",
+        "topic": "OpenMy",
+        "decision": "将项目正式更名为 OpenMy",
+        "scope": "project",
+        "effective_from": "2026-04-08T12:00:00+08:00",
+        "supersedes": []
+      },
+      {
+        "id": "decision_今天我跟朋友聊了很多_主要是我打算把项目开源到github上_但很纠结_怎么去保",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "decision_id": "decision_今天我跟朋友聊了很多_主要是我打算把项目开源到github上_但很纠结_怎么去保",
+        "topic": "briefing",
+        "decision": "今天我跟朋友聊了很多，主要是我打算把项目开源到GitHub上，但很纠结“怎么去保护这个创意呢？”。我请他帮我分析怎么把开源方案做得“强可复制性、开箱即用”，还让他看看电脑内存占用4.2G的问题，以及前端页面怎么优化，特别是时间线文字的可读性。期间还提到我眼睛只是普通干眼，眼压正常。最后，朋友帮我擦了玻璃、整理了耳机线，我们决定继续深入聊开源的事。",
+        "scope": "project",
+        "effective_from": "2026-04-07T12:00:00+08:00",
+        "supersedes": []
+      },
+      {
+        "id": "decision_今天聊了好多事_先是吐槽手机和服务器老出问题_还抱怨有人老催他回家_让他觉得_没",
+        "confidence": 0.8,
+        "source_rank": "aggregate",
+        "first_seen_at": "",
+        "last_seen_at": "",
+        "last_confirmed_at": "",
+        "reinforcement_count": 0,
+        "stale": false,
+        "provenance_refs": [],
+        "decision_id": "decision_今天聊了好多事_先是吐槽手机和服务器老出问题_还抱怨有人老催他回家_让他觉得_没",
+        "topic": "briefing",
+        "decision": "今天聊了好多事，先是吐槽手机和服务器老出问题，还抱怨有人老催他回家，让他觉得“没一个省心的”。产品方面，大家讨论录音方案不该强制用户买DJI Mic，可以推荐但要灵活，并决定研究竞品Plaud。开发上，强调功能要“可复制化”和可定制，比如转写端要支持多种引擎。虽然前端页面打不开，但决定重点优化时间轴，要“蒸馏”出精简内容并提供多种可视化方式，同时保留查看原文的按钮。最后，决定让GPT Pro研究模块化架构，并把开源作为个人IP引流的方式。",
+        "scope": "project",
+        "effective_from": "2026-04-07T12:00:00+08:00",
+        "supersedes": []
+      }
+    ],
+    "belief_shifts": [],
+    "entity_rollups": [],
+    "topic_rollups": []
+  },
+  "realtime_context": {
+    "today_focus": [
+      "今天主要聊了录音转写的问题，发现好多错误，比如“寄养费”被转成“降费”，“阿加塔”成了“阿维塔”，怀疑是Gemini Flash的准确率有问题。我们决定项目先做Click版本，把前端可视化放后面，免得耽误时间，但强调“Click 也有很多可以美观的”。  我还吐槽了GPT额度，说“天天我跟这个额度斗智斗勇”，并提到了刘操和老婆的一些生活片段。最后，我们决定让GPT Pro研究Agent想了解什么，并把产品名定为“OpenMy”。",
+      "今天聊到AI模型，我琢磨着Anthropic Claude的中文名是不是叫克劳德，还有ChatGPT的中文叫啥，只知道Gemini是双子座。我吐槽谷歌起名字老是“变态”，比如那个“反重力 Antigravity”，觉得名字太长不好念，可能是产品卖不好的原因。所以我就想，我们应该换个名字，比如叫“OpenMy”就挺好，还能蹭Open Claude的热度呢！最后还急着说“快给我他妈的让我进去”。",
+      "今天跟朋友聊，我在GitHub上查了我的项目，发现竟然没有同类产品，我开玩笑说“那我就成GitHub第一人了”。我们还聊到创业目的，朋友问“你自己创业目的就是为了给大厂收购？”，我肯定地说“对啊。当然啦”，并举了OpenCloud被OpenAI十亿收购的例子，澄清了收购是公司而非个人。最后，我决定要去申请一个域名，但今天网速实在太不给力了，烦死了。",
+      "嘿，我最近被浏览器问题搞得特别烦！我根本分不清我现在用的到底是不是测试浏览器，感觉用 Raycast 的 F1 快捷键打开的 Chrome 好像是测试版。我现在特别困扰，想让你帮我看看这是为什么。我主要担心的是，如果我天天都用默认 Chrome 浏览器打开，会不会“被识别为自动脚本”啊？",
+      "今天聊技术架构，我跟对方说别用专业名词了，要用“我妈也能听懂的话”解释。我问OpenMy和agent怎么调用，要求对方现场演示流程，并确保启动时能调用OpenMy。我觉得MCP方式不好，应该是个skill，那些老名字也不清晰、不合理。我更倾向用Cloud code云端架构，而非click架构。我还提出，没有Obsidian笔记的用户怎么获取“全能源”，希望对方演示，因为“本质上都是用户会接到自己的agent”。"
+    ],
+    "today_state": {
+      "primary_mode": "design",
+      "energy": "high",
+      "time_pressure": "medium",
+      "interaction_load": "medium",
+      "dominant_topics": [
+        "今天主要聊了录音转写的问题，发现好多错误",
+        "今天聊到AI模型，我琢磨着Anthrop",
+        "今天跟朋友聊，我在GitHub上查了我的"
+      ],
+      "suggested_agent_posture": "先给结论，再展开；避免长篇枚举。",
+      "confidence": 0.7
+    },
+    "latest_scene_refs": [
+      {
+        "scene_id": "s12",
+        "time_range": "17:45-17:55",
+        "summary": "今天聊了不少事儿！先是有人提到生孩子的事，說如果女方願意承受，男方會配合。然後大家吃了生煎包，還約了下次再做土豆鮑魚吃。  Joseph的粉絲漲到200了，大家就聊到個人IP和項目引流是「相辅相成」的，強調不能只做內容搬運，要有自己的產出才能建立真正的IP。接著，大家討論了OpenMy這個項目，考慮是做成SaaS產品還是開源。雖然產品化有變現潛力，但大家一致認為「你的推銷是比你的功能更重要」，因為技術壁壘已經不高了，營銷才是關鍵。Joseph還明確表示，公眾號認證不想用英文名。"
+      },
+      {
+        "scene_id": "s13",
+        "time_range": "17:55-18:15",
+        "summary": "今天这位朋友聊到一个为阿尔茨海默症患者设计的“伟大的项目”，他觉得这比他以前的“垃圾”项目都好，连查理·维德都觉得很棒，而且他找遍了市场，发现这是“唯一解决方案”。但他担心项目超出开发能力，尤其在“无感”使用和数据导出方面。期间，他被狗踩到腿上，还提到自己“一点都不饿”，因为“在思考”，并决定“下周”回来，建议别人回复消息时直接说“这几天在忙什么”。"
+      },
+      {
+        "scene_id": "s14",
+        "time_range": "18:15-20:51",
+        "summary": "这段录音听起来像是一群朋友在厨房里忙活，可能在做鱼吃。有人在关心食物有没有煮过火，还提醒说别把鱼弄得太碎。其中一个人吃得特别香，被开玩笑说“你在干嘛，你在这个狂吃”。他们还讨论了要不要放胡椒，以及够不够味。最后，有人决定“那我自己吃啦”，并提到要把什么东西揉满弄进去，感觉像是在准备一道很丰盛的菜！"
+      },
+      {
+        "scene_id": "s15",
+        "time_range": "20:51-21:21",
+        "summary": "今天，我们正在测试系统，关于录音转写。说话者强调，核心的“路线 B”架构需支持用户接入多种语音识别端，因为“不可能每个人都有 Gemini Click”。他要求对方连接麦克风，让Codex进行完整的TDD测试，确保个人版功能跑通，并从录音到输出给人和Agent的文档验收。"
+      },
+      {
+        "scene_id": "s16",
+        "time_range": "21:21-21:21",
+        "summary": "今天，说话的人给大家演示了他平时常用的一个工具。他展示了如何通过输入斜杠、选择“深度调研”，然后提问（比如“2026 年 4 月份，目前全球最先进的 AI 智能体有哪些？”）来使用它。这个工具不只是简单回答，它会先全网搜索、出大纲，最后生成一份“非常完整的报告”。他说这只是今天演示的第一步。"
+      }
+    ],
+    "pending_followups_today": [
+      "今天我跟码说，让他详细解释一下我们这个skill的执行流程和启动入口，比如怎么从麦克风读取文件。我让他用一个音频文件演示整个流程，包括纠偏逻辑。  我发现目前的纠错系统和蒸馏逻辑可能都有问题，比如“同步状态日志到Obsidian”我都不清楚。我强调“我们是不需要用户去跟任何的终端去互动的”，而是让Agent完成所有操作。  我给“你”布置了几个待办：以新用户视角找出三个最迷惑的点，并用Super Power方式重写一个标准skill架构。同时，我们还要继续深入聊纠错系统，因为“这个事情可能是我们所有的内容里面最重要的一个东西”。"
+    ],
+    "ingestion_health": {
+      "last_processed_date": "2099-04-08",
+      "unresolved_scene_ratio_1d": 0.0,
+      "last_human_review_at": "2026-04-09T14:24:38.200618"
+    }
+  },
+  "quality": {
+    "coverage_days_30d": 1,
+    "scene_count_7d": 16,
+    "human_confirmed_items_30d": 0,
+    "uncertain_ratio_7d": 0.0,
+    "stale_fields": [],
+    "last_human_review_at": "2026-04-09T14:24:38.200618"
+  }
+}
