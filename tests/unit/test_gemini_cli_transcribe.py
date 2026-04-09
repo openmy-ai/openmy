@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 from openmy.adapters.transcription import gemini_cli as gemini_cli_transcribe
 
@@ -20,36 +20,58 @@ class GeminiCliTranscribeTest(unittest.TestCase):
                 'Claude、StreamDeck',
             )
 
-    def test_build_prompt_mentions_audio_and_vocab(self):
-        prompt = gemini_cli_transcribe.build_prompt('audio.wav', 'Claude、StreamDeck')
-        self.assertIn('@audio.wav', prompt)
+    def test_build_prompt_contains_vocab_and_instructions(self):
+        prompt = gemini_cli_transcribe.build_prompt('Claude、StreamDeck')
         self.assertIn('Claude、StreamDeck', prompt)
         self.assertIn('不要脑补', prompt)
+        self.assertIn('逐字转写', prompt)
 
-    def test_prepare_isolated_home_copies_auth_and_writes_minimal_settings(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            source_home = Path(tmpdir) / 'source'
-            source_home.mkdir()
-            for name in gemini_cli_transcribe.REQUIRED_GEMINI_HOME_FILES:
-                (source_home / name).write_text('{}', encoding='utf-8')
+    def test_build_prompt_no_at_prefix(self):
+        """SDK 版本不需要 @文件名 前缀。"""
+        prompt = gemini_cli_transcribe.build_prompt('常见词')
+        self.assertNotIn('@', prompt)
 
-            isolated_root = gemini_cli_transcribe.prepare_isolated_home(
-                source_home,
-                'gemini-3-flash-preview',
-            )
-            try:
-                gemini_dir = isolated_root / '.gemini'
-                for name in gemini_cli_transcribe.REQUIRED_GEMINI_HOME_FILES:
-                    self.assertTrue((gemini_dir / name).exists(), name)
+    def test_run_gemini_cli_backward_compat_requires_api_key(self):
+        """向后兼容接口在缺少 API key 时应报错。"""
+        with patch.dict('os.environ', {}, clear=True):
+            with self.assertRaises(RuntimeError) as ctx:
+                gemini_cli_transcribe.run_gemini_cli(
+                    audio_path=Path('/tmp/fake.mp3'),
+                    model='gemini-3.1-flash-lite-preview',
+                    vocab_terms='',
+                    timeout_seconds=10,
+                )
+            self.assertIn('GEMINI_API_KEY', str(ctx.exception))
 
-                settings = json.loads((gemini_dir / 'settings.json').read_text(encoding='utf-8'))
-                self.assertEqual(settings['model']['name'], 'gemini-3-flash-preview')
-                self.assertEqual(settings['general']['approvalMode'], 'yolo')
-                self.assertEqual(settings['security']['auth']['selectedType'], 'oauth-personal')
-            finally:
-                import shutil
+    def test_transcribe_audio_calls_sdk(self):
+        """验证 transcribe_audio 调用了 genai SDK。"""
+        mock_client = MagicMock()
+        mock_uploaded = MagicMock()
+        mock_uploaded.state = "ACTIVE"
+        mock_uploaded.uri = "gs://fake"
+        mock_uploaded.mime_type = "audio/mp3"
+        mock_uploaded.name = "files/fake"
+        mock_client.files.upload.return_value = mock_uploaded
 
-                shutil.rmtree(isolated_root, ignore_errors=True)
+        mock_response = MagicMock()
+        mock_response.text = "转写结果文本"
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch('openmy.adapters.transcription.gemini_cli.genai') as mock_genai:
+            mock_genai.Client.return_value = mock_client
+
+            with tempfile.NamedTemporaryFile(suffix='.mp3') as f:
+                result = gemini_cli_transcribe.transcribe_audio(
+                    audio_path=Path(f.name),
+                    api_key='fake-key',
+                    model='gemini-3.1-flash-lite-preview',
+                    vocab_terms='测试',
+                    timeout_seconds=10,
+                )
+
+            self.assertEqual(result, "转写结果文本")
+            mock_client.files.upload.assert_called_once()
+            mock_client.models.generate_content.assert_called_once()
 
 
 if __name__ == '__main__':

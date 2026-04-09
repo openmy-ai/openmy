@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import tempfile
@@ -8,8 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from openmy.adapters.transcription.gemini_cli import load_vocab_terms, run_gemini_cli
-from openmy.config import AUDIO_PIPELINE_TIMEOUT
+from openmy.adapters.transcription.gemini_cli import load_vocab_terms, transcribe_audio
+from openmy.config import AUDIO_PIPELINE_TIMEOUT, GEMINI_MODEL
 
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
@@ -162,13 +163,16 @@ def transcribe_audio_files(
     date_str: str,
     audio_files: list[str],
     output_dir: Path,
-    model: str = "gemini-3-flash-preview",
+    model: str = GEMINI_MODEL,
     chunk_minutes: int = 10,
     gemini_home: Path | None = None,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     vocab_terms = load_vocab_terms(VOCAB_FILE)
-    gemini_home = gemini_home or (Path.home() / ".gemini")
+
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("缺少 GEMINI_API_KEY 环境变量")
 
     rendered_parts: list[str] = [
         f"# {date_str} 上下文（原始）",
@@ -199,12 +203,12 @@ def transcribe_audio_files(
                 last_error: Exception | None = None
                 for attempt in range(1, 4):
                     try:
-                        transcript = run_gemini_cli(
+                        transcript = transcribe_audio(
                             audio_path=chunk.path,
+                            api_key=api_key,
                             model=model,
                             vocab_terms=vocab_terms,
                             timeout_seconds=AUDIO_PIPELINE_TIMEOUT,
-                            gemini_home=gemini_home,
                         )
                         last_error = None
                         break

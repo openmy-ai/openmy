@@ -70,6 +70,7 @@ class TranscribeAudioFilesTest(unittest.TestCase):
             ]
 
             with (
+                mock.patch.dict("os.environ", {"GEMINI_API_KEY": "fake-key"}),
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.prepare_audio_chunks",
                     side_effect=prepared,
@@ -79,7 +80,7 @@ class TranscribeAudioFilesTest(unittest.TestCase):
                     return_value="OpenMy",
                 ),
                 mock.patch(
-                    "openmy.services.ingest.audio_pipeline.run_gemini_cli",
+                    "openmy.services.ingest.audio_pipeline.transcribe_audio",
                     side_effect=["第一段", "第二段-1", "第二段-2"],
                 ) as transcribe_mock,
             ):
@@ -113,6 +114,7 @@ class TranscribeAudioFilesTest(unittest.TestCase):
             chunk_one.write_bytes(b"mp3")
 
             with (
+                mock.patch.dict("os.environ", {"GEMINI_API_KEY": "fake-key"}),
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.prepare_audio_chunks",
                     return_value=[PreparedChunk(path=chunk_one, time_label="13:15")],
@@ -122,7 +124,7 @@ class TranscribeAudioFilesTest(unittest.TestCase):
                     return_value="OpenMy",
                 ),
                 mock.patch(
-                    "openmy.services.ingest.audio_pipeline.run_gemini_cli",
+                    "openmy.services.ingest.audio_pipeline.transcribe_audio",
                     side_effect=[RuntimeError("Premature close"), RuntimeError("Premature close"), "第三次成功"],
                 ) as transcribe_mock,
                 mock.patch("openmy.services.ingest.audio_pipeline.time.sleep") as sleep_mock,
