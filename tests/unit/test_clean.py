@@ -41,6 +41,9 @@ class CleanPromptTest(unittest.TestCase):
     def test_prompt_has_text_placeholder(self):
         self.assertIn("{text}", clean.CLEAN_PROMPT)
 
+    def test_prompt_preserves_meta_correction_examples(self):
+        self.assertIn("如果原文是在举例说明某个词被转写错了", clean.CLEAN_PROMPT)
+
 
 class GeminiCLICallTest(unittest.TestCase):
     """验证 Gemini CLI 调用的参数和错误处理"""
@@ -113,6 +116,19 @@ class CorrectionUtilsTest(unittest.TestCase):
         self.assertNotIn("青维", result)
         self.assertIn("降费", result)
         self.assertNotIn("寄养费", result)
+
+    @patch('openmy.services.cleaning.cleaner.load_corrections')
+    def test_apply_corrections_skips_meta_line_when_right_term_already_present(self, mock_load):
+        mock_load.return_value = [
+            {"wrong": "降费", "right": "寄养费"},
+            {"wrong": "阿加塔", "right": "阿维塔"},
+        ]
+        text = (
+            "我懂了，这个是我去宠物医院，然后说的那个寄养费啊，它给转写成了降费。\n"
+            "然后这个阿加塔其实是阿维塔。"
+        )
+        result = clean.apply_corrections(text)
+        self.assertEqual(result, text)
 
 
 class TimeHeaderValidationTest(unittest.TestCase):

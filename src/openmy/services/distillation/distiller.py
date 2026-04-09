@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from google import genai
 
-DEFAULT_MODEL = 'gemini-2.5-flash'
+from openmy.config import GEMINI_MODEL
 
 def summarize_scene(text: str, api_key: str, model: str) -> str:
     client = genai.Client(api_key=api_key)
@@ -46,7 +46,7 @@ def distill_scenes(scenes_path: Path, api_key: str, model: str) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description='Distill scene summaries with Gemini API.')
     parser.add_argument('scenes_json', help='Path to scenes.json')
-    parser.add_argument('--model', default=DEFAULT_MODEL)
+    parser.add_argument('--model', default=GEMINI_MODEL)
     parser.add_argument('--api-key-env', default='GEMINI_API_KEY')
     args = parser.parse_args()
 
