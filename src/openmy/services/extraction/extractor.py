@@ -38,7 +38,7 @@ except ImportError:  # pragma: no cover - 本地缺依赖时给测试留钩子
     genai = _GenAIStub()
 
 
-from openmy.config import GEMINI_MODEL, THINKING_LEVEL_EXTRACT
+from openmy.config import GEMINI_MODEL, EXTRACT_TEMPERATURE, EXTRACT_THINKING_LEVEL
 CN_NUMBER_MAP = {
     "零": 0,
     "〇": 0,
@@ -522,10 +522,10 @@ def call_gemini(text: str, api_key: str, model: str = GEMINI_MODEL, reference_da
             model=model,
             contents=prompt,
             config={
-                "temperature": 0.2,
+                "temperature": EXTRACT_TEMPERATURE,
                 "response_mime_type": "application/json",
                 "response_json_schema": EXTRACTION_SCHEMA,
-                "thinking_config": {"thinking_level": THINKING_LEVEL_EXTRACT},
+                "thinking_config": {"thinking_level": EXTRACT_THINKING_LEVEL},
             },
         )
     except Exception as exc:

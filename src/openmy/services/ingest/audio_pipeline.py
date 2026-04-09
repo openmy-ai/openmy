@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from openmy.adapters.transcription.gemini_cli import load_vocab_terms, run_gemini_cli
+from openmy.config import AUDIO_PIPELINE_TIMEOUT
 
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
@@ -202,7 +203,7 @@ def transcribe_audio_files(
                             audio_path=chunk.path,
                             model=model,
                             vocab_terms=vocab_terms,
-                            timeout_seconds=1800,
+                            timeout_seconds=AUDIO_PIPELINE_TIMEOUT,
                             gemini_home=gemini_home,
                         )
                         last_error = None
