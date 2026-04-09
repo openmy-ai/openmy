@@ -38,7 +38,7 @@ except ImportError:  # pragma: no cover - 本地缺依赖时给测试留钩子
     genai = _GenAIStub()
 
 
-DEFAULT_MODEL = "gemini-3.1-flash-lite-preview"
+from openmy.config import GEMINI_MODEL
 CN_NUMBER_MAP = {
     "零": 0,
     "〇": 0,
@@ -416,7 +416,7 @@ def build_legacy_compatible_payload(data: dict[str, Any]) -> dict[str, Any]:
     return compat
 
 
-def call_gemini(text: str, api_key: str, model: str = DEFAULT_MODEL, reference_date: str | None = None) -> dict | None:
+def call_gemini(text: str, api_key: str, model: str = GEMINI_MODEL, reference_date: str | None = None) -> dict | None:
     """调 Gemini API 提取结构化数据。"""
     if getattr(genai, "Client", None) is None:
         print("Gemini SDK 不可用：缺少 google-genai", file=sys.stderr)
@@ -566,7 +566,7 @@ def run_extraction(
     input_file: str | Path,
     *,
     date: str | None = None,
-    model: str = DEFAULT_MODEL,
+    model: str = GEMINI_MODEL,
     vault_path: str | None = None,
     api_key: str | None = None,
     dry_run: bool = False,
@@ -628,7 +628,7 @@ def main():
     parser = argparse.ArgumentParser(description="从每日上下文转写中提取结构化摘要")
     parser.add_argument("input_file", help="清洗后的 Markdown 文件 (YYYY-MM-DD.md)")
     parser.add_argument("--date", help="日期 (YYYY-MM-DD)，默认从文件名推断")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Gemini 模型 (默认: {DEFAULT_MODEL})")
+    parser.add_argument("--model", default=GEMINI_MODEL, help=f"Gemini 模型 (默认: {GEMINI_MODEL})")
     parser.add_argument("--vault-path", help="Obsidian Vault 路径，指定后自动分发到 Vault")
     parser.add_argument("--api-key", help="Gemini API key (或设置 GEMINI_API_KEY 环境变量)")
     parser.add_argument("--dry-run", action="store_true", help="只打印提取结果，不写入文件")

@@ -163,7 +163,7 @@ class TestExtractorCallGemini(unittest.TestCase):
             result = extractor.run_extraction(input_path, date="2026-04-08", dry_run=True, api_key="test-key")
 
         self.assertIsNotNone(result)
-        call_gemini.assert_called_once_with("今天记一下。", "test-key", extractor.DEFAULT_MODEL, "2026-04-08")
+        call_gemini.assert_called_once_with("今天记一下。", "test-key", extractor.GEMINI_MODEL, "2026-04-08")
 
     @patch("openmy.services.extraction.extractor.genai.Client")
     def test_call_gemini_uses_sdk_and_parses_json(self, client_cls):

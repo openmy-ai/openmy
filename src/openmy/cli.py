@@ -494,7 +494,8 @@ def cmd_distill(args: argparse.Namespace) -> int:
         console.print(f"[red]❌ 找不到 {date_str}/scenes.json，先运行 openmy roles {date_str}[/red]")
         return 1
 
-    from openmy.services.distillation.distiller import DEFAULT_MODEL, summarize_scene
+    from openmy.config import GEMINI_MODEL
+    from openmy.services.distillation.distiller import summarize_scene
 
     pending = [scene for scene in data.get("scenes", []) if not scene.get("summary")]
     if not pending:
@@ -515,7 +516,7 @@ def cmd_distill(args: argparse.Namespace) -> int:
             if scene.get("summary"):
                 continue
             text = scene.get("text", "").strip()
-            scene["summary"] = summarize_scene(text, api_key, DEFAULT_MODEL) if text else ""
+            scene["summary"] = summarize_scene(text, api_key, GEMINI_MODEL) if text else ""
             progress.advance(task)
 
     write_json(scenes_path, data)
