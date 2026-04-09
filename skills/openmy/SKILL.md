@@ -1,165 +1,105 @@
 ---
 name: openmy
-description: OpenMy 是自维护的个人上下文系统。信源是录音和 Screenpipe，前端给用户，CLI 给 Agent。这份文档定义产品是什么，不是怎么调命令。
+description: Use when Agent needs to understand the user (who they are, what they're doing, what's pending), correct wrong context, or process audio recordings. Triggers on startup context loading, stale loop checking, entity/project corrections, and audio ingestion.
 ---
 
-# OpenMy — 自维护的个人上下文系统
+# OpenMy — 个人上下文引擎
 
-> 核心定义：让 Agent 少猜一点。
-> 不是笔记工具，不是日报生成器，是 Agent 的"用户认知层"。
+> OpenMy 是自维护的个人上下文系统。Agent 启动时读它了解用户，对话中发现错误时写回纠正。
+>
+> **第零铁律：用户永远不碰终端。** CLI 给 Agent 调，前端给用户看。
+>
+> 产品架构、信源体系、路线图 → 见 `references/architecture.md`
 
-## 第零铁律
+---
 
-**用户永远不碰终端。**
+## 启动时必做（每次新对话）
 
-- CLI 是 Agent 的 API，不是给人用的
-- 前端页面（`app/`）是用户唯一的界面
-- 用户只通过自然语言对话和 Agent 交互，Agent 负责调用 CLI
+### 1. 读取用户上下文
 
-## 产品是什么
-
-OpenMy 是一个本地优先的个人上下文内核。它：
-
-1. **自动采集** — 录音（DJI Mic，你说了什么）+ Screenpipe（你做了什么）
-2. **自动理解** — 转写 → 清洗 → 场景切分 → 角色归因 → 蒸馏 → 提取 → 聚合
-3. **自动维护** — active_context 跨日滚动更新，corrections 追加式修正
-4. **Agent 消费** — 任何 Agent 启动时读 active_context，就知道用户是谁、在忙什么、有什么待办
-5. **用户无感** — 用户只管过日子，系统在后台运转
-
-## 信源（只有两个）
-
-| 信源 | 角色 | 采集方式 |
-|------|------|---------|
-| 🎙️ 录音 | "你说了什么" | DJI Mic 全天佩戴 → 音频文件 → 去静音 → 压缩 → 切块 → 转写 |
-| 👁️ Screenpipe | "你做了什么" | 屏幕活动自动采集 → API 查询 → 角色归因辅助 |
-
-## 架构分层
-
-```
-┌──────────────────────────────────────┐
-│              前端页面                 │  ← 给用户看的
-│   查看个人档案 / 确认纠正 / 时间轴    │     app/index.html + app/server.py
-└──────────────────┬───────────────────┘
-                   │ HTTP API
-┌──────────────────┴───────────────────┐
-│            CLI / Python API          │  ← 给 Agent 调的
-│   openmy context / correct / run     │     src/openmy/cli.py
-└──────────────────┬───────────────────┘
-                   │ 读写
-┌──────────────────┴───────────────────┐
-│          active_context.json         │  ← 状态数据库
-│     corrections.jsonl（变更历史）      │     唯一真相源
-└──────────────────┬───────────────────┘
-                   │ 输入
-         ┌─────────┴─────────┐
-         │                   │
-     🎙️ 录音             👁️ Screenpipe
-    （你说了什么）        （你做了什么）
+```bash
+cd ~/Desktop/周瑟夫的上下文
+python3 -m openmy context --level 0       # 一句话摘要
+python3 -m openmy context --level 1       # 完整版
+python3 -m openmy context --compact       # Markdown（可注入 prompt）
 ```
 
-## 状态核心：active_context + corrections
-
-```
-active_context.json
-├── stable_profile        ← 长期不变：身份、偏好、关键人物
-│   └── identity, preferences, key_people_registry
-├── rolling_context       ← 滚动更新（7-14 天窗口）
-│   └── active_projects, open_loops, recent_decisions, entity_rollups
-└── realtime_context      ← 当天即时
-    └── today_focus, today_state
-
-corrections.jsonl         ← append-only 修正历史，查询时自动叠加
+或直接读文件：
+```bash
+cat data/active_context.compact.md
 ```
 
-## 处理管线
+### 2. 检查 stale loops
+
+读 `data/active_context.json` → `rolling_context.open_loops`。
+
+对每个 open_loop，检查 `last_seen_at` 是否超过 **7 天**。超过 → 主动问用户：
 
 ```
-音频文件
-  ↓ 去静音 + 压缩 + 切块（ffmpeg, services/ingest/audio_pipeline.py）
-  ↓ 转写（Gemini CLI, adapters/transcription/gemini_cli.py）
-  ↓ 清洗（services/cleaning/cleaner.py）
-  ↓ 场景切分（services/segmentation/segmenter.py）
-  ↓ 角色归因（services/roles/resolver.py）
-  ↓ 蒸馏（services/distillation/distiller.py）
-  ↓ 结构化提取：intents + facts（services/extraction/extractor.py）
-  ↓ 跨日聚合（services/context/consolidation.py）
-  ↓ active_context.json + corrections.jsonl
-  ↓ Agent 消费 / 前端展示
+"老板，这几个事还在开着：
+ 1. [loop.title] — 上次提到是 [last_seen_at]
+ 哪个做完了？哪个不想做了？"
 ```
 
-> [!IMPORTANT]
-> 音频导入**必须**经过本地去静音、压缩、切块预处理（`audio_pipeline.py`），
-> 然后才送到 Gemini 转写。不能直接把原始音频扔给 LLM。
+用户回答后立即调用：
 
-## 提取系统：intents + facts 双桶
-
-提取器输出两类结构化数据：
-
-- **intents** — 未来约束（待办、提醒、计划、承诺）
-  - 带 due date（支持中文相对时间归一化）
-  - 带 confidence + needs_review 标记
-- **facts** — 已发生/已知的事实（观察、决策、偏好）
-
-## 执行入口
-
-Agent 的具体操作命令见 `skills/openmy-agent/SKILL.md`（执行层 skill）。
-
-## 项目结构
-
-```
-~/Desktop/周瑟夫的上下文/
-├── src/openmy/                         ← Python 包
-│   ├── cli.py                           ← 统一 CLI 入口
-│   ├── domain/                          ← 领域模型（intent, fact, models）
-│   ├── services/
-│   │   ├── ingest/audio_pipeline.py     ← 音频预处理（去静音/压缩/切块/重试）
-│   │   ├── context/                     ← 状态系统（active_context, consolidation, corrections, renderer）
-│   │   ├── extraction/extractor.py      ← 结构化提取（intents + facts）
-│   │   ├── segmentation/segmenter.py    ← 场景切分
-│   │   ├── cleaning/cleaner.py          ← 文本清洗
-│   │   ├── roles/resolver.py            ← 角色归因
-│   │   ├── distillation/distiller.py    ← 蒸馏
-│   │   └── briefing/generator.py        ← 日报生成
-│   └── adapters/
-│       ├── transcription/gemini_cli.py  ← Gemini CLI 转写适配器
-│       └── screenpipe/client.py         ← Screenpipe API 客户端
-├── app/                                 ← 前端（用户唯一界面）
-│   ├── server.py                        ← HTTP 服务
-│   └── index.html                       ← 前端页面
-├── data/
-│   ├── active_context.json              ← 当前状态快照
-│   ├── active_context.compact.md        ← Agent 注入用压缩版
-│   ├── corrections.jsonl                ← 纠正历史（append-only）
-│   └── YYYY-MM-DD/                      ← 每日原始数据
-├── skills/
-│   ├── openmy/SKILL.md                  ← 本文件（产品级定义）
-│   └── openmy-agent/SKILL.md            ← 执行层 skill（Agent 命令路由）
-└── tests/                               ← 131 个测试
+```bash
+python3 -m openmy correct close-loop "待办标题"     # 做完了
+python3 -m openmy correct reject-loop "待办标题"    # 不想做了
+python3 -m openmy correct keep-loop "待办标题"      # 还在做
 ```
 
-## 纠正系统原则
+---
 
-1. **原始证据不改** — scenes.json、meta.json 是不可变事实
-2. **推断结果可重算** — active_context 每次都从原始数据重新生成
-3. **人工修正追加记录** — corrections.jsonl 是 append-only
-4. **查询默认读纠错后视图** — `context` 命令自动叠加 corrections
+## 对话中纠正
 
-## 路线图
+发现 active_context 有误时：
 
-- Phase 0：处理管道 ✅
-- Phase 1：状态快照（active_context 三层模型）✅
-- Phase 2：纠正系统 ✅
-- Phase 2.5：Intent 系统（intents + facts 双桶提取）✅
-- Phase 3：Screenpipe 信号接入
-- Phase 4：前端页面（Dashboard）
-- Phase 5：自维护闭环
-- Phase 6：声纹识别
+```bash
+python3 -m openmy correct merge-project "AI思维" "OpenMy"      # 合并项目
+python3 -m openmy correct reject-project "代理配置"             # 不是项目
+python3 -m openmy correct reject-decision "中午改吃河南蒸菜"     # 不是决策
+python3 -m openmy correct confirm-entity "燕子" --relation partner --display-name "老婆"
+python3 -m openmy correct list                                  # 查看纠正历史
+```
 
-详见 Obsidian `研究报告/OpenMy-产品路线图.md`
+**纠正一次，永久生效。** 下次 `context` 重新生成时自动叠加。
+
+---
+
+## CLI 命令速查
+
+| 命令 | 用途 |
+|------|------|
+| `openmy status` | 列出所有日期及处理状态 |
+| `openmy run YYYY-MM-DD --audio file.m4a` | 全流程：去静音→压缩→切块→转写→清洗→角色→蒸馏→提取→日报 |
+| `openmy run YYYY-MM-DD --skip-transcribe` | 跳过转写，复用已有数据 |
+| `openmy extract YYYY-MM-DD` | 单独跑结构化提取（intents + facts） |
+| `openmy view YYYY-MM-DD` | 终端查看某天概览 |
+| `openmy context [--level 0/1] [--compact]` | 生成/查看活动上下文 |
+| `openmy correct <action> <args>` | 纠正活动上下文 |
+| `openmy agent recent` | 最近状态（JSON） |
+| `openmy agent day YYYY-MM-DD` | 某天数据（JSON） |
+
+## 不要做什么
+
+- **不要**绕过 `openmy run --audio` 直接调转写。音频必须经过本地去静音/压缩/切块预处理
+- **不要**直接改 `active_context.json`。所有修正走 `correct` 命令（append-only）
+- **不要**改 `scenes.json`、`meta.json` 等原始证据文件。它们是不可变事实
+- **不要**在 SKILL.md 里擅自修改产品定位和愿景描述。先给老板看草案和 diff
+
+## 常见问题
+
+| 问题 | 解法 |
+|------|------|
+| 转写太慢 | 音频管道自动切块（默认 10 分钟），不需要手动分段 |
+| Screenpipe 未检测到 | `curl http://localhost:3030/health` 返回 200 |
+| 蒸馏/提取失败 | 确认 `GEMINI_API_KEY` 环境变量 |
+| 纠正没生效 | 纠正后重跑 `openmy context` |
 
 ## 测试
 
 ```bash
 cd ~/Desktop/周瑟夫的上下文
-python3 -m pytest tests/ -v    # 131 tests passed
+python3 -m pytest tests/ -v    # 131 tests
 ```
