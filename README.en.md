@@ -2,9 +2,9 @@
 
 <img src="docs/images/openmy-banner.png" alt="OpenMy" width="800" />
 
-**One audio file → a full day of structured context**
+**A personal context engine for many agents**
 
-Open-source personal context engine. Record your day, and it auto-transcribes, cleans, splits scenes, resolves roles, distills summaries, extracts structured data, and generates a browsable daily report.
+Turns raw personal signals such as audio and screen context into state that agents can query, correct, and accumulate across days. Gemini is the default recommended provider, but OpenMy is not defined by a single vendor.
 
 [![Release](https://img.shields.io/github/v/release/openmy-ai/openmy?style=flat-square&color=blue)](https://github.com/openmy-ai/openmy/releases)
 [![MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
@@ -27,7 +27,21 @@ echo "GEMINI_API_KEY=your-key" > .env
 openmy quick-start path/to/your-audio.wav
 ```
 
-> Requirements: Python 3.10+, FFmpeg, a Gemini API key.
+> Requirements: Python 3.10+, FFmpeg, and a usable provider key. The default path is still Gemini via `GEMINI_API_KEY`.
+
+### Provider Config
+
+- Default shortcut: `GEMINI_API_KEY`
+- Provider-neutral keys:
+  - `OPENMY_STT_PROVIDER`
+  - `OPENMY_STT_MODEL`
+  - `OPENMY_STT_API_KEY`
+  - `OPENMY_LLM_PROVIDER`
+  - `OPENMY_LLM_MODEL`
+  - `OPENMY_LLM_API_KEY`
+- Stage-specific overrides:
+  - `OPENMY_EXTRACT_MODEL`
+  - `OPENMY_DISTILL_MODEL`
 
 ---
 
@@ -72,6 +86,23 @@ graph TD
 
 ---
 
+## 🤖 Connect OpenMy To Your Agent
+
+OpenMy's real asset is durable context state plus a stable action contract, not a single CLI shell.
+
+Current stable JSON entrypoints:
+
+```bash
+openmy skill status.get --json
+openmy skill day.get --date 2026-04-08 --json
+openmy skill context.get --json
+openmy skill day.run --date 2026-04-08 --audio path/to/audio.wav --json
+```
+
+The old `openmy agent` entrypoint still exists as a compatibility alias.
+
+---
+
 ## 🖼️ Output
 
 <div align="center">
@@ -112,6 +143,8 @@ python3 -m pytest tests/ -v   # 167 tests, no API key needed
 
 ```
 src/openmy/
+  commands/          CLI / skill entrypoints
+  providers/         STT / LLM provider boundary
   services/
     ingest/            Audio import & preprocessing
     cleaning/          Text cleaning (rule engine)
@@ -122,6 +155,8 @@ src/openmy/
     briefing/          Daily briefing
     context/           Active context
     screen_recognition/  Screen context
+  adapters/
+    transcription/    Legacy transcription compatibility shim
 app/                  Report page
 tests/                Automated tests
 ```

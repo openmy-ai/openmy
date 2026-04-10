@@ -28,20 +28,16 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from openmy.config import (
+    EXTRACT_TEMPERATURE,
+    EXTRACT_THINKING_LEVEL,
+    EXTRACT_TIMEOUT,
+    GEMINI_MODEL,
+    get_llm_api_key,
+    get_stage_llm_model,
+)
 from openmy.domain.intent import DueDate, Fact, Intent
-
-try:
-    from google import genai
-    from google.genai import types
-except ImportError:  # pragma: no cover - 本地缺依赖时给测试留钩子
-    class _GenAIStub:
-        Client = None
-
-    genai = _GenAIStub()
-    types = None
-
-
-from openmy.config import GEMINI_MODEL, EXTRACT_TEMPERATURE, EXTRACT_THINKING_LEVEL, EXTRACT_TIMEOUT
+from openmy.providers.registry import ProviderRegistry
 
 CONFIDENCE_SCORE_BY_LABEL = {
     "high": 0.9,
@@ -812,46 +808,34 @@ def _call_gemini_json(
     response_json_schema: dict[str, Any],
     timeout_seconds: int,
 ) -> dict[str, Any]:
-    if getattr(genai, "Client", None) is None:
-        raise ExtractionError("Gemini SDK 不可用：缺少 google-genai")
-
-    client = genai.Client(api_key=api_key)
-    request_config = types.GenerateContentConfig(
-        temperature=EXTRACT_TEMPERATURE,
-        response_mime_type="application/json",
-        response_json_schema=response_json_schema,
-        thinking_config={"thinking_level": EXTRACT_THINKING_LEVEL},
-        http_options=types.HttpOptions(timeout=timeout_seconds * 1000),
-    )
-
     try:
-        response = client.models.generate_content(
+        provider = ProviderRegistry.from_env().get_llm_provider(
+            stage="extract",
+            api_key=api_key,
+            model=model or get_stage_llm_model("extract") or GEMINI_MODEL,
+        )
+        return provider.generate_json(
+            task="structured extraction",
+            prompt=prompt,
+            schema=response_json_schema,
             model=model,
-            contents=prompt,
-            config=request_config,
+            temperature=EXTRACT_TEMPERATURE,
+            thinking_level=EXTRACT_THINKING_LEVEL,
+            timeout_seconds=timeout_seconds,
         )
     except Exception as exc:
         if _looks_like_timeout(exc):
             raise ExtractionTimeoutError(f"Gemini 提取超时（{timeout_seconds}s）") from exc
         raise ExtractionError(f"Gemini 请求失败: {exc}") from exc
 
-    raw_text = _strip_code_fences(_extract_response_text(response))
-    if not raw_text:
-        raise ExtractionError("解析 Gemini 响应失败: 空响应")
 
-    try:
-        return json.loads(raw_text)
-    except json.JSONDecodeError as exc:
-        raise ExtractionError(f"解析 Gemini 响应失败: {exc}；原始响应片段: {raw_text[:200]}") from exc
-
-
-def call_gemini(text: str, api_key: str, model: str = GEMINI_MODEL, reference_date: str | None = None) -> dict:
+def call_gemini(text: str, api_key: str, model: str | None = None, reference_date: str | None = None) -> dict:
     """调 Gemini API 做第一阶段核心提取。"""
     prompt = _build_extract_prompt(text, reference_date)
     payload = _call_gemini_json(
         prompt,
         api_key=api_key,
-        model=model,
+        model=model or get_stage_llm_model("extract") or GEMINI_MODEL,
         response_json_schema=CORE_EXTRACTION_SCHEMA,
         timeout_seconds=EXTRACT_TIMEOUT,
     )
@@ -863,7 +847,7 @@ def call_gemini_enrichment(
     *,
     api_key: str,
     core_payload: dict[str, Any],
-    model: str = GEMINI_MODEL,
+    model: str | None = None,
     reference_date: str | None = None,
     scene_catalog: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
@@ -876,7 +860,7 @@ def call_gemini_enrichment(
     return _call_gemini_json(
         prompt,
         api_key=api_key,
-        model=model,
+        model=model or get_stage_llm_model("extract") or GEMINI_MODEL,
         response_json_schema=ENRICH_EXTRACTION_SCHEMA,
         timeout_seconds=EXTRACT_TIMEOUT,
     )
@@ -1015,7 +999,7 @@ def run_core_extraction(
     input_file: str | Path,
     *,
     date: str | None = None,
-    model: str = GEMINI_MODEL,
+    model: str | None = None,
     api_key: str | None = None,
     dry_run: bool = False,
     raise_on_error: bool = False,
@@ -1029,9 +1013,10 @@ def run_core_extraction(
         return None
 
     final_date = _resolve_final_date(input_path, date)
-    final_api_key = api_key or os.environ.get("GEMINI_API_KEY")
+    final_model = model or get_stage_llm_model("extract") or GEMINI_MODEL
+    final_api_key = api_key or get_llm_api_key("extract")
     if not final_api_key:
-        message = "错误: 请设置 GEMINI_API_KEY 环境变量或使用 --api-key 参数"
+        message = "错误: 请设置 OPENMY_LLM_API_KEY / OPENMY_EXTRACT_API_KEY，或兼容使用 GEMINI_API_KEY"
         print(message, file=sys.stderr)
         if raise_on_error:
             raise ExtractionError(message)
@@ -1039,10 +1024,10 @@ def run_core_extraction(
 
     text = _load_transcript_body(input_path)
     print(f"📖 读取 {input_path.name}: {len(text)} 字", file=sys.stderr)
-    print(f"🤖 调用 Gemini ({model}) 提取结构化摘要...", file=sys.stderr)
+    print(f"🤖 调用默认 LLM provider ({final_model}) 提取结构化摘要...", file=sys.stderr)
 
     try:
-        payload = mark_enrichment_status(call_gemini(text, final_api_key, model, final_date), "pending")
+        payload = mark_enrichment_status(call_gemini(text, final_api_key, final_model, final_date), "pending")
     except ExtractionError as exc:
         print(f"❌ 提取失败: {exc}", file=sys.stderr)
         if raise_on_error:
@@ -1060,7 +1045,7 @@ def run_enrichment_extraction(
     *,
     core_payload: dict[str, Any],
     date: str | None = None,
-    model: str = GEMINI_MODEL,
+    model: str | None = None,
     api_key: str | None = None,
     dry_run: bool = False,
     raise_on_error: bool = False,
@@ -1074,9 +1059,10 @@ def run_enrichment_extraction(
         return None
 
     final_date = _resolve_final_date(input_path, date)
-    final_api_key = api_key or os.environ.get("GEMINI_API_KEY")
+    final_model = model or get_stage_llm_model("extract") or GEMINI_MODEL
+    final_api_key = api_key or get_llm_api_key("extract")
     if not final_api_key:
-        message = "错误: 请设置 GEMINI_API_KEY 环境变量或使用 --api-key 参数"
+        message = "错误: 请设置 OPENMY_LLM_API_KEY / OPENMY_EXTRACT_API_KEY，或兼容使用 GEMINI_API_KEY"
         print(message, file=sys.stderr)
         if raise_on_error:
             raise ExtractionError(message)
@@ -1088,7 +1074,7 @@ def run_enrichment_extraction(
             text,
             api_key=final_api_key,
             core_payload=core_payload,
-            model=model,
+            model=final_model,
             reference_date=final_date,
             scene_catalog=_load_scene_catalog(input_path),
         )
@@ -1109,7 +1095,7 @@ def run_extraction(
     input_file: str | Path,
     *,
     date: str | None = None,
-    model: str = GEMINI_MODEL,
+    model: str | None = None,
     vault_path: str | None = None,
     api_key: str | None = None,
     dry_run: bool = False,
@@ -1124,10 +1110,11 @@ def run_extraction(
         return None
 
     final_date = _resolve_final_date(input_path, date)
+    final_model = model or get_stage_llm_model("extract") or GEMINI_MODEL
 
-    final_api_key = api_key or os.environ.get("GEMINI_API_KEY")
+    final_api_key = api_key or get_llm_api_key("extract")
     if not final_api_key:
-        message = "错误: 请设置 GEMINI_API_KEY 环境变量或使用 --api-key 参数"
+        message = "错误: 请设置 OPENMY_LLM_API_KEY / OPENMY_EXTRACT_API_KEY，或兼容使用 GEMINI_API_KEY"
         print(message, file=sys.stderr)
         if raise_on_error:
             raise ExtractionError(message)
@@ -1136,7 +1123,7 @@ def run_extraction(
     normalized_payload = run_core_extraction(
         input_path,
         date=final_date,
-        model=model,
+        model=final_model,
         api_key=final_api_key,
         dry_run=True,
         raise_on_error=raise_on_error,
@@ -1148,7 +1135,7 @@ def run_extraction(
         input_path,
         core_payload=normalized_payload,
         date=final_date,
-        model=model,
+        model=final_model,
         api_key=final_api_key,
         dry_run=True,
         raise_on_error=False,
@@ -1179,9 +1166,9 @@ def main():
     parser = argparse.ArgumentParser(description="从每日上下文转写中提取结构化摘要")
     parser.add_argument("input_file", help="清洗后的 Markdown 文件 (YYYY-MM-DD.md)")
     parser.add_argument("--date", help="日期 (YYYY-MM-DD)，默认从文件名推断")
-    parser.add_argument("--model", default=GEMINI_MODEL, help=f"Gemini 模型 (默认: {GEMINI_MODEL})")
+    parser.add_argument("--model", default=get_stage_llm_model("extract") or GEMINI_MODEL, help="LLM 模型")
     parser.add_argument("--vault-path", help="Obsidian Vault 路径，指定后自动分发到 Vault")
-    parser.add_argument("--api-key", help="Gemini API key (或设置 GEMINI_API_KEY 环境变量)")
+    parser.add_argument("--api-key", help="LLM API key（也兼容 GEMINI_API_KEY）")
     parser.add_argument("--dry-run", action="store_true", help="只打印提取结果，不写入文件")
     args = parser.parse_args()
 

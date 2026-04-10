@@ -9,8 +9,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from openmy.adapters.transcription.gemini_cli import load_vocab_terms, transcribe_audio
-from openmy.config import AUDIO_PIPELINE_TIMEOUT, GEMINI_MODEL
+from openmy.adapters.transcription.gemini_cli import load_vocab_terms
+from openmy.config import AUDIO_PIPELINE_TIMEOUT, GEMINI_MODEL, get_stt_api_key, get_stt_model
+from openmy.providers.registry import ProviderRegistry
 
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
@@ -81,6 +82,22 @@ def offset_time_label(base_time: str, offset_minutes: int) -> str:
     hour = total_minutes // 60
     minute = total_minutes % 60
     return f"{hour:02d}:{minute:02d}"
+
+
+def transcribe_audio(
+    audio_path: Path,
+    *,
+    api_key: str,
+    model: str,
+    vocab_terms: str,
+    timeout_seconds: int,
+) -> str:
+    provider = ProviderRegistry.from_env().get_stt_provider(model=model, api_key=api_key)
+    return provider.transcribe(
+        audio_path,
+        vocab_terms=vocab_terms,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def prepare_audio_chunks(audio_path: Path, work_dir: Path, chunk_minutes: int = 10) -> list[PreparedChunk]:
@@ -163,14 +180,15 @@ def transcribe_audio_files(
     date_str: str,
     audio_files: list[str],
     output_dir: Path,
-    model: str = GEMINI_MODEL,
+    model: str | None = None,
     chunk_minutes: int = 10,
     gemini_home: Path | None = None,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     vocab_terms = load_vocab_terms(VOCAB_FILE)
 
-    api_key = os.environ.get("GEMINI_API_KEY", "")
+    final_model = model or get_stt_model() or GEMINI_MODEL
+    api_key = get_stt_api_key()
     if not api_key:
         raise RuntimeError("缺少 GEMINI_API_KEY 环境变量")
 
@@ -206,7 +224,7 @@ def transcribe_audio_files(
                         transcript = transcribe_audio(
                             audio_path=chunk.path,
                             api_key=api_key,
-                            model=model,
+                            model=final_model,
                             vocab_terms=vocab_terms,
                             timeout_seconds=AUDIO_PIPELINE_TIMEOUT,
                         )

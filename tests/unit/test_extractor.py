@@ -165,28 +165,41 @@ class TestExtractorCallGemini(unittest.TestCase):
         self.assertIsNotNone(result)
         call_gemini.assert_called_once_with("今天记一下。", "test-key", extractor.GEMINI_MODEL, "2026-04-08")
 
-    @patch("openmy.services.extraction.extractor.genai.Client")
-    def test_call_gemini_uses_sdk_and_parses_json(self, client_cls):
-        client = client_cls.return_value
-        client.models.generate_content.return_value.text = json.dumps(
+    @patch("openmy.services.extraction.extractor.ProviderRegistry.from_env")
+    def test_call_gemini_uses_provider_and_parses_json(self, registry_factory):
+        provider = registry_factory.return_value.get_llm_provider.return_value
+        provider.generate_json.return_value = json.dumps(
             {"daily_summary": "ok", "events": [], "intents": [], "facts": [], "role_hints": []},
             ensure_ascii=False,
         )
 
+        provider.generate_json.side_effect = None
+        provider.generate_json.return_value = {
+            "daily_summary": "ok",
+            "events": [],
+            "intents": [],
+            "facts": [],
+            "role_hints": [],
+        }
+
         payload = extractor.call_gemini("你好", api_key="test-key", model="gemini-test", reference_date="2026-04-08")
 
         self.assertEqual(payload["daily_summary"], "ok")
-        self.assertTrue(client.models.generate_content.called)
-        self.assertIn("2026-04-08", client.models.generate_content.call_args.kwargs["contents"])
-        config = client.models.generate_content.call_args.kwargs["config"]
-        self.assertEqual(config.http_options.timeout, extractor.EXTRACT_TIMEOUT * 1000)
-        self.assertEqual(str(config.thinking_config.thinking_level), "ThinkingLevel.MEDIUM")
-        self.assertEqual(config.response_json_schema, extractor.CORE_EXTRACTION_SCHEMA)
+        registry_factory.return_value.get_llm_provider.assert_called_once_with(
+            stage="extract",
+            api_key="test-key",
+            model="gemini-test",
+        )
+        kwargs = provider.generate_json.call_args.kwargs
+        self.assertIn("2026-04-08", kwargs["prompt"])
+        self.assertEqual(kwargs["timeout_seconds"], extractor.EXTRACT_TIMEOUT)
+        self.assertEqual(kwargs["thinking_level"], extractor.EXTRACT_THINKING_LEVEL)
+        self.assertEqual(kwargs["schema"], extractor.CORE_EXTRACTION_SCHEMA)
 
-    @patch("openmy.services.extraction.extractor.genai.Client")
-    def test_call_gemini_converts_timeout_to_explicit_error(self, client_cls):
-        client = client_cls.return_value
-        client.models.generate_content.side_effect = TimeoutError("timed out")
+    @patch("openmy.services.extraction.extractor.ProviderRegistry.from_env")
+    def test_call_gemini_converts_timeout_to_explicit_error(self, registry_factory):
+        provider = registry_factory.return_value.get_llm_provider.return_value
+        provider.generate_json.side_effect = TimeoutError("timed out")
 
         with self.assertRaises(extractor.ExtractionTimeoutError):
             extractor.call_gemini("你好", api_key="test-key", model="gemini-test", reference_date="2026-04-08")
