@@ -816,10 +816,10 @@ def transcribe_audio_files(date_str: str, audio_files: list[str]) -> int:
     return _transcribe_audio_files(date_str, audio_files)
 
 
-def cmd_run(args: argparse.Namespace) -> int:
+def cmd_run(args: argparse.Namespace, **kwargs: Any) -> int:
     from openmy.commands.run import cmd_run as _cmd_run
 
-    return _cmd_run(args)
+    return _cmd_run(args, **kwargs)
 
 
 def cmd_quick_start(args: argparse.Namespace) -> int:

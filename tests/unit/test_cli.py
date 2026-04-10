@@ -220,22 +220,53 @@ class TestOpenMyCli(unittest.TestCase):
         audio_path = PROJECT_ROOT / "tests" / "fixtures" / "sample.wav"
         audio_path.parent.mkdir(parents=True, exist_ok=True)
         audio_path.write_bytes(b"wav")
+        env_path = PROJECT_ROOT / ".env"
+        backup_path = PROJECT_ROOT / ".env.test-backup"
+        if backup_path.exists():
+            backup_path.unlink()
+        if env_path.exists():
+            env_path.rename(backup_path)
 
-        env = os.environ.copy()
-        env.pop("GEMINI_API_KEY", None)
+        try:
+            env = os.environ.copy()
+            env.pop("GEMINI_API_KEY", None)
 
-        result = subprocess.run(
-            [sys.executable, "-m", "openmy", "quick-start", str(audio_path)],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            cwd=PROJECT_ROOT,
-            env=env,
-        )
+            result = subprocess.run(
+                [sys.executable, "-m", "openmy", "quick-start", str(audio_path)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=PROJECT_ROOT,
+                env=env,
+            )
 
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("GEMINI_API_KEY", result.stdout + result.stderr)
-        self.assertIn(".env", result.stdout + result.stderr)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("GEMINI_API_KEY", result.stdout + result.stderr)
+            self.assertIn(".env", result.stdout + result.stderr)
+        finally:
+            if backup_path.exists():
+                backup_path.rename(env_path)
+
+    def test_cli_quick_start_launches_report_on_partial_run(self):
+        """quick-start 部分完成时也应该拉起本地网页。"""
+        import openmy.cli as cli
+
+        audio_path = PROJECT_ROOT / "tests" / "fixtures" / "TX01_MIC005_20260408_131552_orig.wav"
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        audio_path.write_bytes(b"wav")
+
+        parser = cli.build_parser()
+        args = parser.parse_args(["quick-start", str(audio_path)])
+
+        with (
+            patch("openmy.cli.cmd_run", return_value=2),
+            patch("openmy.cli.ensure_runtime_dependencies", return_value=None),
+            patch("openmy.cli.launch_local_report", return_value=None) as launch_mock,
+        ):
+            result = cli.main_with_args(args)
+
+        self.assertEqual(result, 2)
+        launch_mock.assert_called_once()
 
     def test_cli_view_existing_date(self):
         """openmy view 2026-04-06 应该输出场景概览。"""
@@ -669,6 +700,161 @@ class TestOpenMyCli(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue((day_dir / "daily_briefing.json").exists())
+        finally:
+            self.cleanup_day_dir(date_str)
+
+    def test_cmd_run_writes_partial_status_when_extract_times_out(self):
+        """run 在提取超时时应该写出完整运行状态并返回部分成功。"""
+        from openmy.commands import run as run_command
+        from openmy.services.extraction import extractor
+
+        date_str = "2099-01-12"
+        day_dir = self.make_day_dir(date_str)
+        transcript_path = day_dir / "transcript.md"
+        scenes_path = day_dir / "scenes.json"
+
+        transcript_path.write_text("# 2099-01-12\n\n---\n\n## 10:00\n\n今天记一下。", encoding="utf-8")
+        scenes_payload = {
+            "scenes": [
+                {
+                    "scene_id": "s01",
+                    "time_start": "10:00",
+                    "time_end": "10:05",
+                    "text": "今天记一下。",
+                    "summary": "在口述记录。",
+                    "preview": "今天记一下。",
+                    "role": {"addressed_to": "自己", "scene_type_label": "自言自语", "needs_review": False},
+                }
+            ],
+            "stats": {"total_scenes": 1, "role_distribution": {"自己": 1}, "needs_review_count": 0},
+        }
+        scenes_path.write_text(json.dumps(scenes_payload, ensure_ascii=False), encoding="utf-8")
+
+        try:
+            with (
+                patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=False),
+                patch("openmy.services.roles.resolver.resolve_roles", side_effect=lambda scenes, **kwargs: scenes),
+                patch("openmy.services.roles.resolver.scenes_to_dict", return_value=scenes_payload),
+                patch(
+                    "openmy.services.extraction.extractor.run_core_extraction",
+                    side_effect=extractor.ExtractionTimeoutError("Gemini 提取超时（45s）"),
+                    create=True,
+                ),
+                patch("openmy.services.context.consolidation.consolidate") as consolidate_mock,
+            ):
+                result = run_command.cmd_run(argparse.Namespace(date=date_str, audio=[], skip_transcribe=True))
+
+            self.assertEqual(result, 2)
+            consolidate_mock.assert_not_called()
+
+            status_payload = json.loads((day_dir / "run_status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status_payload["status"], "partial")
+            self.assertEqual(status_payload["current_step"], "extract_core")
+            self.assertEqual(status_payload["steps"]["briefing"]["status"], "completed")
+            self.assertEqual(status_payload["steps"]["extract_core"]["status"], "failed")
+            self.assertIn("超时", status_payload["steps"]["extract_core"]["message"])
+            self.assertEqual(status_payload["steps"]["extract_enrich"]["status"], "skipped")
+            self.assertEqual(status_payload["steps"]["consolidate"]["status"], "skipped")
+        finally:
+            self.cleanup_day_dir(date_str)
+
+    def test_cmd_run_keeps_main_chain_complete_when_extract_enrich_fails(self):
+        """第二阶段补全失败时，不应回滚第一阶段核心真相和 active_context 聚合。"""
+        from openmy.commands import run as run_command
+        from openmy.services.extraction import extractor
+
+        date_str = "2099-01-22"
+        day_dir = self.make_day_dir(date_str)
+        transcript_path = day_dir / "transcript.md"
+        scenes_path = day_dir / "scenes.json"
+
+        transcript_path.write_text("# 2099-01-22\n\n---\n\n## 10:00\n\n今天记一下。", encoding="utf-8")
+        scenes_payload = {
+            "scenes": [
+                {
+                    "scene_id": "s01",
+                    "time_start": "10:00",
+                    "time_end": "10:05",
+                    "text": "今天记一下。",
+                    "summary": "在口述记录。",
+                    "preview": "今天记一下。",
+                    "role": {"addressed_to": "自己", "scene_type_label": "自言自语", "needs_review": False},
+                }
+            ],
+            "stats": {"total_scenes": 1, "role_distribution": {"自己": 1}, "needs_review_count": 0},
+        }
+        scenes_path.write_text(json.dumps(scenes_payload, ensure_ascii=False), encoding="utf-8")
+
+        core_payload = {
+            "daily_summary": "今天先把核心真相定下来。",
+            "events": [],
+            "intents": [
+                {
+                    "intent_id": "intent_001",
+                    "kind": "action_item",
+                    "what": "补 README",
+                    "status": "open",
+                    "who": {"kind": "user", "label": "老板"},
+                    "confidence_label": "high",
+                    "confidence_score": 0.9,
+                    "needs_review": False,
+                    "evidence_quote": "今天把 README 补一下。",
+                    "topic": "OpenMy",
+                    "project_hint": "OpenMy",
+                    "due": {"raw_text": "", "iso_date": "", "granularity": "none"},
+                    "speech_act": "",
+                    "source_scene_id": "",
+                    "source_recording_id": "",
+                }
+            ],
+            "facts": [
+                {
+                    "fact_type": "idea",
+                    "content": "OpenMy 先求跑通。",
+                    "topic": "OpenMy",
+                    "confidence_label": "medium",
+                    "confidence_score": 0.7,
+                    "source_scene_id": "",
+                }
+            ],
+            "role_hints": [],
+            "extract_enrich_status": "pending",
+            "extract_enrich_message": "",
+        }
+
+        try:
+            with (
+                patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=False),
+                patch("openmy.services.roles.resolver.resolve_roles", side_effect=lambda scenes, **kwargs: scenes),
+                patch("openmy.services.roles.resolver.scenes_to_dict", return_value=scenes_payload),
+                patch(
+                    "openmy.services.extraction.extractor.run_core_extraction",
+                    return_value=core_payload,
+                    create=True,
+                ),
+                patch(
+                    "openmy.services.extraction.extractor.run_enrichment_extraction",
+                    side_effect=extractor.ExtractionTimeoutError("Gemini 补全超时（45s）"),
+                    create=True,
+                ),
+                patch("openmy.services.context.consolidation.consolidate") as consolidate_mock,
+            ):
+                result = run_command.cmd_run(argparse.Namespace(date=date_str, audio=[], skip_transcribe=True))
+
+            self.assertEqual(result, 0)
+            consolidate_mock.assert_called_once()
+
+            status_payload = json.loads((day_dir / "run_status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status_payload["status"], "completed")
+            self.assertEqual(status_payload["steps"]["extract_core"]["status"], "completed")
+            self.assertEqual(status_payload["steps"]["consolidate"]["status"], "completed")
+            self.assertEqual(status_payload["steps"]["extract_enrich"]["status"], "failed")
+
+            meta_payload = json.loads((day_dir / f"{date_str}.meta.json").read_text(encoding="utf-8"))
+            self.assertEqual(meta_payload["extract_enrich_status"], "failed")
+            self.assertIn("超时", meta_payload["extract_enrich_message"])
+            self.assertEqual(meta_payload["intents"][0]["status"], "open")
+            self.assertEqual(meta_payload["intents"][0]["topic"], "OpenMy")
         finally:
             self.cleanup_day_dir(date_str)
 

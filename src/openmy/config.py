@@ -42,8 +42,11 @@ TIME_HEADER_LOSS_THRESHOLD = 0.5
 # 提取用的 temperature（越低越稳定，结构化输出建议 ≤0.2）
 EXTRACT_TEMPERATURE = 0.2
 
-# 提取的思考级别（提取需要深度推理来分类 intent/fact）
-EXTRACT_THINKING_LEVEL = "high"
+# 提取的思考级别（先用中档，优先保证 quick-start 真实可跑通）
+EXTRACT_THINKING_LEVEL = "medium"
+
+# 提取阶段单次 Gemini 请求超时（秒）
+EXTRACT_TIMEOUT = 45
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -91,4 +94,3 @@ PROJECT_MERGE_MAP: dict[str, str | None] = {
     "音频处理": "OpenMy",
     "自动化录音系统": "OpenMy",
 }
-

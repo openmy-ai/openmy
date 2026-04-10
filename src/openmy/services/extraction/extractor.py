@@ -23,6 +23,7 @@ import json
 import os
 import re
 import sys
+from copy import deepcopy
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -31,14 +32,27 @@ from openmy.domain.intent import DueDate, Fact, Intent
 
 try:
     from google import genai
+    from google.genai import types
 except ImportError:  # pragma: no cover - 本地缺依赖时给测试留钩子
     class _GenAIStub:
         Client = None
 
     genai = _GenAIStub()
+    types = None
 
 
-from openmy.config import GEMINI_MODEL, EXTRACT_TEMPERATURE, EXTRACT_THINKING_LEVEL
+from openmy.config import GEMINI_MODEL, EXTRACT_TEMPERATURE, EXTRACT_THINKING_LEVEL, EXTRACT_TIMEOUT
+
+CONFIDENCE_SCORE_BY_LABEL = {
+    "high": 0.9,
+    "medium": 0.7,
+    "low": 0.3,
+}
+VALID_INTENT_STATUSES = {"open", "active", "done", "closed", "cancelled", "abandoned", "rejected"}
+VALID_ENRICH_STATUSES = {"pending", "running", "done", "failed", "skipped"}
+INTENT_ENRICH_FIELDS = ("speech_act", "source_scene_id", "source_recording_id")
+FACT_ENRICH_FIELDS = ("source_scene_id",)
+
 CN_NUMBER_MAP = {
     "零": 0,
     "〇": 0,
@@ -58,7 +72,7 @@ TIME_POINT_RE = re.compile(
     r"(?P<hour>[零〇一二两三四五六七八九十\d]{1,3})(?:点|时)(?:(?P<minute>[零〇一二两三四五六七八九十\d]{1,2})分?)?(?P<half>半)?"
 )
 
-EXTRACT_PROMPT = """你是 OpenMy 的结构化提取器，要把一天的口述转写拆成“未来约束”和“已经发生/已经知道”的两类信息。
+CORE_EXTRACT_PROMPT = """你是 OpenMy 的结构化提取器，要把一天的口述转写拆成“未来约束”和“已经发生/已经知道”的两类信息。
 
 规则：
 1. intent 只收真正会影响后续行动的内容：
@@ -79,14 +93,17 @@ EXTRACT_PROMPT = """你是 OpenMy 的结构化提取器，要把一天的口述�
    - **拿不准时归 fact，不归 intent**（宁可漏掉一个待办，也不能制造一个假待办）
 4. who 是一个对象，不是散文本。可选 kind：
    user / agent / other_person / shared / unclear
-5. confidence_label 只用 high / medium / low。
-6. 输出必须是纯 JSON，不能带 markdown 代码块。
-7. 所有输出字段必须用中文，不要用英文（字段名除外）。
+5. intent.status 只用 open / active / done：
+   - open：还没开始，或者明确后续还要做
+   - active：已经开始推进，但还没完成
+   - done：明确已经做完 / 处理完 / 确认完成
+6. confidence_label 只用 high / medium / low。
+7. 输出必须是纯 JSON，不能带 markdown 代码块。
+8. 所有输出字段必须用中文，不要用英文（字段名除外）。
 
-输出 schema：
+这一步只输出核心结果，越轻越好：
 {
   "daily_summary": "三句以内的人话总结",
-  "events": [{"time": "HH:MM", "project": "项目名", "summary": "一句话"}],
   "intents": [
     {
       "intent_id": "intent_xxx",
@@ -95,15 +112,10 @@ EXTRACT_PROMPT = """你是 OpenMy 的结构化提取器，要把一天的口述�
       "status": "open|active|done",
       "who": {"kind": "user|agent|other_person|shared|unclear", "label": "执行者"},
       "confidence_label": "high|medium|low",
-      "confidence_score": 0.0,
-      "needs_review": false,
       "evidence_quote": "原话片段",
-      "source_scene_id": "scene_xxx",
       "topic": "主题",
-      "speech_act": "self_instruction|delegation|question|decision",
-      "due": {"raw_text": "", "iso_date": "", "granularity": "none|day|time"},
-      "project_hint": "项目名",
-      "source_recording_id": ""
+      "project_hint": "项目归类（没有就留空）",
+      "due": {"raw_text": ""}
     }
   ],
   "facts": [
@@ -111,16 +123,78 @@ EXTRACT_PROMPT = """你是 OpenMy 的结构化提取器，要把一天的口述�
       "fact_type": "observation|idea|preference|relation|project_update",
       "content": "内容",
       "topic": "主题",
-      "confidence_label": "high|medium|low",
-      "confidence_score": 0.0,
-      "source_scene_id": "scene_xxx"
+      "confidence_label": "high|medium|low"
     }
-  ],
-  "role_hints": [
-    {"time": "HH:MM", "role": "伴侣|家人|朋友|商家|AI|宠物|自己|未确定", "basis": "explicit|inferred", "confidence": 0.0, "evidence": "一句话依据"}
   ]
 }
 """
+
+ENRICH_EXTRACT_PROMPT = """你是 OpenMy 的第二阶段补全器。第一阶段已经定下核心真相，你不能改判核心字段。
+
+绝对不要改、不要重写这些字段：
+- intent.what
+- intent.status
+- intent.topic
+- intent.project_hint
+- intent.due
+- fact.content
+- fact.topic
+- fact.fact_type
+
+你只能补展示层 / 溯源层字段，而且只在拿得准时填写：
+- events
+- role_hints
+- intent 的 speech_act / source_scene_id / source_recording_id
+- fact 的 source_scene_id
+
+如果拿不准，就留空，不要编。
+输出必须是纯 JSON，不能带 markdown 代码块。
+
+输出 schema：
+{
+  "events": [
+    {"time": "HH:MM", "project": "项目名", "summary": "一句话"}
+  ],
+  "role_hints": [
+    {"time": "HH:MM", "role": "伴侣|家人|朋友|商家|AI|宠物|自己|未确定", "basis": "explicit|inferred", "confidence": 0.0, "evidence": "一句话依据"}
+  ],
+  "intent_enrichments": [
+    {
+      "intent_id": "intent_xxx",
+      "speech_act": "self_instruction|delegation|question|decision",
+      "source_scene_id": "scene_xxx",
+      "source_recording_id": "recording_xxx"
+    }
+  ],
+  "fact_enrichments": [
+    {
+      "content": "与第一阶段 fact.content 完全一致",
+      "source_scene_id": "scene_xxx"
+    }
+  ]
+}
+"""
+
+
+class ExtractionError(RuntimeError):
+    """提取阶段的可读错误。"""
+
+
+class ExtractionTimeoutError(ExtractionError):
+    """提取阶段等待 Gemini 响应超时。"""
+
+
+def _looks_like_timeout(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    visited: set[int] = set()
+    while current and id(current) not in visited:
+        visited.add(id(current))
+        name = current.__class__.__name__.lower()
+        message = str(current).lower()
+        if "timeout" in name or "timed out" in message or "time out" in message:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _parse_reference_date(value: str | None) -> date | None:
@@ -227,7 +301,51 @@ def _build_extract_prompt(text: str, reference_date: str | None) -> str:
         )
     else:
         date_hint = ""
-    return f"{EXTRACT_PROMPT}{date_hint}\n\n以下是今天的录音转写：\n\n{text}"
+    return f"{CORE_EXTRACT_PROMPT}{date_hint}\n\n以下是今天的录音转写：\n\n{text}"
+
+
+def _load_scene_catalog(input_path: Path) -> list[dict[str, str]]:
+    scenes_path = input_path.parent / "scenes.json"
+    if not scenes_path.exists():
+        return []
+    try:
+        payload = json.loads(scenes_path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+    scenes = []
+    for scene in payload.get("scenes", []):
+        if not isinstance(scene, dict):
+            continue
+        scenes.append(
+            {
+                "scene_id": _normalize_text(scene.get("scene_id")),
+                "time_start": _normalize_text(scene.get("time_start")),
+                "summary": _normalize_text(scene.get("summary")),
+                "preview": _normalize_text(scene.get("preview")),
+            }
+        )
+    return scenes
+
+
+def _build_enrich_prompt(
+    text: str,
+    *,
+    core_payload: dict[str, Any],
+    scene_catalog: list[dict[str, str]] | None = None,
+    reference_date: str | None = None,
+) -> str:
+    parts = [ENRICH_EXTRACT_PROMPT]
+    if reference_date:
+        parts.append(f"\n时间基准：{reference_date}（Asia/Shanghai）")
+    parts.append("\n第一阶段核心结果（只读，不可改判）：\n")
+    parts.append(json.dumps(core_payload, ensure_ascii=False, indent=2))
+    if scene_catalog:
+        parts.append("\n可用 scene 目录（供 source_scene_id 引用）：\n")
+        parts.append(json.dumps(scene_catalog, ensure_ascii=False, indent=2))
+    parts.append("\n以下是今天的录音转写：\n\n")
+    parts.append(text)
+    return "".join(parts)
 
 
 def _strip_code_fences(raw_text: str) -> str:
@@ -243,6 +361,82 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _normalize_confidence_label(value: Any) -> str:
+    label = str(value or "medium").strip().lower()
+    if label in CONFIDENCE_SCORE_BY_LABEL:
+        return label
+    return "medium"
+
+
+def _derive_confidence_score(raw_value: Any, confidence_label: str) -> float:
+    if raw_value not in (None, ""):
+        return _safe_float(raw_value, default=CONFIDENCE_SCORE_BY_LABEL[confidence_label])
+    return CONFIDENCE_SCORE_BY_LABEL[confidence_label]
+
+
+def _derive_needs_review(raw: dict[str, Any], confidence_label: str) -> bool:
+    if "needs_review" in raw:
+        return bool(raw.get("needs_review"))
+    return confidence_label == "low"
+
+
+def _normalize_intent_status(value: Any) -> str:
+    status = str(value or "open").strip().lower()
+    if status in VALID_INTENT_STATUSES:
+        return status
+    return "open"
+
+
+def _normalize_enrich_status(value: Any, *, default: str = "pending") -> str:
+    status = str(value or default).strip().lower()
+    if status in VALID_ENRICH_STATUSES:
+        return status
+    return default
+
+
+def _normalize_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _payload_has_enrichment_signals(payload: dict[str, Any]) -> bool:
+    if payload.get("events"):
+        return True
+    if payload.get("role_hints"):
+        return True
+    for item in payload.get("intents", []):
+        if not isinstance(item, dict):
+            continue
+        if any(_normalize_text(item.get(field)) for field in INTENT_ENRICH_FIELDS):
+            return True
+    for item in payload.get("facts", []):
+        if not isinstance(item, dict):
+            continue
+        if any(_normalize_text(item.get(field)) for field in FACT_ENRICH_FIELDS):
+            return True
+    return False
+
+
+def _default_enrich_status(payload: dict[str, Any]) -> str:
+    if _payload_has_enrichment_signals(payload):
+        return "done"
+    return "pending"
+
+
+def _normalize_enrich_metadata(payload: dict[str, Any]) -> None:
+    payload["extract_enrich_status"] = _normalize_enrich_status(
+        payload.get("extract_enrich_status"),
+        default=_default_enrich_status(payload),
+    )
+    payload["extract_enrich_message"] = str(payload.get("extract_enrich_message", "") or "")
+
+
+def mark_enrichment_status(payload: dict[str, Any], status: str, message: str = "") -> dict[str, Any]:
+    normalized = normalize_extraction_payload(payload)
+    normalized["extract_enrich_status"] = _normalize_enrich_status(status)
+    normalized["extract_enrich_message"] = str(message or "")
+    return normalized
 
 
 def _extract_response_text(response: Any) -> str:
@@ -354,11 +548,19 @@ def normalize_extraction_payload(data: dict[str, Any], reference_date: str | Non
             }
         )
 
-    intents = [
-        Intent.from_dict(raw)
-        for raw in payload.get("intents", [])
-        if isinstance(raw, dict)
-    ]
+    intents = []
+    for raw in payload.get("intents", []):
+        if not isinstance(raw, dict):
+            continue
+        normalized_raw = dict(raw)
+        normalized_raw["status"] = _normalize_intent_status(raw.get("status"))
+        normalized_raw["confidence_label"] = _normalize_confidence_label(raw.get("confidence_label"))
+        normalized_raw["confidence_score"] = _derive_confidence_score(
+            raw.get("confidence_score"),
+            normalized_raw["confidence_label"],
+        )
+        normalized_raw["needs_review"] = _derive_needs_review(raw, normalized_raw["confidence_label"])
+        intents.append(Intent.from_dict(normalized_raw))
     intents = [
         Intent(
             intent_id=intent.intent_id,
@@ -379,11 +581,17 @@ def normalize_extraction_payload(data: dict[str, Any], reference_date: str | Non
         )
         for intent in intents
     ]
-    facts = [
-        Fact.from_dict(raw)
-        for raw in payload.get("facts", [])
-        if isinstance(raw, dict)
-    ]
+    facts = []
+    for raw in payload.get("facts", []):
+        if not isinstance(raw, dict):
+            continue
+        normalized_raw = dict(raw)
+        normalized_raw["confidence_label"] = _normalize_confidence_label(raw.get("confidence_label"))
+        normalized_raw["confidence_score"] = _derive_confidence_score(
+            raw.get("confidence_score"),
+            normalized_raw["confidence_label"],
+        )
+        facts.append(Fact.from_dict(normalized_raw))
 
     payload["daily_summary"] = str(payload.get("daily_summary", "") or "")
     payload["events"] = events
@@ -392,7 +600,68 @@ def normalize_extraction_payload(data: dict[str, Any], reference_date: str | Non
     payload["role_hints"] = [
         item for item in payload.get("role_hints", []) if isinstance(item, dict)
     ]
+    _normalize_enrich_metadata(payload)
     return payload
+
+
+def merge_enrichment_payload(core_payload: dict[str, Any], enrich_payload: dict[str, Any]) -> dict[str, Any]:
+    merged = normalize_extraction_payload(deepcopy(core_payload))
+
+    events = []
+    for raw in enrich_payload.get("events", []):
+        if not isinstance(raw, dict):
+            continue
+        events.append(
+            {
+                "time": _normalize_text(raw.get("time")),
+                "project": _normalize_text(raw.get("project")),
+                "summary": _normalize_text(raw.get("summary")),
+            }
+        )
+    if not merged.get("events") and events:
+        merged["events"] = events
+
+    role_hints = [item for item in enrich_payload.get("role_hints", []) if isinstance(item, dict)]
+    if not merged.get("role_hints") and role_hints:
+        merged["role_hints"] = role_hints
+
+    intents_by_id = {
+        item.get("intent_id", ""): item
+        for item in merged.get("intents", [])
+        if isinstance(item, dict) and item.get("intent_id")
+    }
+    for raw in enrich_payload.get("intent_enrichments", []):
+        if not isinstance(raw, dict):
+            continue
+        intent = intents_by_id.get(_normalize_text(raw.get("intent_id")))
+        if not intent:
+            continue
+        for field in INTENT_ENRICH_FIELDS:
+            if not _normalize_text(intent.get(field)):
+                value = _normalize_text(raw.get(field))
+                if value:
+                    intent[field] = value
+
+    facts_by_content = {
+        item.get("content", ""): item
+        for item in merged.get("facts", [])
+        if isinstance(item, dict) and item.get("content")
+    }
+    for raw in enrich_payload.get("fact_enrichments", []):
+        if not isinstance(raw, dict):
+            continue
+        fact = facts_by_content.get(_normalize_text(raw.get("content")))
+        if not fact:
+            continue
+        for field in FACT_ENRICH_FIELDS:
+            if not _normalize_text(fact.get(field)):
+                value = _normalize_text(raw.get(field))
+                if value:
+                    fact[field] = value
+
+    merged["extract_enrich_status"] = "done"
+    merged["extract_enrich_message"] = ""
+    return normalize_extraction_payload(merged)
 
 
 def build_legacy_compatible_payload(data: dict[str, Any]) -> dict[str, Any]:
@@ -422,23 +691,11 @@ def build_legacy_compatible_payload(data: dict[str, Any]) -> dict[str, Any]:
     return compat
 
 
-# ── 提取输出的 JSON Schema（传给 Gemini API 做结构化约束）──────────
-EXTRACTION_SCHEMA = {
+# ── 核心提取输出的 JSON Schema（尽量轻，剩余字段本地补默认）──────────
+CORE_EXTRACTION_SCHEMA = {
     "type": "object",
     "properties": {
         "daily_summary": {"type": "string", "description": "三句以内的人话总结"},
-        "events": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "time": {"type": "string"},
-                    "project": {"type": "string"},
-                    "summary": {"type": "string"},
-                },
-                "required": ["time", "project", "summary"],
-            },
-        },
         "intents": {
             "type": "array",
             "items": {
@@ -457,27 +714,18 @@ EXTRACTION_SCHEMA = {
                         "required": ["kind", "label"],
                     },
                     "confidence_label": {"type": "string", "enum": ["high", "medium", "low"]},
-                    "confidence_score": {"type": "number"},
-                    "needs_review": {"type": "boolean"},
                     "evidence_quote": {"type": "string"},
-                    "source_scene_id": {"type": "string"},
                     "topic": {"type": "string"},
-                    "speech_act": {"type": "string", "enum": ["self_instruction", "delegation", "question", "decision"]},
+                    "project_hint": {"type": "string"},
                     "due": {
                         "type": "object",
                         "properties": {
                             "raw_text": {"type": "string"},
-                            "iso_date": {"type": "string"},
-                            "granularity": {"type": "string", "enum": ["none", "day", "time"]},
                         },
-                        "required": ["raw_text", "iso_date", "granularity"],
+                        "required": ["raw_text"],
                     },
-                    "project_hint": {"type": "string"},
-                    "source_recording_id": {"type": "string"},
                 },
-                "required": ["intent_id", "kind", "what", "status", "who", "confidence_label", "confidence_score",
-                             "needs_review", "evidence_quote", "source_scene_id", "topic", "speech_act", "due",
-                             "project_hint", "source_recording_id"],
+                "required": ["intent_id", "kind", "what", "status", "who", "confidence_label", "evidence_quote", "topic"],
             },
         },
         "facts": {
@@ -489,10 +737,28 @@ EXTRACTION_SCHEMA = {
                     "content": {"type": "string"},
                     "topic": {"type": "string"},
                     "confidence_label": {"type": "string", "enum": ["high", "medium", "low"]},
-                    "confidence_score": {"type": "number"},
-                    "source_scene_id": {"type": "string"},
                 },
-                "required": ["fact_type", "content", "topic", "confidence_label", "confidence_score", "source_scene_id"],
+                "required": ["fact_type", "content", "topic", "confidence_label"],
+            },
+        },
+    },
+    "required": ["daily_summary", "intents", "facts"],
+}
+
+
+ENRICH_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "events": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "time": {"type": "string"},
+                    "project": {"type": "string"},
+                    "summary": {"type": "string"},
+                },
+                "required": ["time", "project", "summary"],
             },
         },
         "role_hints": {
@@ -509,46 +775,111 @@ EXTRACTION_SCHEMA = {
                 "required": ["time", "role", "basis", "confidence", "evidence"],
             },
         },
+        "intent_enrichments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "intent_id": {"type": "string"},
+                    "speech_act": {"type": "string", "enum": ["self_instruction", "delegation", "question", "decision"]},
+                    "source_scene_id": {"type": "string"},
+                    "source_recording_id": {"type": "string"},
+                },
+                "required": ["intent_id"],
+            },
+        },
+        "fact_enrichments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string"},
+                    "source_scene_id": {"type": "string"},
+                },
+                "required": ["content"],
+            },
+        },
     },
-    "required": ["daily_summary", "events", "intents", "facts", "role_hints"],
+    "required": ["events", "role_hints", "intent_enrichments", "fact_enrichments"],
 }
 
 
-def call_gemini(text: str, api_key: str, model: str = GEMINI_MODEL, reference_date: str | None = None) -> dict | None:
-    """调 Gemini API 提取结构化数据。"""
+def _call_gemini_json(
+    prompt: str,
+    *,
+    api_key: str,
+    model: str,
+    response_json_schema: dict[str, Any],
+    timeout_seconds: int,
+) -> dict[str, Any]:
     if getattr(genai, "Client", None) is None:
-        print("Gemini SDK 不可用：缺少 google-genai", file=sys.stderr)
-        return None
+        raise ExtractionError("Gemini SDK 不可用：缺少 google-genai")
 
     client = genai.Client(api_key=api_key)
-    prompt = _build_extract_prompt(text, reference_date)
+    request_config = types.GenerateContentConfig(
+        temperature=EXTRACT_TEMPERATURE,
+        response_mime_type="application/json",
+        response_json_schema=response_json_schema,
+        thinking_config={"thinking_level": EXTRACT_THINKING_LEVEL},
+        http_options=types.HttpOptions(timeout=timeout_seconds * 1000),
+    )
 
     try:
         response = client.models.generate_content(
             model=model,
             contents=prompt,
-            config={
-                "temperature": EXTRACT_TEMPERATURE,
-                "response_mime_type": "application/json",
-                "response_json_schema": EXTRACTION_SCHEMA,
-                "thinking_config": {"thinking_level": EXTRACT_THINKING_LEVEL},
-            },
+            config=request_config,
         )
     except Exception as exc:
-        print(f"Gemini 请求失败: {exc}", file=sys.stderr)
-        return None
+        if _looks_like_timeout(exc):
+            raise ExtractionTimeoutError(f"Gemini 提取超时（{timeout_seconds}s）") from exc
+        raise ExtractionError(f"Gemini 请求失败: {exc}") from exc
 
     raw_text = _strip_code_fences(_extract_response_text(response))
     if not raw_text:
-        print("解析 Gemini 响应失败: 空响应", file=sys.stderr)
-        return None
+        raise ExtractionError("解析 Gemini 响应失败: 空响应")
 
     try:
-        return normalize_extraction_payload(json.loads(raw_text), reference_date=reference_date)
+        return json.loads(raw_text)
     except json.JSONDecodeError as exc:
-        print(f"解析 Gemini 响应失败: {exc}", file=sys.stderr)
-        print(raw_text[:500], file=sys.stderr)
-        return None
+        raise ExtractionError(f"解析 Gemini 响应失败: {exc}；原始响应片段: {raw_text[:200]}") from exc
+
+
+def call_gemini(text: str, api_key: str, model: str = GEMINI_MODEL, reference_date: str | None = None) -> dict:
+    """调 Gemini API 做第一阶段核心提取。"""
+    prompt = _build_extract_prompt(text, reference_date)
+    payload = _call_gemini_json(
+        prompt,
+        api_key=api_key,
+        model=model,
+        response_json_schema=CORE_EXTRACTION_SCHEMA,
+        timeout_seconds=EXTRACT_TIMEOUT,
+    )
+    return normalize_extraction_payload(payload, reference_date=reference_date)
+
+
+def call_gemini_enrichment(
+    text: str,
+    *,
+    api_key: str,
+    core_payload: dict[str, Any],
+    model: str = GEMINI_MODEL,
+    reference_date: str | None = None,
+    scene_catalog: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    prompt = _build_enrich_prompt(
+        text,
+        core_payload=core_payload,
+        scene_catalog=scene_catalog or [],
+        reference_date=reference_date,
+    )
+    return _call_gemini_json(
+        prompt,
+        api_key=api_key,
+        model=model,
+        response_json_schema=ENRICH_EXTRACTION_SCHEMA,
+        timeout_seconds=EXTRACT_TIMEOUT,
+    )
 
 
 def save_meta_json(data: dict, date: str, output_dir: str):
@@ -662,6 +993,118 @@ def distribute_to_vault(data: dict, date: str, vault_path: str):
             print(f"  {prio} {proj}{item.get('task', '')}", file=sys.stderr)
 
 
+def _resolve_final_date(input_path: Path, date_value: str | None) -> str:
+    if date_value:
+        return date_value
+    match = re.search(r"(\d{4}-\d{2}-\d{2})", input_path.stem)
+    return match.group(1) if match else datetime.now().strftime("%Y-%m-%d")
+
+
+def _load_transcript_body(input_path: Path) -> str:
+    text = input_path.read_text(encoding="utf-8")
+    if "---" in text:
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            text = parts[2].strip()
+        elif len(parts) == 2:
+            text = parts[1].strip()
+    return text
+
+
+def run_core_extraction(
+    input_file: str | Path,
+    *,
+    date: str | None = None,
+    model: str = GEMINI_MODEL,
+    api_key: str | None = None,
+    dry_run: bool = False,
+    raise_on_error: bool = False,
+) -> dict[str, Any] | None:
+    input_path = Path(input_file)
+    if not input_path.exists():
+        message = f"文件不存在: {input_path}"
+        print(message, file=sys.stderr)
+        if raise_on_error:
+            raise ExtractionError(message)
+        return None
+
+    final_date = _resolve_final_date(input_path, date)
+    final_api_key = api_key or os.environ.get("GEMINI_API_KEY")
+    if not final_api_key:
+        message = "错误: 请设置 GEMINI_API_KEY 环境变量或使用 --api-key 参数"
+        print(message, file=sys.stderr)
+        if raise_on_error:
+            raise ExtractionError(message)
+        return None
+
+    text = _load_transcript_body(input_path)
+    print(f"📖 读取 {input_path.name}: {len(text)} 字", file=sys.stderr)
+    print(f"🤖 调用 Gemini ({model}) 提取结构化摘要...", file=sys.stderr)
+
+    try:
+        payload = mark_enrichment_status(call_gemini(text, final_api_key, model, final_date), "pending")
+    except ExtractionError as exc:
+        print(f"❌ 提取失败: {exc}", file=sys.stderr)
+        if raise_on_error:
+            raise
+        return None
+
+    print("✓ 核心提取完成", file=sys.stderr)
+    if not dry_run:
+        save_meta_json(payload, final_date, str(input_path.parent))
+    return payload
+
+
+def run_enrichment_extraction(
+    input_file: str | Path,
+    *,
+    core_payload: dict[str, Any],
+    date: str | None = None,
+    model: str = GEMINI_MODEL,
+    api_key: str | None = None,
+    dry_run: bool = False,
+    raise_on_error: bool = False,
+) -> dict[str, Any] | None:
+    input_path = Path(input_file)
+    if not input_path.exists():
+        message = f"文件不存在: {input_path}"
+        print(message, file=sys.stderr)
+        if raise_on_error:
+            raise ExtractionError(message)
+        return None
+
+    final_date = _resolve_final_date(input_path, date)
+    final_api_key = api_key or os.environ.get("GEMINI_API_KEY")
+    if not final_api_key:
+        message = "错误: 请设置 GEMINI_API_KEY 环境变量或使用 --api-key 参数"
+        print(message, file=sys.stderr)
+        if raise_on_error:
+            raise ExtractionError(message)
+        return None
+
+    text = _load_transcript_body(input_path)
+    try:
+        enrich_payload = call_gemini_enrichment(
+            text,
+            api_key=final_api_key,
+            core_payload=core_payload,
+            model=model,
+            reference_date=final_date,
+            scene_catalog=_load_scene_catalog(input_path),
+        )
+        merged = merge_enrichment_payload(core_payload, enrich_payload)
+        print("✓ 补全提取完成", file=sys.stderr)
+    except ExtractionError as exc:
+        print(f"⚠️ 补全提取失败: {exc}", file=sys.stderr)
+        if raise_on_error:
+            raise
+        merged = mark_enrichment_status(core_payload, "failed", str(exc))
+
+    if not dry_run:
+        save_meta_json(merged, final_date, str(input_path.parent))
+    return merged
+
+
 def run_extraction(
     input_file: str | Path,
     *,
@@ -670,40 +1113,48 @@ def run_extraction(
     vault_path: str | None = None,
     api_key: str | None = None,
     dry_run: bool = False,
+    raise_on_error: bool = False,
 ) -> dict[str, Any] | None:
     input_path = Path(input_file)
     if not input_path.exists():
-        print(f"文件不存在: {input_path}", file=sys.stderr)
+        message = f"文件不存在: {input_path}"
+        print(message, file=sys.stderr)
+        if raise_on_error:
+            raise ExtractionError(message)
         return None
 
-    final_date = date
-    if not final_date:
-        match = re.search(r"(\d{4}-\d{2}-\d{2})", input_path.stem)
-        final_date = match.group(1) if match else datetime.now().strftime("%Y-%m-%d")
+    final_date = _resolve_final_date(input_path, date)
 
     final_api_key = api_key or os.environ.get("GEMINI_API_KEY")
     if not final_api_key:
-        print("错误: 请设置 GEMINI_API_KEY 环境变量或使用 --api-key 参数", file=sys.stderr)
+        message = "错误: 请设置 GEMINI_API_KEY 环境变量或使用 --api-key 参数"
+        print(message, file=sys.stderr)
+        if raise_on_error:
+            raise ExtractionError(message)
         return None
 
-    text = input_path.read_text(encoding="utf-8")
-    if "---" in text:
-        parts = text.split("---", 2)
-        if len(parts) >= 3:
-            text = parts[2].strip()
-        elif len(parts) == 2:
-            text = parts[1].strip()
-
-    print(f"📖 读取 {input_path.name}: {len(text)} 字", file=sys.stderr)
-    print(f"🤖 调用 Gemini ({model}) 提取结构化摘要...", file=sys.stderr)
-
-    data = call_gemini(text, final_api_key, model, final_date)
-    if not data:
-        print("❌ 提取失败", file=sys.stderr)
+    normalized_payload = run_core_extraction(
+        input_path,
+        date=final_date,
+        model=model,
+        api_key=final_api_key,
+        dry_run=True,
+        raise_on_error=raise_on_error,
+    )
+    if normalized_payload is None:
         return None
 
-    normalized_payload = normalize_extraction_payload(data)
-    print("✓ 提取完成", file=sys.stderr)
+    enriched_payload = run_enrichment_extraction(
+        input_path,
+        core_payload=normalized_payload,
+        date=final_date,
+        model=model,
+        api_key=final_api_key,
+        dry_run=True,
+        raise_on_error=False,
+    )
+    if enriched_payload is not None:
+        normalized_payload = enriched_payload
 
     if dry_run:
         return normalized_payload
