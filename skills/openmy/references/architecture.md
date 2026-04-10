@@ -130,9 +130,12 @@ corrections.jsonl         ← append-only 修正历史，查询时自动叠加
 - Phase 1: 状态快照 ✅
 - Phase 2: 纠正系统 ✅
 - Phase 2.5: Intent 系统 ✅
-- **Phase 2.8: 管线质量加固** ← 当前焦点（转写去语义化 + clean 保真 + 角色归因校准 + 提取产出量校准）
+- Phase 2.8: 管线质量加固 ✅（清洗修复 + 角色识别模型 fallback + 日报去重 + 提取器时态修复 + 蒸馏 prompt 重写）
+- Phase 4.1: 开源就绪 ✅（MIT 协议 + README 品牌统一 + .env.example + 依赖补齐）
+- **v0.2.0 Beta 已发布** — 2026-04-10，167 测试全绿
+- **社交媒体推广** ← 当前重中之重
 - Phase 3: Screenpipe 信号接入
-- Phase 4: 前端页面
+- Phase 4.2: 前端产品化 polish
 - Phase 5: 自维护闭环
 - Phase 6: 声纹识别
 
