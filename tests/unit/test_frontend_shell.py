@@ -43,10 +43,10 @@ class TestFrontendShell(unittest.TestCase):
         self.assertIn("view-overview", self.content)
         self.assertIn("view-corrections", self.content)
         self.assertIn("view-pipeline", self.content)
-        self.assertIn("意图", self.content)
-        self.assertIn("事实", self.content)
-        self.assertIn("决策", self.content)
-        self.assertIn("待办", self.content)
+        self.assertIn("打算做什么", self.content)
+        self.assertIn("记住了什么", self.content)
+        self.assertIn("决定了什么", self.content)
+        self.assertIn("发生了什么", self.content)
 
     def test_index_exposes_correction_actions(self):
         self.assertIn("loops/close", self.content)
