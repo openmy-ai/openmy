@@ -4,12 +4,14 @@
 
 **One audio file → a full day of structured context**
 
+Open-source personal context engine. Record your day, and it auto-transcribes, cleans, splits scenes, resolves roles, distills summaries, extracts structured data, and generates a browsable daily report.
+
 [![Release](https://img.shields.io/github/v/release/openmy-ai/openmy?style=flat-square&color=blue)](https://github.com/openmy-ai/openmy/releases)
 [![MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![Tests](https://img.shields.io/badge/tests-167%20passed-brightgreen?style=flat-square)]()
 
-[Quick Start](#-quick-start) · [中文](README.md)
+[中文](README.md)
 
 </div>
 
@@ -25,80 +27,74 @@ echo "GEMINI_API_KEY=your-key" > .env
 openmy quick-start path/to/your-audio.wav
 ```
 
-Your browser opens `http://127.0.0.1:8420` with your first daily briefing.
-
-Missing FFmpeg / wrong Python / no API key? The CLI tells you exactly what to fix in one line — no tracebacks.
+> Requirements: Python 3.10+, FFmpeg, a Gemini API key.
 
 ---
 
-## 🧠 Beyond Transcription
-
-Most tools stop at text. OpenMy keeps going:
-
-- **Scene splitting** — breaks a full day into distinct conversation segments
-- **Role resolution** — detects who you're talking to: AI, friends, merchants, yourself
-- **Distilled summaries** — one to two sentences per scene
-- **Structured extraction** — events, facts, and insights in separate buckets
-- **Daily briefing** — auto-generated with summary, stats, and timeline
-- **Active context** — cross-day accumulation of projects, todos, and people; untouched items flagged after 7 days
-
-**OpenMy isn't a better transcription tool. It's what happens after transcription.**
-
----
-
-## 🔬 How It Works
+## 🔬 Pipeline
 
 ```mermaid
-graph LR
-    A[🎙️ Audio] --> B[Transcribe]
-    B --> C[Clean]
-    C --> D[Scene Split]
-    D --> E[Role Resolve]
-    E --> F[Distill]
-    F --> G[Extract]
-    G --> H[Briefing]
-    H --> I[Active Context]
-    I --> J[🖥️ Workbench]
+graph TD
+    A["🎙️ Audio File"] --> B["Transcribe"]
+    B --> C["Clean"]
+    C --> D["Scene Split"]
+    D --> E["Role Resolve"]
+    E --> F["Distill"]
+    F --> G["Extract"]
+    G --> H["Briefing"]
+    H --> I["Active Context"]
+    I --> J["🖥️ Daily Report"]
 
     style A fill:#6366f1,stroke:#4f46e5,color:#fff
     style J fill:#06b6d4,stroke:#0891b2,color:#fff
 ```
 
-The cleaning stage is a pure rule engine — no API calls. All other stages use Gemini. Model and parameters are centralized in [`config.py`](src/openmy/config.py).
+### What Each Step Does
+
+**Transcribe** — Converts audio into timestamped text.
+
+**Clean** — Removes filler words, fixes punctuation, applies correction dictionary. Pure rules, no API calls.
+
+**Scene Split** — Cuts a full day of text into distinct conversation segments based on time gaps and topic shifts.
+
+**Role Resolve** — Identifies who you're talking to in each segment: AI assistant, friend, merchant, pet, or yourself. Uses screen context for better accuracy.
+
+**Distill** — Compresses each scene into one or two sentences, preserving key information and role awareness.
+
+**Extract** — Pulls three types of structured data from the full day:
+- 🚀 **Events** — what happened, what's planned
+- 📌 **Facts** — confirmed information, data, conclusions
+- ⚡ **Insights** — ideas, judgments, inspirations
+
+**Briefing** — Aggregates all scenes into a daily report with summary, timeline, and statistics.
+
+**Active Context** — Accumulates projects, relationships, and todos across days. Items untouched for 7 days are automatically flagged stale.
 
 ---
 
-## 🖥️ Local Workbench
+## 🖼️ Output
 
 <div align="center">
-<img src="docs/images/openmy-quick-start.png" alt="OpenMy Workbench" width="700" />
+<img src="docs/images/openmy-quick-start.png" alt="OpenMy Report" width="700" />
 </div>
 
-Open `http://127.0.0.1:8420`: overview, briefing, summary timeline, scene table, charts, correction dictionary, pipeline re-run.
+The generated report includes 7 views:
 
-All data stays in a local `data/` directory. Server defaults to `127.0.0.1`. No SaaS, no accounts, no uploads.
-
----
-
-## 🤖 For Agent Developers
-
-OpenMy's CLI is built for AI agents, not humans:
-
-```bash
-openmy context --compact      # outputs Markdown, inject into system prompt
-openmy agent --recent         # auto-read on agent boot
-openmy correct merge-project "AI Thinking" "OpenMy"  # fix context errors
-```
-
-One command. Your agent knows what the user is working on, who they're talking to, and what's still pending.
+- **Overview** — daily stats: scene count, word count, audio duration, role distribution
+- **Briefing** — structured daily summary
+- **Summary Timeline** — distilled results per scene in chronological order
+- **Scene Table** — full scene list with expandable transcripts
+- **Charts** — role distribution and scene duration visualizations
+- **Corrections** — typo dictionary with global search & replace
+- **Pipeline** — re-run any pipeline stage
 
 ---
 
 ## 📍 Roadmap
 
 - ~~**v0.1**~~ ✅ Core pipeline running
-- **v0.2** 🟢 Current — quick-start, web workbench, correction dictionary, structured extraction, active context
-- **v0.3** 🔜 Multi-language, smarter cross-day context, Obsidian plugin
+- **v0.2** 🟢 Current — quick-start, report workbench, correction dictionary, structured extraction, active context
+- **v0.3** 🔜 Multi-language, cross-day context improvements, Obsidian plugin
 - **v1.0** 📋 Stable API, plugin system, multi-LLM backend
 
 ---
@@ -115,9 +111,9 @@ python3 -m pytest tests/ -v   # 167 tests, no API key needed
 ## 📂 Repository Structure
 
 ```
-src/openmy/           CLI + 9 service modules
+src/openmy/
   services/
-    ingest/            Audio import
+    ingest/            Audio import & preprocessing
     cleaning/          Text cleaning (rule engine)
     segmentation/      Scene splitting
     roles/             Role resolution
@@ -126,8 +122,8 @@ src/openmy/           CLI + 9 service modules
     briefing/          Daily briefing
     context/           Active context
     screen_recognition/  Screen context
-app/                  Local web workbench
-tests/                167 automated tests
+app/                  Report page
+tests/                Automated tests
 ```
 
 ---
