@@ -1050,7 +1050,7 @@ function renderTimelineView() {
       <span class="tl-time">${escapeHtml(segment.time)}</span>
       <div class="tl-dot" style="border-color:var(--accent);background:var(--bg)"></div>
       <div class="tl-card">
-        ${segment.summary ? `<div class="tl-role-row"><span class="status-pill">${escapeHtml(plainText(segment.summary))}</span></div>` : ''}
+
         <div class="seg-distilled">${distilled}</div>
         <div class="raw-controls"><button class="raw-btn" type="button" onclick="toggleRawText(this)">👁️ 显示原文</button></div>
         <div class="seg-raw">${fmtText(segment.text || '')}</div>
