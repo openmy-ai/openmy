@@ -11,12 +11,14 @@ from openmy.config import (
 )
 from openmy.providers.llm.gemini import GeminiLLMProvider
 from openmy.providers.stt.faster_whisper import FasterWhisperSTTProvider
+from openmy.providers.stt.funasr import FunASRSTTProvider
 from openmy.providers.stt.gemini import GeminiSTTProvider
 
 
 STT_PROVIDERS = {
     "gemini": GeminiSTTProvider,
     "faster-whisper": FasterWhisperSTTProvider,
+    "funasr": FunASRSTTProvider,
 }
 
 LLM_PROVIDERS = {

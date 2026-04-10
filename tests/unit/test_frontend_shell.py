@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 
-INDEX_HTML = Path("/Users/zhousefu/Desktop/周瑟夫的上下文/app/index.html")
+INDEX_HTML = Path(__file__).resolve().parents[2] / "app" / "index.html"
 
 
 class TestFrontendShell(unittest.TestCase):
@@ -136,6 +136,19 @@ class TestFrontendShell(unittest.TestCase):
         self.assertIn("function applySettings()", self.content)
         self.assertIn('data-theme="dark"', self.content)
         self.assertIn('localStorage.setItem(\'openmy-\'', self.content)
+
+    def test_overview_query_panel_exists(self):
+        self.assertIn("contextQueryInput", self.content)
+        self.assertIn("contextQueryKind", self.content)
+        self.assertIn("contextQueryResults", self.content)
+        self.assertIn("contextQueryEvidence", self.content)
+
+    def test_context_query_js_functions_exist(self):
+        self.assertIn("async function runContextQuery(", self.content)
+        self.assertIn("function renderContextQueryResult(", self.content)
+        self.assertIn("/api/context/query", self.content)
+        self.assertIn("scene_id", self.content)
+        self.assertIn("quote", self.content)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ from openmy.services.context.active_context import (
     ActiveContext,
     ChangeItem,
     CommunicationContract,
+    ConflictItem,
     ConstraintItem,
     CoreMemory,
     EntityRegistryCard,
@@ -158,6 +159,19 @@ class TestActiveContextModel(unittest.TestCase):
                         provenance_refs=[{"date": "2026-04-08", "kind": "meta.event"}],
                     )
                 ],
+                recent_conflicts=[
+                    ConflictItem(
+                        id="conflict_001",
+                        conflict_id="conflict_001",
+                        canonical_key="project:openmy:default_stt",
+                        title="OpenMy 默认 ASR 路径不一致",
+                        conflict_type="fact_conflict",
+                        current_state="active",
+                        state_reason="同一主题存在两种不同结论",
+                        variants=["默认先走 faster-whisper", "默认改成 FunASR"],
+                        provenance_refs=[{"date": "2026-04-08", "kind": "fact"}],
+                    )
+                ],
                 entity_rollups=[
                     EntityRollup(
                         entity_id="ent_partner",
@@ -232,11 +246,21 @@ class TestActiveContextModel(unittest.TestCase):
         context = self.make_context().to_dict()
         context.pop("core_memory", None)
         context["rolling_context"].pop("recent_events", None)
+        context["rolling_context"].pop("recent_conflicts", None)
 
         restored = ActiveContext.from_dict(context)
 
         self.assertEqual(restored.core_memory.current_focus, [])
         self.assertEqual(restored.rolling_context.recent_events, [])
+        self.assertEqual(restored.rolling_context.recent_conflicts, [])
+
+    def test_round_trip_preserves_conflict_items_and_state_reason(self):
+        context = self.make_context()
+
+        restored = ActiveContext.from_dict(context.to_dict())
+
+        self.assertEqual(restored.rolling_context.recent_conflicts[0].canonical_key, "project:openmy:default_stt")
+        self.assertEqual(restored.rolling_context.recent_conflicts[0].state_reason, "同一主题存在两种不同结论")
 
 
 if __name__ == "__main__":

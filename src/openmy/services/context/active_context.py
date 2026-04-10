@@ -59,6 +59,7 @@ class ItemBase:
     valid_from: str = ""
     valid_until: str = ""
     current_state: str = ""
+    state_reason: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -226,12 +227,22 @@ class EventItem(ItemBase):
 
 
 @dataclass
+class ConflictItem(ItemBase):
+    conflict_id: str = ""
+    canonical_key: str = ""
+    title: str = ""
+    conflict_type: str = ""
+    variants: list[str] = field(default_factory=list)
+
+
+@dataclass
 class RollingContext:
     recent_changes: list[ChangeItem] = field(default_factory=list)
     active_projects: list[ProjectCard] = field(default_factory=list)
     open_loops: list[OpenLoop] = field(default_factory=list)
     recent_decisions: list[DecisionItem] = field(default_factory=list)
     recent_events: list[EventItem] = field(default_factory=list)
+    recent_conflicts: list[ConflictItem] = field(default_factory=list)
     belief_shifts: list[BeliefShift] = field(default_factory=list)
     entity_rollups: list[EntityRollup] = field(default_factory=list)
     topic_rollups: list[TopicRollup] = field(default_factory=list)
@@ -411,6 +422,10 @@ class ActiveContext:
             recent_events=[
                 _load_dataclass(EventItem, e)
                 for e in rc.get("recent_events", [])
+            ],
+            recent_conflicts=[
+                _load_dataclass(ConflictItem, c)
+                for c in rc.get("recent_conflicts", [])
             ],
             belief_shifts=[
                 _load_dataclass(BeliefShift, b)

@@ -17,6 +17,11 @@ openmy = "openmy.cli:main"
 transcription-enrich = [
     "whisperx>=3.8.5",
 ]
+transcription-zh = [
+    "funasr>=1.2.6",
+    "modelscope>=1.19.2",
+    "huggingface_hub>=0.30.0",
+]
 
 [build-system]
 requires = ["hatchling"]

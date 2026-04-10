@@ -5,6 +5,8 @@ from openmy.domain.intent import (
     ActorRef,
     DueDate,
     Intent,
+    adjudicate_temporal_state,
+    build_canonical_key,
     intent_to_loop_type,
     should_generate_open_loop,
 )
@@ -70,6 +72,38 @@ class TestIntentModel(unittest.TestCase):
             "shared",
         )
         self.assertEqual(intent_to_loop_type(self.make_intent(who={"kind": "user", "label": "老板"})), "actionable")
+
+    def test_adjudicate_temporal_state_marks_future_when_due_after_reference_date(self):
+        intent = self.make_intent()
+
+        state = adjudicate_temporal_state(
+            status=intent.status,
+            current_state="",
+            valid_from="2026-04-10T09:00:00+08:00",
+            valid_until="",
+            due_iso_date="2026-04-12",
+            reference_date="2026-04-10",
+        )
+
+        self.assertEqual(state["state"], "future")
+
+    def test_adjudicate_temporal_state_marks_closed_when_valid_until_exists(self):
+        state = adjudicate_temporal_state(
+            status="done",
+            current_state="",
+            valid_from="2026-04-08T09:00:00+08:00",
+            valid_until="2026-04-09T10:00:00+08:00",
+            due_iso_date="",
+            reference_date="2026-04-10",
+        )
+
+        self.assertEqual(state["state"], "closed")
+
+    def test_build_canonical_key_normalizes_same_loop_text(self):
+        first = build_canonical_key("loop", "  给张总 回电话，对齐合同细节  ")
+        second = build_canonical_key("loop", "给张总回电话 对齐合同细节")
+
+        self.assertEqual(first, second)
 
 
 class TestIntentNestedModels(unittest.TestCase):

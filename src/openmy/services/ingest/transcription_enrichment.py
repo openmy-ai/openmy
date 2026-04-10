@@ -86,6 +86,56 @@ def _normalize_aligned_segments(payload: dict[str, Any]) -> list[dict[str, Any]]
     return normalized
 
 
+def plan_transcription_enrichment(
+    *,
+    provider_name: str,
+    enrich_mode: str,
+    diarize_requested: bool,
+    diarization_token: str = "",
+) -> dict[str, Any]:
+    final_mode = (enrich_mode or "recommended").strip().lower()
+    local_provider = provider_name in {"faster-whisper", "funasr"}
+    if final_mode == "off":
+        return {
+            "enabled": False,
+            "align": False,
+            "diarize": False,
+            "status": "disabled",
+            "diarization_status": "disabled",
+            "message": "未启用 WhisperX 精标层",
+        }
+    if whisperx is None:
+        status = "failed" if final_mode == "force" else "skipped"
+        return {
+            "enabled": False,
+            "align": False,
+            "diarize": False,
+            "status": status,
+            "diarization_status": "skipped_missing_dependency",
+            "message": "WhisperX 精标层不可用：缺少 `whisperx` 依赖。",
+        }
+    if not local_provider and final_mode == "recommended":
+        return {
+            "enabled": False,
+            "align": False,
+            "diarize": False,
+            "status": "skipped",
+            "diarization_status": "disabled",
+            "message": "推荐精标路径只默认作用于本地 STT provider。",
+        }
+
+    diarize = bool(diarize_requested and diarization_token)
+    diarization_status = "completed" if diarize else ("degraded_missing_token" if diarize_requested else "disabled")
+    return {
+        "enabled": True,
+        "align": True,
+        "diarize": diarize,
+        "status": "recommended" if final_mode == "recommended" else "forced",
+        "diarization_status": diarization_status,
+        "message": "" if diarize or not diarize_requested else "缺少 HuggingFace token，自动降级为仅对齐。",
+    }
+
+
 def run_transcription_enrichment(day_dir: Path, *, diarize: bool = False) -> dict[str, Any]:
     if whisperx is None:
         raise RuntimeError("WhisperX 精标层不可用：缺少 `whisperx` 依赖。可先运行 `uv pip install whisperx`。")

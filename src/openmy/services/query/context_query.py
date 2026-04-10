@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from openmy.domain.intent import DONE_STATUSES, Event, Fact, Intent, should_generate_open_loop
+from openmy.domain.intent import DONE_STATUSES, Event, Fact, Intent, build_canonical_key, should_generate_open_loop
 from openmy.services.context.active_context import ActiveContext
 
 QUERY_KINDS = {"project", "person", "open", "closed", "evidence"}
@@ -242,6 +242,134 @@ def _loop_is_closed(loop: Any) -> bool:
     return status in DONE_STATUSES or state in {"closed", "done"}
 
 
+def _temporal_bucket(item: dict[str, Any]) -> str:
+    state = str(item.get("current_state", "") or item.get("status", "") or "").lower()
+    if state in {"future"}:
+        return "future"
+    if state in {"closed", "done", "past"}:
+        return "past" if state == "past" else "closed"
+    return "current"
+
+
+def _build_temporal_buckets(current_hits: list[dict[str, Any]], history_hits: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    buckets = {"current": [], "past": [], "future": [], "closed": []}
+    for item in [*current_hits, *history_hits]:
+        buckets[_temporal_bucket(item)].append(item)
+    return buckets
+
+
+def _build_daily_rollups(
+    day_records: list[dict[str, Any]],
+    predicate,
+    limit: int,
+) -> list[dict[str, Any]]:
+    rollups: list[dict[str, Any]] = []
+    for record in day_records:
+        meta = record.get("meta", {})
+        briefing = record.get("briefing", {})
+        if not predicate(record):
+            continue
+        summary = (
+            str(meta.get("daily_summary", "") or "").strip()
+            or str(briefing.get("summary", "") or "").strip()
+            or "当天有相关结构化记录。"
+        )
+        rollups.append(
+            {
+                "date": record["date"],
+                "summary": summary,
+            }
+        )
+        if len(rollups) >= limit:
+            break
+    return rollups
+
+
+def _derive_conflicts(day_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for record in day_records:
+        date_str = record["date"]
+        for raw in record.get("meta", {}).get("facts", []):
+            fact = Fact.from_dict(raw)
+            content_basis = re.split(r"(?:改成|改为|切到|切成|是)", fact.content, maxsplit=1)[0].strip()
+            basis = fact.topic if fact.topic and "默认" in fact.topic else content_basis or fact.topic or fact.fact_type or "fact"
+            canonical = build_canonical_key("fact", basis)
+            entry = grouped.setdefault(
+                canonical,
+                {
+                    "conflict_id": canonical,
+                    "canonical_key": canonical,
+                    "title": fact.topic or fact.content,
+                    "conflict_type": "fact_conflict",
+                    "variants": set(),
+                    "provenance_refs": [],
+                },
+            )
+            entry["variants"].add(fact.content)
+            entry["provenance_refs"] = _merge_refs(
+                entry["provenance_refs"],
+                _refs_from_payload(
+                    date_str=date_str,
+                    kind="fact",
+                    source_path=f"{date_str}.meta.json",
+                    scene_id=fact.source_scene_id,
+                    recording_id=fact.source_recording_id,
+                    quote=fact.evidence_quote,
+                    refs=fact.provenance_refs,
+                ),
+            )
+    derived: list[dict[str, Any]] = []
+    for entry in grouped.values():
+        variants = sorted(item for item in entry["variants"] if item)
+        if len(variants) < 2:
+            continue
+        entry["variants"] = variants
+        entry["current_state"] = "active"
+        entry["state_reason"] = "multi_day_conflict"
+        derived.append(entry)
+    return derived
+
+
+def _merge_refs(existing: list[dict[str, Any]], incoming: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, str, str, str]] = set()
+    merged: list[dict[str, Any]] = []
+    for ref in [*existing, *incoming]:
+        key = (
+            str(ref.get("date", "") or ""),
+            str(ref.get("kind", "") or ""),
+            str(ref.get("scene_id", "") or ""),
+            str(ref.get("quote", "") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(ref)
+    return merged
+
+
+def _filter_conflicts(ctx: ActiveContext, query: str, day_records: list[dict[str, Any]], *candidates: Any) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for conflict in list(ctx.rolling_context.recent_conflicts) + _derive_conflicts(day_records):
+        title = conflict.get("title", "") if isinstance(conflict, dict) else conflict.title
+        canonical_key = conflict.get("canonical_key", "") if isinstance(conflict, dict) else conflict.canonical_key
+        variants = list(conflict.get("variants", [])) if isinstance(conflict, dict) else list(conflict.variants)
+        if not _matches(query, title, canonical_key, *variants, *candidates):
+            continue
+        items.append(
+            {
+                "conflict_id": conflict.get("conflict_id", "") if isinstance(conflict, dict) else (conflict.conflict_id or conflict.id),
+                "canonical_key": canonical_key,
+                "title": title,
+                "conflict_type": conflict.get("conflict_type", "") if isinstance(conflict, dict) else conflict.conflict_type,
+                "variants": variants,
+                "current_state": conflict.get("current_state", "") if isinstance(conflict, dict) else conflict.current_state,
+                "state_reason": conflict.get("state_reason", "") if isinstance(conflict, dict) else conflict.state_reason,
+                "provenance_refs": list(conflict.get("provenance_refs", [])) if isinstance(conflict, dict) else list(conflict.provenance_refs),
+            }
+        )
+    return items
+
+
 def _project_query(
     ctx: ActiveContext,
     day_records: list[dict[str, Any]],
@@ -388,12 +516,28 @@ def _project_query(
     current_hits = _dedupe_items(current_hits, limit)
     history_hits = _dedupe_items(history_hits, limit)
     evidence = _dedupe_items(evidence, limit)
+    daily_rollups = _build_daily_rollups(
+        day_records,
+        lambda record: _matches(
+            canonical,
+            record.get("meta", {}).get("daily_summary", ""),
+            *(event.get("summary", "") for event in record.get("meta", {}).get("events", []) if isinstance(event, dict)),
+            *(fact.get("content", "") for fact in record.get("meta", {}).get("facts", []) if isinstance(fact, dict)),
+            *(intent.get("what", "") for intent in record.get("meta", {}).get("intents", []) if isinstance(intent, dict)),
+        ),
+        limit,
+    )
+    temporal_buckets = _build_temporal_buckets(current_hits, history_hits)
+    conflicts = _filter_conflicts(ctx, canonical, day_records, matched_project.project_id if matched_project is not None else "")
     return {
         "kind": "project",
         "query": query,
         "summary": f"{canonical} 最近有 {len(current_hits)} 条当前上下文，近期待回看 {len(history_hits)} 条历史记录。",
         "current_hits": current_hits,
         "history_hits": history_hits,
+        "daily_rollups": daily_rollups,
+        "temporal_buckets": temporal_buckets,
+        "conflicts": conflicts,
         "evidence": evidence,
     }
 
@@ -491,12 +635,24 @@ def _person_query(
     current_hits = _dedupe_items(current_hits, limit)
     history_hits = _dedupe_items(history_hits, limit)
     evidence = _dedupe_items(evidence, limit)
+    daily_rollups = _build_daily_rollups(
+        day_records,
+        lambda record: any(
+            _matches(query, scene.get("summary", ""), scene.get("preview", ""), scene.get("role", {}).get("addressed_to", ""))
+            for scene in record.get("scenes", {}).get("scenes", [])
+            if isinstance(scene, dict)
+        ),
+        limit,
+    )
     return {
         "kind": "person",
         "query": query,
         "summary": f"最近和 {query} 相关的结构化上下文有 {len(current_hits) + len(history_hits)} 条。",
         "current_hits": current_hits,
         "history_hits": history_hits,
+        "daily_rollups": daily_rollups,
+        "temporal_buckets": _build_temporal_buckets(current_hits, history_hits),
+        "conflicts": _filter_conflicts(ctx, query, day_records),
         "evidence": evidence,
     }
 
@@ -530,6 +686,9 @@ def _open_query(
         "summary": f"现在还有 {len(current_hits)} 个待办处于未关闭状态。",
         "current_hits": current_hits,
         "history_hits": [],
+        "daily_rollups": [],
+        "temporal_buckets": _build_temporal_buckets(current_hits, []),
+        "conflicts": [],
         "evidence": evidence,
     }
 
@@ -593,6 +752,9 @@ def _closed_query(
         "summary": f"最近找到 {len(history_hits)} 个已完成或已关闭的事项。",
         "current_hits": [],
         "history_hits": history_hits,
+        "daily_rollups": _build_daily_rollups(day_records, lambda record: any(isinstance(raw, dict) and str(raw.get("status", "")).lower() in DONE_STATUSES for raw in record.get("meta", {}).get("intents", [])), limit),
+        "temporal_buckets": _build_temporal_buckets([], history_hits),
+        "conflicts": [],
         "evidence": evidence,
     }
 
@@ -711,12 +873,18 @@ def _evidence_query(
 
     current_hits = _dedupe_items(current_hits, limit)
     evidence = _dedupe_items(evidence, limit)
+    conflicts = _filter_conflicts(ctx, query, day_records)
+    for conflict in conflicts:
+        _extend_evidence(evidence, conflict.get("provenance_refs", []), scene_lookup, limit)
     return {
         "kind": "evidence",
         "query": query,
         "summary": f"找到 {len(evidence)} 条和“{query}”相关的结构化证据。",
         "current_hits": current_hits,
         "history_hits": [],
+        "daily_rollups": _build_daily_rollups(day_records, lambda record: _matches(query, record.get("meta", {}).get("daily_summary", "")), limit),
+        "temporal_buckets": _build_temporal_buckets(current_hits, []),
+        "conflicts": conflicts,
         "evidence": evidence,
     }
 

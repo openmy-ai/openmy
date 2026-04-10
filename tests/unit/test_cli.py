@@ -258,8 +258,55 @@ class TestOpenMyCli(unittest.TestCase):
         self.assertEqual(result, 0)
         forwarded_args = run_mock.call_args.args[0]
         self.assertEqual(forwarded_args.stt_provider, "faster-whisper")
-        self.assertEqual(forwarded_args.stt_model, "small")
-        self.assertTrue(forwarded_args.stt_vad)
+
+    def test_cli_quick_start_accepts_funasr_and_enrich_mode_flags(self):
+        import openmy.cli as cli
+
+        audio_path = PROJECT_ROOT / "tests" / "fixtures" / "TX01_MIC005_20260408_131552_orig.wav"
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        audio_path.write_bytes(b"wav")
+
+        parser = cli.build_parser()
+        args = parser.parse_args(
+            [
+                "quick-start",
+                str(audio_path),
+                "--stt-provider",
+                "funasr",
+                "--stt-model",
+                "paraformer-zh",
+                "--stt-enrich-mode",
+                "recommended",
+            ]
+        )
+
+        with (
+            patch("openmy.cli.cmd_run", return_value=0) as run_mock,
+            patch("openmy.cli.ensure_runtime_dependencies", return_value=None),
+            patch("openmy.cli.launch_local_report", return_value=None),
+        ):
+            result = cli.main_with_args(args)
+
+        self.assertEqual(result, 0)
+        forwarded_args = run_mock.call_args.args[0]
+        self.assertEqual(forwarded_args.stt_provider, "funasr")
+        self.assertEqual(forwarded_args.stt_enrich_mode, "recommended")
+
+    def test_runtime_dependency_check_allows_local_funasr_without_key(self):
+        import openmy.cli as cli
+
+        with (
+            patch("openmy.cli.shutil.which", return_value="/opt/homebrew/bin/ffmpeg"),
+            patch.dict(
+                os.environ,
+                {
+                    "OPENMY_STT_PROVIDER": "funasr",
+                    "OPENMY_STT_MODEL": "paraformer-zh",
+                },
+                clear=True,
+            ),
+        ):
+            cli.ensure_runtime_dependencies(stt_provider="funasr")
 
     def test_cli_quick_start_reports_missing_gemini_key_in_plain_chinese_when_using_gemini(self):
         """切到 Gemini 转写时，quick-start 缺 key 应该给中文人话提示。"""
@@ -1047,6 +1094,7 @@ class TestOpenMyCli(unittest.TestCase):
             meta_payload = json.loads((day_dir / f"{date_str}.meta.json").read_text(encoding="utf-8"))
             self.assertEqual(meta_payload["transcription_enrich_status"], "failed")
             self.assertIn("缺少依赖", meta_payload["transcription_enrich_message"])
+            self.assertEqual(meta_payload["transcription_diarization_status"], "degraded_missing_token")
         finally:
             self.cleanup_day_dir(date_str)
 

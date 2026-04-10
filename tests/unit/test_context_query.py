@@ -319,6 +319,52 @@ class TestContextQuery(unittest.TestCase):
                 ]
             },
         )
+
+        self.write_json(
+            data_root / "2026-04-09" / "2026-04-09.meta.json",
+            {
+                "daily_summary": "昨天讨论 OpenMy 是否改成 FunASR。",
+                "events": [
+                    {
+                        "event_id": "event_fun",
+                        "time": "14:10",
+                        "project": "OpenMy",
+                        "summary": "评估改用 FunASR 作为默认中文本地转写。",
+                        "source_scene_id": "scene_101",
+                    }
+                ],
+                "facts": [
+                    {
+                        "fact_id": "fact_fun",
+                        "fact_type": "project_update",
+                        "content": "OpenMy 默认转写后端改成 FunASR。",
+                        "topic": "OpenMy 默认转写后端",
+                        "confidence_label": "high",
+                        "confidence_score": 0.9,
+                        "source_scene_id": "scene_101",
+                        "evidence_quote": "默认改成 FunASR。",
+                        "current_state": "past",
+                        "valid_from": "2026-04-09T14:10:00+08:00",
+                        "valid_until": "2026-04-10T10:19:59+08:00",
+                    }
+                ],
+            },
+        )
+        self.write_json(
+            data_root / "2026-04-09" / "scenes.json",
+            {
+                "scenes": [
+                    {
+                        "scene_id": "scene_101",
+                        "time_start": "14:10",
+                        "time_end": "14:30",
+                        "summary": "讨论是否把默认本地转写换成 FunASR。",
+                        "preview": "默认改成 FunASR。",
+                        "role": {"addressed_to": "", "needs_review": False},
+                    }
+                ]
+            },
+        )
         return data_root
 
     def test_project_query_uses_active_context_and_meta(self):
@@ -332,6 +378,29 @@ class TestContextQuery(unittest.TestCase):
             self.assertTrue(any(item["type"] == "project" and item["title"] == "OpenMy" for item in result["current_hits"]))
             self.assertTrue(any(item["type"] == "event" for item in result["history_hits"]))
             self.assertTrue(result["evidence"])
+            self.assertTrue(result["daily_rollups"])
+            self.assertIn("current", result["temporal_buckets"])
+
+    def test_project_query_returns_cross_day_rollups_and_conflicts(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = self.seed_workspace(Path(tmp_dir))
+
+            result = query_context(data_root, kind="project", query="OpenMy")
+
+            dates = {item["date"] for item in result["daily_rollups"]}
+            self.assertIn("2026-04-10", dates)
+            self.assertIn("2026-04-09", dates)
+            self.assertTrue(result["conflicts"])
+            self.assertTrue(any("FunASR" in json.dumps(item, ensure_ascii=False) for item in result["conflicts"]))
+
+    def test_project_query_groups_hits_into_past_current_and_future(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = self.seed_workspace(Path(tmp_dir))
+
+            result = query_context(data_root, kind="project", query="OpenMy")
+
+            self.assertTrue(result["temporal_buckets"]["current"])
+            self.assertTrue(result["temporal_buckets"]["past"])
 
     def test_person_query_returns_related_structured_hits(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -344,6 +413,7 @@ class TestContextQuery(unittest.TestCase):
             self.assertIn("张总", joined)
             self.assertTrue(result["current_hits"] or result["history_hits"])
             self.assertTrue(result["evidence"])
+            self.assertTrue(result["daily_rollups"])
 
     def test_open_query_only_returns_unclosed_items(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -374,6 +444,7 @@ class TestContextQuery(unittest.TestCase):
             self.assertEqual(result["kind"], "evidence")
             self.assertTrue(any(item["scene_id"] == "scene_001" for item in result["evidence"]))
             self.assertTrue(any("faster-whisper" in (item.get("quote") or item.get("scene_summary") or "") for item in result["evidence"]))
+            self.assertTrue(result["conflicts"])
 
 
 if __name__ == "__main__":

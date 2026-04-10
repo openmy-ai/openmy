@@ -34,6 +34,7 @@ from openmy.config import (
     get_stt_api_key,
     get_stt_align_enabled,
     get_stt_diarization_enabled,
+    get_stt_enrich_mode,
     get_stt_model,
     get_stt_provider_name,
     has_llm_credentials,
@@ -256,12 +257,12 @@ def ensure_runtime_dependencies(*, stt_provider: str | None = None) -> None:
             raise FriendlyCliError(
                 "已读取项目根目录 `.env`，但里面缺少可用的 STT provider key。"
                 "如果继续用 Gemini，可直接填 `GEMINI_API_KEY`；"
-                "如果想走本地转写，可把 `OPENMY_STT_PROVIDER` 设成 `faster-whisper`。"
+                "如果想走本地转写，可把 `OPENMY_STT_PROVIDER` 设成 `faster-whisper` 或 `funasr`。"
             )
         raise FriendlyCliError(
             "没找到项目根目录 `.env`，也没有检测到可用的 STT provider key。"
             "先 `cp .env.example .env` 并填写 `GEMINI_API_KEY`，"
-            "或在运行时改用 `--stt-provider faster-whisper`。"
+            "或在运行时改用 `--stt-provider faster-whisper` / `--stt-provider funasr`。"
         )
 
 
@@ -269,7 +270,7 @@ def add_stt_runtime_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--stt-provider",
         default=get_stt_provider_name(),
-        help="转写后端（如 gemini / faster-whisper）",
+        help="转写后端（如 gemini / faster-whisper / funasr）",
     )
     parser.add_argument(
         "--stt-model",
@@ -283,10 +284,16 @@ def add_stt_runtime_args(parser: argparse.ArgumentParser) -> None:
         help="保留更细的词级时间信息（如果后端支持）",
     )
     parser.add_argument(
+        "--stt-enrich-mode",
+        default=get_stt_enrich_mode(),
+        choices=["off", "recommended", "force"],
+        help="WhisperX 精标策略：off=关闭，recommended=本地 STT 推荐路径，force=强制尝试",
+    )
+    parser.add_argument(
         "--stt-align",
         action="store_true",
         default=get_stt_align_enabled(),
-        help="在转写后启用 WhisperX 精标层",
+        help="显式要求在转写后启用 WhisperX 精标层",
     )
     parser.add_argument(
         "--stt-diarize",
@@ -913,6 +920,7 @@ def cmd_agent(args: argparse.Namespace) -> int:
                 stt_model=args.stt_model,
                 stt_vad=args.stt_vad,
                 stt_word_timestamps=args.stt_word_timestamps,
+                stt_enrich_mode=args.stt_enrich_mode,
                 stt_align=args.stt_align,
                 stt_diarize=args.stt_diarize,
             )
