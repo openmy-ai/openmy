@@ -67,10 +67,21 @@ class Intent:
     valid_until: str = ""
     current_state: str = "active"
     provenance_refs: list[dict[str, Any]] = field(default_factory=list)
+    temporal_state: str = ""
+    temporal_basis: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any] | None) -> "Intent":
         payload = payload if isinstance(payload, dict) else {}
+        temporal_state = str(payload.get("temporal_state", "") or "").strip().lower()
+        raw_current_state = str(payload.get("current_state", "") or "").strip().lower()
+        if not raw_current_state and temporal_state:
+            if temporal_state == "ongoing":
+                raw_current_state = "active"
+            elif temporal_state == "done":
+                raw_current_state = "closed"
+            elif temporal_state in {"past", "future", "active", "closed", "stale"}:
+                raw_current_state = temporal_state
         return cls(
             intent_id=str(payload.get("intent_id", "") or ""),
             kind=str(payload.get("kind", "") or ""),
@@ -89,8 +100,14 @@ class Intent:
             source_recording_id=str(payload.get("source_recording_id", "") or ""),
             valid_from=str(payload.get("valid_from", "") or ""),
             valid_until=str(payload.get("valid_until", "") or ""),
-            current_state=str(payload.get("current_state", "active") or "active"),
+            current_state=raw_current_state or "active",
             provenance_refs=list(payload.get("provenance_refs", []) or []),
+            temporal_state=temporal_state,
+            temporal_basis=[
+                str(item).strip()
+                for item in payload.get("temporal_basis", [])
+                if str(item).strip()
+            ] if isinstance(payload.get("temporal_basis", []), list) else [],
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -176,11 +193,19 @@ class Event:
 
 def should_generate_open_loop(intent: Intent) -> bool:
     """只有真正带未来约束力的 intent 才会长成 open loop。"""
+    temporal_state = str(intent.temporal_state or "").strip().lower()
+    current_state = str(intent.current_state or "").strip().lower()
     if not intent.what.strip():
         return False
     if intent.kind == "decision":
         return False
     if intent.status in DONE_STATUSES:
+        return False
+    if temporal_state == "past" or current_state == "past":
+        return False
+    if current_state in {"closed", "done"}:
+        return False
+    if temporal_state == "unclear" and not intent.due.raw_text.strip():
         return False
     if intent.confidence_label == "low":
         return False
