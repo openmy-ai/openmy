@@ -38,6 +38,7 @@ from openmy.config import (
 )
 from openmy.domain.intent import DONE_STATUSES, DueDate, Fact, Intent
 from openmy.providers.registry import ProviderRegistry
+from openmy.services.screen_recognition.summary import infer_project_hint_from_text
 
 CONFIDENCE_SCORE_BY_LABEL = {
     "high": 0.9,
@@ -534,9 +535,23 @@ def _load_scene_catalog(input_path: Path) -> list[dict[str, str]]:
                 "time_start": _normalize_text(scene.get("time_start")),
                 "summary": _normalize_text(scene.get("summary")),
                 "preview": _normalize_text(scene.get("preview")),
+                "screen_summary": _normalize_text(scene.get("screen_context", {}).get("summary")),
+                "screen_primary_app": _normalize_text(scene.get("screen_context", {}).get("primary_app")),
+                "screen_primary_domain": _normalize_text(scene.get("screen_context", {}).get("primary_domain")),
             }
         )
     return scenes
+
+
+def _load_scene_payloads(input_path: Path) -> list[dict[str, Any]]:
+    scenes_path = input_path.parent / "scenes.json"
+    if not scenes_path.exists():
+        return []
+    try:
+        payload = json.loads(scenes_path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    return [scene for scene in payload.get("scenes", []) if isinstance(scene, dict)]
 
 
 def _build_enrich_prompt(
@@ -877,6 +892,72 @@ def merge_enrichment_payload(core_payload: dict[str, Any], enrich_payload: dict[
     merged["extract_enrich_status"] = "done"
     merged["extract_enrich_message"] = ""
     return normalize_extraction_payload(merged)
+
+
+def apply_screen_context_to_payload(payload: dict[str, Any], scenes: list[dict[str, Any]]) -> dict[str, Any]:
+    normalized = normalize_extraction_payload(deepcopy(payload))
+    scenes_by_id = {
+        _normalize_text(scene.get("scene_id")): scene
+        for scene in scenes
+        if isinstance(scene, dict) and _normalize_text(scene.get("scene_id"))
+    }
+
+    screen_evidence: list[dict[str, Any]] = []
+    completion_candidates: list[dict[str, Any]] = []
+    seen_candidates: set[tuple[str, str]] = set()
+
+    for intent in normalized.get("intents", []):
+        if not isinstance(intent, dict):
+            continue
+        source_scene_id = _normalize_text(intent.get("source_scene_id"))
+        scene = scenes_by_id.get(source_scene_id)
+        if not scene:
+            continue
+
+        screen_context = scene.get("screen_context", {}) if isinstance(scene.get("screen_context", {}), dict) else {}
+        if not intent.get("project_hint"):
+            project_hint = infer_project_hint_from_text(
+                screen_context.get("summary", ""),
+                screen_context.get("primary_app", ""),
+                screen_context.get("primary_domain", ""),
+                scene.get("summary", ""),
+                scene.get("text", ""),
+            )
+            if project_hint:
+                intent["project_hint"] = project_hint
+
+        summary = _normalize_text(screen_context.get("summary"))
+        if summary:
+            screen_evidence.append(
+                {
+                    "scene_id": source_scene_id,
+                    "summary": summary,
+                    "primary_app": _normalize_text(screen_context.get("primary_app")),
+                    "primary_domain": _normalize_text(screen_context.get("primary_domain")),
+                    "tags": [str(item) for item in screen_context.get("tags", []) if item is not None],
+                }
+            )
+
+        for candidate in screen_context.get("completion_candidates", []):
+            if not isinstance(candidate, dict):
+                continue
+            key = (_normalize_text(candidate.get("kind")), source_scene_id)
+            if key in seen_candidates:
+                continue
+            seen_candidates.add(key)
+            completion_candidates.append(
+                {
+                    "scene_id": source_scene_id,
+                    "kind": _normalize_text(candidate.get("kind")),
+                    "label": _normalize_text(candidate.get("label")),
+                    "confidence": float(candidate.get("confidence", 0.0) or 0.0),
+                    "evidence": _normalize_text(candidate.get("evidence")),
+                }
+            )
+
+    normalized["screen_evidence"] = screen_evidence
+    normalized["completion_candidates"] = completion_candidates
+    return normalized
 
 
 def build_legacy_compatible_payload(data: dict[str, Any]) -> dict[str, Any]:
@@ -1247,6 +1328,7 @@ def run_core_extraction(
 
     try:
         payload = mark_enrichment_status(call_gemini(text, final_api_key, final_model, final_date), "pending")
+        payload = apply_screen_context_to_payload(payload, _load_scene_payloads(input_path))
     except ExtractionError as exc:
         print(f"❌ 提取失败: {exc}", file=sys.stderr)
         if raise_on_error:
@@ -1298,6 +1380,7 @@ def run_enrichment_extraction(
             scene_catalog=_load_scene_catalog(input_path),
         )
         merged = merge_enrichment_payload(core_payload, enrich_payload)
+        merged = apply_screen_context_to_payload(merged, _load_scene_payloads(input_path))
         print("✓ 补全提取完成", file=sys.stderr)
     except ExtractionError as exc:
         print(f"⚠️ 补全提取失败: {exc}", file=sys.stderr)

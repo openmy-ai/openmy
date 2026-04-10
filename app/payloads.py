@@ -3,6 +3,12 @@ from __future__ import annotations
 import json
 import re
 
+from openmy.services.screen_recognition.settings import (
+    ScreenContextSettings,
+    load_screen_context_settings,
+    save_screen_context_settings,
+)
+
 
 def _server():
     import app.server as server_module
@@ -26,12 +32,32 @@ def get_context_payload() -> dict:
         "today_state": realtime_context.get("today_state", {}),
         "latest_scene_refs": realtime_context.get("latest_scene_refs", []),
         "pending_followups_today": realtime_context.get("pending_followups_today", []),
+        "screen_completion_candidates": realtime_context.get("screen_completion_candidates", []),
         "ingestion_health": realtime_context.get("ingestion_health", {}),
         "active_projects": rolling_context.get("active_projects", []),
         "open_loops": rolling_context.get("open_loops", []),
         "recent_decisions": rolling_context.get("recent_decisions", []),
         "stable_profile": snapshot.get("stable_profile", {}),
     }
+
+
+def get_screen_context_settings_payload() -> dict:
+    server = _server()
+    settings = load_screen_context_settings(data_root=server.DATA_ROOT)
+    return settings.to_dict()
+
+
+def update_screen_context_settings_payload(data: dict) -> dict:
+    server = _server()
+    current = load_screen_context_settings(data_root=server.DATA_ROOT)
+    merged = ScreenContextSettings.from_dict(
+        {
+            **current.to_dict(),
+            **(data if isinstance(data, dict) else {}),
+        }
+    )
+    save_screen_context_settings(merged, data_root=server.DATA_ROOT)
+    return merged.to_dict()
 
 
 def get_context_loops_payload() -> list[dict]:
