@@ -13,6 +13,11 @@ dependencies = [
 [project.scripts]
 openmy = "openmy.cli:main"
 
+[project.optional-dependencies]
+transcription-enrich = [
+    "whisperx>=3.8.5",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

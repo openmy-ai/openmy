@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -297,6 +298,8 @@ def transcribe_audio_files(
     del gemini_home
     output_dir.mkdir(parents=True, exist_ok=True)
     vocab_terms = load_vocab_terms(VOCAB_FILE)
+    persisted_chunk_dir = output_dir / "stt_chunks"
+    persisted_chunk_dir.mkdir(parents=True, exist_ok=True)
 
     final_provider_name = (provider_name or get_stt_provider_name()).lower()
     final_model = model or get_stt_model(final_provider_name) or GEMINI_MODEL
@@ -345,12 +348,14 @@ def transcribe_audio_files(
             )
 
             for chunk in chunks:
+                persistent_chunk_path = persisted_chunk_dir / f"audio_{index:03d}_{chunk.path.name}"
+                shutil.copy2(chunk.path, persistent_chunk_path)
                 transcript = ""
                 last_error: Exception | None = None
                 for attempt in range(1, 4):
                     try:
                         transcript_payload = transcribe_audio(
-                            audio_path=chunk.path,
+                            audio_path=persistent_chunk_path,
                             provider_name=final_provider_name,
                             api_key=api_key,
                             model=final_model,
@@ -377,7 +382,7 @@ def transcribe_audio_files(
                     {
                         "chunk_id": f"chunk_{len(transcription_payload['chunks']) + 1:04d}",
                         "source_audio_path": str(audio_path),
-                        "chunk_path": str(chunk.path),
+                        "chunk_path": str(persistent_chunk_path),
                         "time_label": chunk.time_label,
                         "text": transcript_result.text,
                         "language": transcript_result.language,
