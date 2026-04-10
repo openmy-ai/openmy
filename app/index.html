@@ -970,23 +970,7 @@ function renderBriefingView() {
 
   html += '<div class="briefing-grid">';
 
-  if (briefing.people_interaction_map && Object.keys(briefing.people_interaction_map).length) {
-    html += `<div class="briefing-card">
-      <div class="briefing-card-title">👥 人物互动</div>
-      <div class="people-grid">
-        ${Object.entries(briefing.people_interaction_map).map(([name, info]) => {
-          const style = getRoleStyle(name);
-          return `<div class="people-chip">
-            <div class="people-avatar" style="background:${style.bg};color:${style.color}">${style.emoji}</div>
-            <div class="people-info">
-              <div class="people-name">${escapeHtml(name)}</div>
-              <div class="people-meta">${escapeHtml(info.scene_count || 0)} 段对话</div>
-            </div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`;
-  }
+
 
   if (briefing.work_sessions && Object.keys(briefing.work_sessions).length) {
     const maxValue = Math.max(...Object.values(briefing.work_sessions).map((value) => parseInt(value, 10) || 1));
