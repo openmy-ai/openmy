@@ -64,11 +64,11 @@ corrections.jsonl         ← append-only 修正历史，查询时自动叠加
 ```
 音频文件
   ↓ 去静音+压缩+切块 (services/ingest/audio_pipeline.py)
-  ↓ 转写 (adapters/transcription/gemini_cli.py)
-  ↓ 语义清洗 (services/cleaning/cleaner.py → Gemini CLI)
+  ↓ 转写 (providers/stt/* + adapters/transcription/gemini_cli.py compat)
+  ↓ 语义清洗 (services/cleaning/cleaner.py，纯规则)
   ↓ 场景切分 (services/segmentation/segmenter.py)
-  ↓ 蒸馏 (services/distillation/distiller.py)
-  ↓ 结构化提取: intents+facts (services/extraction/extractor.py)
+  ↓ 蒸馏 (services/distillation/distiller.py → providers/llm/*)
+  ↓ 结构化提取: intents+facts (services/extraction/extractor.py → providers/llm/*)
   ↓ 跨日聚合 (services/context/consolidation.py)
   ↓ active_context.json + corrections.jsonl
   ↓ Agent 消费 / 前端展示

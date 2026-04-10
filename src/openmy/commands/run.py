@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import argparse
-import os
 from datetime import datetime
 from pathlib import Path
+
+from openmy.config import GEMINI_MODEL, get_llm_api_key, get_stage_llm_model, has_llm_credentials
 
 
 PARTIAL_SUCCESS = 2
@@ -187,7 +188,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         cli.console.print("\n[dim]⏭️ 跳过场景切分：已存在 scenes.json[/dim]")
         _mark_step(date_str, run_status, "segment", "skipped", message="复用已有 scenes.json", artifact=paths["scenes"])
 
-    if os.getenv("GEMINI_API_KEY", "").strip():
+    if has_llm_credentials("roles"):
         _mark_step(date_str, run_status, "roles", "running", message="正在做角色识别")
         cli.console.print("\n[bold]👥 角色识别[/bold]")
         try:
@@ -221,12 +222,12 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             cli.console.print(f"[yellow]⚠️ 角色识别异常: {exc}，继续[/yellow]")
             _mark_step(date_str, run_status, "roles", "failed", message=f"角色识别异常: {exc}")
     else:
-        cli.console.print("\n[dim]⏭️ 跳过角色识别：缺少 GEMINI_API_KEY[/dim]")
-        _mark_step(date_str, run_status, "roles", "skipped", message="缺少 GEMINI_API_KEY")
+        cli.console.print("\n[dim]⏭️ 跳过角色识别：缺少可用 LLM provider key[/dim]")
+        _mark_step(date_str, run_status, "roles", "skipped", message="缺少可用 LLM provider key")
 
     missing_summaries = [scene for scene in scenes_data.get("scenes", []) if not scene.get("summary")]
     if missing_summaries:
-        if os.getenv("GEMINI_API_KEY", "").strip():
+        if has_llm_credentials("distill"):
             _mark_step(date_str, run_status, "distill", "running", message=f"正在蒸馏 {len(missing_summaries)} 个场景")
             cli.console.print("\n[bold]🧪 蒸馏[/bold]")
             result = cli.cmd_distill(args)
@@ -237,8 +238,8 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
                 return result
             _mark_step(date_str, run_status, "distill", "completed", message="蒸馏完成", artifact=paths["scenes"])
         else:
-            cli.console.print("\n[yellow]⏭️ 跳过蒸馏：缺少 GEMINI_API_KEY，继续生成基础日报[/yellow]")
-            _mark_step(date_str, run_status, "distill", "skipped", message="缺少 GEMINI_API_KEY")
+            cli.console.print("\n[yellow]⏭️ 跳过蒸馏：缺少可用 LLM provider key，继续生成基础日报[/yellow]")
+            _mark_step(date_str, run_status, "distill", "skipped", message="缺少可用 LLM provider key")
     else:
         cli.console.print("\n[dim]⏭️ 跳过蒸馏：场景摘要已齐全[/dim]")
         _mark_step(date_str, run_status, "distill", "skipped", message="场景摘要已齐全", artifact=paths["scenes"])
@@ -255,13 +256,13 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
 
     extract_core_failed = False
     extract_core_payload = None
-    if os.getenv("GEMINI_API_KEY", "").strip() and paths["transcript"].exists():
+    if has_llm_credentials("extract") and paths["transcript"].exists():
         _mark_step(date_str, run_status, "extract_core", "running", message="正在提取核心结构化摘要")
         cli.console.print("\n[bold]🔍 核心提取[/bold]")
         try:
             from openmy.services.extraction.extractor import run_core_extraction, save_meta_json
-            from openmy.config import GEMINI_MODEL as _extract_model
 
+            _extract_model = get_stage_llm_model("extract") or GEMINI_MODEL
             extract_core_payload = run_core_extraction(
                 str(paths["transcript"]),
                 date=date_str,
@@ -287,8 +288,8 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             cli.console.print("[yellow]⚠️ 已保留前面已完成的结果，可继续查看日报与场景。[/yellow]")
             _mark_step(date_str, run_status, "extract_core", "failed", message=str(exc))
     else:
-        cli.console.print("\n[dim]⏭️ 跳过核心提取：缺少 API key 或转写文件[/dim]")
-        _mark_step(date_str, run_status, "extract_core", "skipped", message="缺少 API key 或 transcript.md")
+        cli.console.print("\n[dim]⏭️ 跳过核心提取：缺少 LLM provider key 或转写文件[/dim]")
+        _mark_step(date_str, run_status, "extract_core", "skipped", message="缺少 LLM provider key 或 transcript.md")
         _mark_step(date_str, run_status, "extract_enrich", "skipped", message="核心提取未执行")
 
     if extract_core_failed:
@@ -319,7 +320,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         _finish_run(date_str, run_status, "partial", "consolidate")
         return PARTIAL_SUCCESS
 
-    if os.getenv("GEMINI_API_KEY", "").strip() and paths["transcript"].exists() and extract_core_payload:
+    if has_llm_credentials("extract") and paths["transcript"].exists() and extract_core_payload:
         _mark_step(date_str, run_status, "extract_enrich", "running", message="正在补全展示/溯源字段")
         cli.console.print("\n[bold]✨ 补全提取[/bold]")
         try:
@@ -328,8 +329,8 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
                 run_enrichment_extraction,
                 save_meta_json,
             )
-            from openmy.config import GEMINI_MODEL as _extract_model
 
+            _extract_model = get_stage_llm_model("extract") or GEMINI_MODEL
             enriched_payload = run_enrichment_extraction(
                 str(paths["transcript"]),
                 core_payload=extract_core_payload,
