@@ -62,6 +62,8 @@ class Intent:
     due: DueDate = field(default_factory=DueDate)
     project_hint: str = ""
     source_recording_id: str = ""
+    temporal_state: str = ""
+    temporal_basis: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any] | None) -> "Intent":
@@ -82,6 +84,12 @@ class Intent:
             due=DueDate.from_dict(payload.get("due")),
             project_hint=str(payload.get("project_hint", "") or ""),
             source_recording_id=str(payload.get("source_recording_id", "") or ""),
+            temporal_state=str(payload.get("temporal_state", "") or ""),
+            temporal_basis=[
+                str(item).strip()
+                for item in payload.get("temporal_basis", [])
+                if str(item).strip()
+            ] if isinstance(payload.get("temporal_basis", []), list) else [],
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -123,6 +131,10 @@ def should_generate_open_loop(intent: Intent) -> bool:
     if intent.kind == "decision":
         return False
     if intent.status in DONE_STATUSES:
+        return False
+    if intent.temporal_state == "past":
+        return False
+    if intent.temporal_state == "unclear" and not intent.due.raw_text.strip():
         return False
     if intent.confidence_label == "low":
         return False

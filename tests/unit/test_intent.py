@@ -54,6 +54,21 @@ class TestIntentModel(unittest.TestCase):
 
         self.assertFalse(should_generate_open_loop(intent))
 
+    def test_should_generate_open_loop_false_for_past_temporal_state(self):
+        intent = self.make_intent(temporal_state="past")
+
+        self.assertFalse(should_generate_open_loop(intent))
+
+    def test_should_generate_open_loop_false_for_unclear_without_due(self):
+        intent = self.make_intent(temporal_state="unclear", due={"raw_text": "", "iso_date": "", "granularity": "none"})
+
+        self.assertFalse(should_generate_open_loop(intent))
+
+    def test_should_generate_open_loop_true_for_future_action(self):
+        intent = self.make_intent(temporal_state="future")
+
+        self.assertTrue(should_generate_open_loop(intent))
+
     def test_intent_to_loop_type_all_branches(self):
         self.assertEqual(intent_to_loop_type(self.make_intent(kind="commitment")), "promise")
         self.assertEqual(intent_to_loop_type(self.make_intent(kind="open_question")), "question")
