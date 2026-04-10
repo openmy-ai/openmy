@@ -107,6 +107,7 @@ class TestConsolidation(unittest.TestCase):
             self.assertEqual(ctx.stable_profile.identity.canonical_name, "周瑟夫")
             self.assertEqual(ctx.realtime_context.ingestion_health.last_processed_date, "2026-04-07")
             self.assertTrue(ctx.status_line)
+            self.assertTrue(ctx.core_memory.focus_projects)
 
             registry_names = {item.display_name for item in ctx.stable_profile.key_people_registry}
             self.assertEqual(registry_names, set())
@@ -118,6 +119,7 @@ class TestConsolidation(unittest.TestCase):
             decision_texts = {item.decision for item in ctx.rolling_context.recent_decisions}
             self.assertIn("决定先做 CLI，再做前端。", decision_texts)
             self.assertIn("先做第四层", decision_texts)
+            self.assertTrue(ctx.rolling_context.recent_events)
 
             entity_rollups = {item.entity_id: item for item in ctx.rolling_context.entity_rollups}
             self.assertEqual(entity_rollups, {})
@@ -231,8 +233,19 @@ class TestConsolidation(unittest.TestCase):
             self.assertNotIn("先做 Intent，再做前端。", loop_types)
             self.assertNotIn("回头研究一下", loop_types)
 
+            core_loop_titles = {item.title for item in ctx.core_memory.open_loops}
+            self.assertIn("同步状态到 Obsidian", core_loop_titles)
+            self.assertIn("Intent 命名要不要改成 commitments", core_loop_titles)
+            self.assertNotIn("回头研究一下", core_loop_titles)
+
             decision_texts = {item.decision for item in ctx.rolling_context.recent_decisions}
             self.assertIn("先做 Intent，再做前端。", decision_texts)
+            decision = next(item for item in ctx.rolling_context.recent_decisions if item.decision == "先做 Intent，再做前端。")
+            self.assertEqual(decision.current_state, "active")
+            self.assertTrue(decision.provenance_refs)
+            loop = next(item for item in ctx.rolling_context.open_loops if item.title == "同步状态到 Obsidian")
+            self.assertEqual(loop.current_state, "active")
+            self.assertTrue(loop.provenance_refs)
 
     def test_consolidate_prefers_day_dir_meta_written_by_extract(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
