@@ -6,6 +6,7 @@ import time
 import unittest
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import urlopen
 from unittest.mock import patch
 
@@ -150,6 +151,22 @@ class TestWebSmoke(unittest.TestCase):
             self.assertEqual(detail_payload["meta"]["daily_summary"], "今天主要补前端工作台。")
             self.assertEqual(meta_payload["intents"][0]["what"], "补前端")
             self.assertEqual(briefing_payload["summary"], "今天主要推进前端补齐。")
+
+    def test_server_does_not_expose_repo_files(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner(job_dir=project_root / "jobs")
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                with self.assertRaises(HTTPError) as ctx:
+                    urlopen(f"{base_url}/README.md", timeout=2)
+            finally:
+                self.stop_server(server, patches)
+
+            self.assertEqual(ctx.exception.code, 404)
 
 
 if __name__ == "__main__":

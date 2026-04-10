@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-"""
-watcher.py — 录音文件监控器
+"""watcher.py — 录音文件监控器。
 
 监控指定目录，DJI Mic 录音落盘后自动触发 openmy run。
-用户零感知，录完音自动出日报。
+默认策略是“watchdog 事件优先 + 目录扫描兜底”：
 
-用法：
-  python3 -m openmy.services.watcher /Volumes/NO\ NAME
-  python3 -m openmy.services.watcher ~/Desktop/recordings
-
-需要 watchdog: pip install watchdog
+- 有 watchdog：监听目录事件，再用轮询确认文件稳定落盘
+- 没有 watchdog：自动降级成纯扫描模式
 """
 
 from __future__ import annotations
@@ -20,8 +16,14 @@ import sys
 import time
 from pathlib import Path
 
-from watchdog.events import FileSystemEventHandler
-from watchdog.observers import Observer
+try:
+    from watchdog.events import FileSystemEventHandler
+    from watchdog.observers import Observer
+except ImportError:  # pragma: no cover - 通过纯扫描模式兜底
+    class FileSystemEventHandler:  # type: ignore[override]
+        pass
+
+    Observer = None
 
 
 # DJI Mic 文件名格式：TX01_MIC001_20260401_104056_orig.wav
@@ -40,24 +42,70 @@ def extract_date_from_filename(filename: str) -> str | None:
 class AudioFileHandler(FileSystemEventHandler):
     """检测新音频文件，按日期攒批后触发管线。"""
 
-    def __init__(self, cooldown_seconds: int = 30):
+    def __init__(self, cooldown_seconds: int = 30, stable_passes: int = 1):
         super().__init__()
         self.cooldown = cooldown_seconds
+        self.stable_passes = stable_passes
         self._pending: dict[str, list[str]] = {}  # date → [file_paths]
         self._last_trigger: dict[str, float] = {}
+        self._scan_state: dict[str, dict[str, int | str]] = {}
+        self._queued_files: set[str] = set()
+
+    def _remember_candidate(self, path: Path, *, from_scan: bool) -> None:
+        if not path.is_file() or path.suffix.lower() != ".wav":
+            return
+        date_str = extract_date_from_filename(path.name)
+        if not date_str:
+            return
+        try:
+            stat = path.stat()
+        except OSError:
+            return
+
+        key = str(path.resolve())
+        signature = (stat.st_size, stat.st_mtime_ns)
+        current = self._scan_state.get(key)
+        if (
+            current
+            and from_scan
+            and bool(current.get("seen_by_scan"))
+            and (current["size"], current["mtime_ns"]) == signature
+        ):
+            current["stable_rounds"] = int(current["stable_rounds"]) + 1
+        else:
+            self._scan_state[key] = {
+                "date": date_str,
+                "size": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
+                "stable_rounds": 0,
+                "seen_by_scan": from_scan,
+            }
+            return
+
+        if from_scan:
+            self._scan_state[key]["seen_by_scan"] = True
+
+        stable_rounds = int(self._scan_state[key]["stable_rounds"])
+        if stable_rounds < self.stable_passes or key in self._queued_files:
+            return
+
+        self._queued_files.add(key)
+        self._pending.setdefault(date_str, []).append(key)
+        print(f"📎 检测到稳定录音: {path.name} → {date_str}")
 
     def on_created(self, event):
         if event.is_directory:
             return
-        path = event.src_path
-        if not path.lower().endswith(".wav"):
-            return
-        date_str = extract_date_from_filename(Path(path).name)
-        if not date_str:
-            return
+        self._remember_candidate(Path(event.src_path), from_scan=False)
 
-        self._pending.setdefault(date_str, []).append(path)
-        print(f"📎 检测到录音: {Path(path).name} → {date_str}")
+    def on_modified(self, event):
+        if event.is_directory:
+            return
+        self._remember_candidate(Path(event.src_path), from_scan=False)
+
+    def scan_directory(self, directory: Path) -> None:
+        for wav_path in directory.rglob("*.wav"):
+            self._remember_candidate(wav_path, from_scan=True)
 
     def check_and_trigger(self):
         """定期检查是否有攒够的批次可以触发。"""
@@ -80,6 +128,15 @@ class AudioFileHandler(FileSystemEventHandler):
                 print(f"❌ 管线执行失败: {exc}")
 
 
+def create_observer(path: Path, handler: AudioFileHandler):
+    if Observer is None:
+        return None
+    observer = Observer()
+    observer.schedule(handler, str(path), recursive=True)
+    observer.start()
+    return observer
+
+
 def watch(directory: str, cooldown: int = 30):
     """启动监控。"""
     path = Path(directory).resolve()
@@ -88,21 +145,26 @@ def watch(directory: str, cooldown: int = 30):
         sys.exit(1)
 
     handler = AudioFileHandler(cooldown_seconds=cooldown)
-    observer = Observer()
-    observer.schedule(handler, str(path), recursive=True)
-    observer.start()
+    observer = create_observer(path, handler)
 
     print(f"👁️ 监控中: {path}")
     print(f"   冷却时间: {cooldown}秒")
+    if observer is None:
+        print("   模式：纯扫描（watchdog 不可用）")
+    else:
+        print("   模式：事件监听 + 扫描兜底")
     print("   按 Ctrl+C 停止\n")
 
     try:
         while True:
             time.sleep(5)
+            handler.scan_directory(path)
             handler.check_and_trigger()
     except KeyboardInterrupt:
-        observer.stop()
-    observer.join()
+        if observer is not None:
+            observer.stop()
+    if observer is not None:
+        observer.join()
 
 
 if __name__ == "__main__":

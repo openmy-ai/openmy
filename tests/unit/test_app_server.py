@@ -3,6 +3,7 @@ import json
 import tempfile
 import time
 import unittest
+from urllib.request import urlopen
 from pathlib import Path
 from unittest.mock import patch
 
@@ -95,6 +96,28 @@ class TestAppServer(unittest.TestCase):
 
         self.assertEqual(ordered_dates, ["2026-04-08", "2026-04-07", "2099-04-08"])
         self.assertEqual(app_server.choose_default_date(ordered_dates, today="2026-04-09"), "2026-04-08")
+
+    def test_server_defaults_to_loopback_host(self):
+        server = app_server.build_server(port=0)
+        try:
+            self.assertEqual(server.server_address[0], "127.0.0.1")
+        finally:
+            server.server_close()
+
+    def test_json_response_does_not_return_wildcard_cors(self):
+        server = app_server.build_server(port=0)
+        try:
+            with patch.object(app_server, "JOB_RUNNER", JobRunner()):
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                import threading
+
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                with urlopen(f"{base_url}/api/stats", timeout=2) as response:
+                    self.assertNotEqual(response.headers.get("Access-Control-Allow-Origin"), "*")
+        finally:
+            server.shutdown()
+            server.server_close()
 
     def test_context_endpoint_returns_status_and_today_focus(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -305,63 +328,69 @@ class TestAppServer(unittest.TestCase):
             self.assertIn("decision_002", corrections_log)
 
     def test_create_pipeline_job_endpoint_accepts_context_kind(self):
-        runner = JobRunner()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            runner = JobRunner(job_dir=Path(tmp_dir))
 
-        def fake_run(kind, target_date, handle):
-            handle.step(f"{kind} running")
-            handle.log(f"{kind} started")
+            def fake_run(kind, target_date, handle):
+                handle.step(f"{kind} running")
+                handle.log(f"{kind} started")
 
-        with patch.object(app_server, "JOB_RUNNER", runner), patch.object(app_server, "run_pipeline_job_command", side_effect=fake_run):
-            payload = app_server.handle_create_pipeline_job({"kind": "context"})
+            with patch.object(app_server, "JOB_RUNNER", runner), patch.object(app_server, "run_pipeline_job_command", side_effect=fake_run):
+                payload = app_server.handle_create_pipeline_job({"kind": "context"})
+                self.wait_for_job_status(runner, payload["job_id"], "succeeded")
 
         self.assertEqual(payload["kind"], "context")
         self.assertIsNone(payload["target_date"])
         self.assertEqual(payload["status"], "queued")
 
     def test_create_pipeline_job_endpoint_accepts_run_kind(self):
-        runner = JobRunner()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            runner = JobRunner(job_dir=Path(tmp_dir))
 
-        def fake_run(kind, target_date, handle):
-            handle.step(f"{kind} running")
-            handle.log(f"{target_date} started")
+            def fake_run(kind, target_date, handle):
+                handle.step(f"{kind} running")
+                handle.log(f"{target_date} started")
 
-        with patch.object(app_server, "JOB_RUNNER", runner), patch.object(app_server, "run_pipeline_job_command", side_effect=fake_run):
-            payload = app_server.handle_create_pipeline_job({"kind": "run", "target_date": "2026-04-08"})
+            with patch.object(app_server, "JOB_RUNNER", runner), patch.object(app_server, "run_pipeline_job_command", side_effect=fake_run):
+                payload = app_server.handle_create_pipeline_job({"kind": "run", "target_date": "2026-04-08"})
+                self.wait_for_job_status(runner, payload["job_id"], "succeeded")
 
         self.assertEqual(payload["kind"], "run")
         self.assertEqual(payload["target_date"], "2026-04-08")
         self.assertEqual(payload["status"], "queued")
 
     def test_jobs_list_endpoint_returns_recent_jobs(self):
-        runner = JobRunner()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            runner = JobRunner(job_dir=Path(tmp_dir))
 
-        def fake_run(kind, target_date, handle):
-            handle.step(f"{kind} running")
-            handle.log(f"{kind}:{target_date or 'none'}")
+            def fake_run(kind, target_date, handle):
+                handle.step(f"{kind} running")
+                handle.log(f"{kind}:{target_date or 'none'}")
 
-        with patch.object(app_server, "JOB_RUNNER", runner), patch.object(app_server, "run_pipeline_job_command", side_effect=fake_run):
-            first = app_server.handle_create_pipeline_job({"kind": "context"})
-            second = app_server.handle_create_pipeline_job({"kind": "run", "target_date": "2026-04-08"})
+            with patch.object(app_server, "JOB_RUNNER", runner), patch.object(app_server, "run_pipeline_job_command", side_effect=fake_run):
+                first = app_server.handle_create_pipeline_job({"kind": "context"})
+                second = app_server.handle_create_pipeline_job({"kind": "run", "target_date": "2026-04-08"})
 
-            self.wait_for_job_status(runner, first["job_id"], "succeeded")
-            self.wait_for_job_status(runner, second["job_id"], "succeeded")
-            payload = app_server.get_pipeline_jobs_payload()
+                self.wait_for_job_status(runner, first["job_id"], "succeeded")
+                self.wait_for_job_status(runner, second["job_id"], "succeeded")
+                payload = app_server.get_pipeline_jobs_payload()
 
         self.assertEqual(len(payload), 2)
         self.assertEqual(payload[0]["job_id"], second["job_id"])
         self.assertEqual(payload[1]["job_id"], first["job_id"])
 
     def test_job_detail_endpoint_returns_status_and_logs(self):
-        runner = JobRunner()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            runner = JobRunner(job_dir=Path(tmp_dir))
 
-        def fake_run(kind, target_date, handle):
-            handle.step("render briefing")
-            handle.log("briefing started")
+            def fake_run(kind, target_date, handle):
+                handle.step("render briefing")
+                handle.log("briefing started")
 
-        with patch.object(app_server, "JOB_RUNNER", runner), patch.object(app_server, "run_pipeline_job_command", side_effect=fake_run):
-            created = app_server.handle_create_pipeline_job({"kind": "context"})
-            self.wait_for_job_status(runner, created["job_id"], "succeeded")
-            payload = app_server.get_pipeline_job_payload(created["job_id"])
+            with patch.object(app_server, "JOB_RUNNER", runner), patch.object(app_server, "run_pipeline_job_command", side_effect=fake_run):
+                created = app_server.handle_create_pipeline_job({"kind": "context"})
+                self.wait_for_job_status(runner, created["job_id"], "succeeded")
+                payload = app_server.get_pipeline_job_payload(created["job_id"])
 
         self.assertEqual(payload["status"], "succeeded")
         self.assertEqual(payload["current_step"], "render briefing")
