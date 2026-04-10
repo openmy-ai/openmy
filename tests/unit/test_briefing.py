@@ -64,8 +64,9 @@ class TestGenerateBriefing(unittest.TestCase):
         try:
             briefing = generate_briefing(tmp_path, "2026-04-07")
             self.assertEqual(briefing.total_scenes, 2)
-            self.assertIn("老婆", briefing.people_interaction_map)
-            self.assertIn("AI助手", briefing.people_interaction_map)
+            self.assertEqual(briefing.people_interaction_map, {})
+            self.assertEqual(briefing.time_blocks[0].people_talked_to, [])
+            self.assertEqual(briefing.time_blocks[1].people_talked_to, [])
             self.assertEqual(len(briefing.time_blocks), 2)
         finally:
             os.unlink(tmp_path)

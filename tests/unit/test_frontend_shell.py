@@ -23,11 +23,7 @@ class TestFrontendShell(unittest.TestCase):
 
     def test_index_adds_context_tabs_without_replacing_reader_views(self):
         self.assertIn('id="tab-overview"', self.content)
-        self.assertIn('id="tab-corrections"', self.content)
-        self.assertIn('id="tab-pipeline"', self.content)
         self.assertIn("概览", self.content)
-        self.assertIn("校正", self.content)
-        self.assertIn("流程", self.content)
 
     def test_index_fetches_context_and_day_payloads(self):
         self.assertIn("/api/context", self.content)
@@ -41,8 +37,6 @@ class TestFrontendShell(unittest.TestCase):
     def test_index_renders_meta_panels_inside_day_view(self):
         self.assertIn("renderMetaPanels", self.content)
         self.assertIn("view-overview", self.content)
-        self.assertIn("view-corrections", self.content)
-        self.assertIn("view-pipeline", self.content)
         self.assertIn("打算做什么", self.content)
         self.assertIn("记住了什么", self.content)
         self.assertIn("决定了什么", self.content)
@@ -54,7 +48,6 @@ class TestFrontendShell(unittest.TestCase):
         self.assertIn("projects/merge", self.content)
         self.assertIn("projects/reject", self.content)
         self.assertIn("decisions/reject", self.content)
-        self.assertIn("submitTypoCorrection", self.content)
 
     def test_index_contains_pipeline_job_panel(self):
         self.assertIn("pipelineJobsList", self.content)
@@ -64,11 +57,85 @@ class TestFrontendShell(unittest.TestCase):
         self.assertIn("刷新上下文", self.content)
         self.assertIn("重新运行", self.content)
 
+    def test_timeline_distillation_uses_unified_bold_markup(self):
+        match = re.search(
+            r"function getSegmentDistillation\(segment, meta\) \{(?P<body>.*?)\n\}\n\nfunction renderBriefingView",
+            self.content,
+            re.S,
+        )
+        self.assertIsNotNone(match)
+        body = match.group("body")
+        self.assertIn("📌 <strong>摘要</strong>", body)
+        self.assertIn("📌 <strong>片段</strong>", body)
+        self.assertNotIn("seg-distilled-placeholder", body)
+
     def test_mobile_layout_has_single_column_breakpoint(self):
         self.assertRegex(
             self.content,
             r"@media\s*\(max-width:\s*900px\)\s*\{[^}]*\.app\s*\{[^}]*grid-template-columns:\s*1fr;",
         )
+
+    def test_spotlight_overlay_dom_structure(self):
+        """Spotlight 浮窗的 DOM 骨架必须存在"""
+        self.assertIn('id="spotlightOverlay"', self.content)
+        self.assertIn('id="spotlightInput"', self.content)
+        self.assertIn('id="spotlightResults"', self.content)
+        self.assertIn("spotlight-modal", self.content)
+        self.assertIn("spotlight-input-wrapper", self.content)
+
+    def test_spotlight_sidebar_trigger_button(self):
+        """侧边栏必须有触发按钮和快捷键提示"""
+        self.assertIn("sidebar-search-btn", self.content)
+        self.assertIn("openSpotlight()", self.content)
+        self.assertIn("⌘K", self.content)
+
+    def test_spotlight_js_functions_exist(self):
+        """Spotlight 核心函数必须全部定义"""
+        self.assertIn("function openSpotlight()", self.content)
+        self.assertIn("function closeSpotlight(", self.content)
+        self.assertIn("async function runSearchSpotlight(", self.content)
+        self.assertIn("async function jumpToSearchResult(", self.content)
+
+    def test_spotlight_keyboard_shortcut_listener(self):
+        """Cmd+K / Ctrl+K 快捷键监听必须存在"""
+        self.assertIn("e.metaKey", self.content)
+        self.assertIn("e.key === 'k'", self.content)
+        self.assertIn("e.key === 'Escape'", self.content)
+
+    def test_spotlight_search_highlight_css(self):
+        """搜索命中高亮的 CSS 类必须定义"""
+        self.assertIn("search-highlight", self.content)
+        self.assertIn("flashHighlight", self.content)
+        self.assertIn("highlight-target", self.content)
+
+    def test_search_jump_auto_expands_raw_text(self):
+        """scrollToSegment 必须支持 query 参数并自动展开原文"""
+        match = re.search(
+            r"function scrollToSegment\(time,\s*query",
+            self.content,
+        )
+        self.assertIsNotNone(match, "scrollToSegment 必须接受 query 参数")
+        # 确认函数体里有自动展开 seg-raw 的逻辑
+        self.assertIn("seg-raw", self.content)
+        self.assertIn("rawNode.classList.add('visible')", self.content)
+
+    def test_inline_correction_popover_exists(self):
+        """全局选词纠错浮窗的 DOM 和 JS 必须存在"""
+        self.assertIn('id="correctionPopover"', self.content)
+        self.assertIn('id="cpWrongText"', self.content)
+        self.assertIn('id="cpRightInput"', self.content)
+        self.assertIn("function openCorrectionPopover(", self.content)
+        self.assertIn("function closeCorrectionPopover()", self.content)
+        self.assertIn("async function submitInlineCorrection()", self.content)
+        self.assertIn("correction-popover", self.content)
+
+    def test_settings_page_exists(self):
+        """设置页面的 DOM 和相关 JS 必须存在"""
+        self.assertIn('id="settingsBtn"', self.content)
+        self.assertIn("function openSettings()", self.content)
+        self.assertIn("function applySettings()", self.content)
+        self.assertIn('data-theme="dark"', self.content)
+        self.assertIn('localStorage.setItem(\'openmy-\'', self.content)
 
 
 if __name__ == "__main__":
