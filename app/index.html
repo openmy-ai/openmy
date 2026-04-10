@@ -957,12 +957,10 @@ function renderDayLayout() {
 
 function renderMetaPanels(meta) {
   const groups = [
-    { key: 'events', title: '📌 事件', dot: '#2eaadc' },
-    { key: 'intents', title: '🧭 意图', dot: '#0f7b6c' },
-    { key: 'facts', title: '🧱 事实', dot: '#64748b' },
-    { key: 'decisions', title: '🎯 决策', dot: '#d9730d' },
-    { key: 'todos', title: '✅ 待办', dot: '#16a34a' },
-    { key: 'insights', title: '⚡ 洞察', dot: '#9065b0' },
+    { key: 'events', title: '📌 发生了什么', dot: '#2eaadc' },
+    { key: 'intents', title: '📝 打算做什么', dot: '#0f7b6c' },
+    { key: 'facts', title: '💡 记住了什么', dot: '#64748b' },
+    { key: 'decisions', title: '🎯 决定了什么', dot: '#d9730d' },
   ];
 
   const cards = groups.map((group) => {
