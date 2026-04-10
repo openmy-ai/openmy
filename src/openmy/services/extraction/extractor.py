@@ -36,7 +36,7 @@ from openmy.config import (
     get_llm_api_key,
     get_stage_llm_model,
 )
-from openmy.domain.intent import DueDate, Fact, Intent
+from openmy.domain.intent import DONE_STATUSES, DueDate, Fact, Intent
 from openmy.providers.registry import ProviderRegistry
 
 CONFIDENCE_SCORE_BY_LABEL = {
@@ -285,6 +285,221 @@ def _normalize_due_date(due: DueDate, reference_date: str | None) -> DueDate:
         return due
     iso_date, granularity = resolved
     return DueDate(raw_text=due.raw_text, iso_date=iso_date, granularity=granularity)
+
+
+PAST_MARKERS = (
+    "昨天",
+    "昨晚",
+    "前天",
+    "刚才",
+    "刚刚",
+    "已经",
+    "想过",
+    "考虑过",
+    "看过",
+    "聊了",
+    "聊完",
+    "去了",
+    "吃完",
+    "做完",
+    "改完",
+    "写完",
+    "发了",
+    "见了",
+    "处理完",
+    "搞定了",
+)
+FUTURE_MARKERS = (
+    "明天",
+    "后天",
+    "下次",
+    "待会",
+    "一会",
+    "稍后",
+    "之后",
+    "打算",
+    "准备",
+    "记得",
+    "提醒",
+    "还没",
+    "需要",
+    "要",
+    "得",
+)
+ONGOING_MARKERS = (
+    "正在",
+    "在做",
+    "在改",
+    "还在",
+    "继续",
+    "推进中",
+    "处理中",
+    "没改完",
+    "没做完",
+)
+COMPLETED_TASK_HINTS = (
+    "README",
+    "OpenMy",
+    "文档",
+    "配置",
+    "代码",
+    "提取器",
+    "prompt",
+    "日报",
+    "状态",
+    "测试",
+    "接口",
+    "脚本",
+    "发布",
+    "同步",
+    "回电话",
+    "联系",
+    "修",
+    "改",
+    "写",
+    "补",
+    "提交",
+    "更新",
+)
+LIFE_EVENT_HINTS = (
+    "按摩",
+    "火锅",
+    "吃饭",
+    "散步",
+    "买菜",
+    "咖啡",
+    "回家",
+    "睡觉",
+    "约饭",
+    "洗澡",
+    "看电影",
+)
+
+
+def _match_markers(text: str, markers: tuple[str, ...]) -> list[str]:
+    return [marker for marker in markers if marker and marker in text]
+
+
+def _temporal_text(intent: Intent) -> str:
+    return " ".join(
+        part
+        for part in (
+            intent.evidence_quote.strip(),
+            intent.what.strip(),
+            intent.due.raw_text.strip(),
+        )
+        if part
+    )
+
+
+def _looks_like_completed_task(intent: Intent, text: str) -> bool:
+    if intent.status in DONE_STATUSES:
+        return True
+    if any(marker in text for marker in LIFE_EVENT_HINTS):
+        return False
+    if intent.project_hint.strip() or intent.topic.strip():
+        return True
+    return any(marker in text for marker in COMPLETED_TASK_HINTS)
+
+
+def _demoted_fact_type(intent: Intent) -> str:
+    topic = (intent.project_hint.strip() or intent.topic.strip())
+    if topic and topic not in {"生活", "日常", "个人", "杂项"}:
+        return "project_update"
+    if intent.kind == "decision":
+        return "idea"
+    return "observation"
+
+
+def _intent_to_fact(intent: Intent) -> Fact:
+    content = intent.evidence_quote.strip() or intent.what.strip()
+    return Fact(
+        fact_type=_demoted_fact_type(intent),
+        content=content,
+        topic=intent.project_hint.strip() or intent.topic.strip(),
+        confidence_label=intent.confidence_label,
+        confidence_score=intent.confidence_score,
+        source_scene_id=intent.source_scene_id,
+    )
+
+
+def _temporal_basis_label(prefix: str, values: list[str]) -> list[str]:
+    return [f"{prefix}:{value}" for value in values]
+
+
+def _resolve_temporal_verdict(intent: Intent) -> tuple[str, str, list[str]]:
+    text = _temporal_text(intent)
+    past_hits = _match_markers(text, PAST_MARKERS)
+    future_hits = _match_markers(text, FUTURE_MARKERS)
+    ongoing_hits = _match_markers(text, ONGOING_MARKERS)
+    strong_future_hits = [marker for marker in future_hits if marker not in {"还没", "要", "得"}]
+    basis: list[str] = []
+
+    if intent.kind == "open_question":
+        return "future", "keep_intent", ["question_kind"]
+
+    if ongoing_hits and (intent.due.raw_text.strip() or strong_future_hits):
+        return "future", "keep_intent", _temporal_basis_label("future", future_hits) + _temporal_basis_label("ongoing", ongoing_hits)
+
+    if ongoing_hits:
+        return "ongoing", "keep_intent", _temporal_basis_label("ongoing", ongoing_hits)
+
+    if past_hits and not future_hits:
+        basis = _temporal_basis_label("past", past_hits)
+        if _looks_like_completed_task(intent, text):
+            return "past", "force_done", basis
+        return "past", "demote_to_fact", basis
+
+    if future_hits and not past_hits:
+        return "future", "keep_intent", _temporal_basis_label("future", future_hits)
+
+    if past_hits and future_hits:
+        basis = _temporal_basis_label("mixed_past", past_hits) + _temporal_basis_label("mixed_future", future_hits)
+        if intent.due.raw_text.strip() or future_hits:
+            return "future", "keep_intent", basis + ["mixed_future_bias"]
+        return "unclear", "demote_to_fact", basis
+
+    if intent.due.raw_text.strip():
+        return "future", "keep_intent", ["due_signal"]
+
+    if intent.kind in {"action_item", "commitment"}:
+        return "future", "keep_intent", ["model_intent_default"]
+
+    return "unclear", "keep_intent", ["model_default"]
+
+
+def _adjudicate_temporality(intents: list[Intent], facts: list[Fact]) -> tuple[list[Intent], list[Fact]]:
+    kept_intents: list[Intent] = []
+    merged_facts: list[Fact] = list(facts)
+    seen_facts = {fact.content.strip() for fact in merged_facts if fact.content.strip()}
+
+    for intent in intents:
+        state, action, basis = _resolve_temporal_verdict(intent)
+        intent.temporal_state = state
+        intent.temporal_basis = basis
+
+        if action == "demote_to_fact":
+            fact = _intent_to_fact(intent)
+            content = fact.content.strip()
+            if content and content not in seen_facts:
+                seen_facts.add(content)
+                merged_facts.append(fact)
+            continue
+
+        if action == "force_done":
+            intent.status = "done"
+        elif state == "ongoing" and intent.status not in DONE_STATUSES:
+            intent.status = "active"
+
+        if state == "unclear":
+            intent.needs_review = True
+            if intent.confidence_label == "high":
+                intent.confidence_label = "medium"
+                intent.confidence_score = min(intent.confidence_score or 0.9, 0.7)
+
+        kept_intents.append(intent)
+
+    return kept_intents, merged_facts
 
 
 def _build_extract_prompt(text: str, reference_date: str | None) -> str:
@@ -574,6 +789,8 @@ def normalize_extraction_payload(data: dict[str, Any], reference_date: str | Non
             due=_normalize_due_date(intent.due, reference_date),
             project_hint=intent.project_hint,
             source_recording_id=intent.source_recording_id,
+            temporal_state=intent.temporal_state,
+            temporal_basis=intent.temporal_basis,
         )
         for intent in intents
     ]
@@ -588,6 +805,8 @@ def normalize_extraction_payload(data: dict[str, Any], reference_date: str | Non
             normalized_raw["confidence_label"],
         )
         facts.append(Fact.from_dict(normalized_raw))
+
+    intents, facts = _adjudicate_temporality(intents, facts)
 
     payload["daily_summary"] = str(payload.get("daily_summary", "") or "")
     payload["events"] = events
