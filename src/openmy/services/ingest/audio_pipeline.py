@@ -100,6 +100,17 @@ def transcribe_audio(
     )
 
 
+def load_sidecar_transcript(audio_path: Path) -> str:
+    candidates = [
+        audio_path.with_suffix(".transcript.txt"),
+        audio_path.with_suffix(".transcript.md"),
+    ]
+    for path in candidates:
+        if path.exists():
+            return path.read_text(encoding="utf-8").strip()
+    return ""
+
+
 def prepare_audio_chunks(audio_path: Path, work_dir: Path, chunk_minutes: int = 10) -> list[PreparedChunk]:
     work_dir.mkdir(parents=True, exist_ok=True)
     stripped_path = work_dir / f"{audio_path.stem}_stripped.wav"
@@ -189,8 +200,6 @@ def transcribe_audio_files(
 
     final_model = model or get_stt_model() or GEMINI_MODEL
     api_key = get_stt_api_key()
-    if not api_key:
-        raise RuntimeError("缺少 GEMINI_API_KEY 环境变量")
 
     rendered_parts: list[str] = [
         f"# {date_str} 上下文（原始）",
@@ -209,6 +218,13 @@ def transcribe_audio_files(
             audio_path = Path(audio_name).expanduser().resolve()
             if not audio_path.is_file():
                 raise FileNotFoundError(f"音频文件不存在: {audio_path}")
+
+            if not api_key:
+                sidecar_transcript = load_sidecar_transcript(audio_path)
+                if sidecar_transcript:
+                    rendered_parts.extend([f"## {offset_time_label(parse_audio_time(audio_path), 0)}", "", sidecar_transcript, ""])
+                    continue
+                raise RuntimeError("缺少 GEMINI_API_KEY 环境变量")
 
             chunks = prepare_audio_chunks(
                 audio_path=audio_path,

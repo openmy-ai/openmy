@@ -228,8 +228,8 @@ class TestOpenMyCli(unittest.TestCase):
         self.assertEqual(forwarded_args.audio, [str(audio_path)])
         self.assertFalse(forwarded_args.skip_transcribe)
 
-    def test_cli_quick_start_reports_missing_gemini_key_in_plain_chinese(self):
-        """quick-start 缺 key 时应该给中文人话提示。"""
+    def test_cli_quick_start_requires_project_env_even_if_shell_has_gemini_key(self):
+        """quick-start 只认项目 .env，不能吃到个人 shell 里的 key。"""
         audio_path = PROJECT_ROOT / "tests" / "fixtures" / "sample.wav"
         audio_path.parent.mkdir(parents=True, exist_ok=True)
         audio_path.write_bytes(b"wav")
@@ -242,7 +242,7 @@ class TestOpenMyCli(unittest.TestCase):
 
         try:
             env = os.environ.copy()
-            env.pop("GEMINI_API_KEY", None)
+            env["GEMINI_API_KEY"] = "shadow-shell-key"
 
             result = subprocess.run(
                 [sys.executable, "-m", "openmy", "quick-start", str(audio_path)],
@@ -254,8 +254,8 @@ class TestOpenMyCli(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 1)
-            self.assertIn("GEMINI_API_KEY", result.stdout + result.stderr)
             self.assertIn(".env", result.stdout + result.stderr)
+            self.assertIn("语音转写", result.stdout + result.stderr)
         finally:
             if backup_path.exists():
                 backup_path.rename(env_path)
@@ -268,19 +268,35 @@ class TestOpenMyCli(unittest.TestCase):
         stdout = io.StringIO()
 
         with (
-            patch("openmy.cli.find_all_dates", return_value=["2026-04-08"]),
             patch(
-                "openmy.cli.get_date_status",
-                return_value={
-                    "date": "2026-04-08",
-                    "has_transcript": True,
-                    "has_raw": True,
-                    "has_scenes": True,
-                    "has_briefing": True,
-                    "word_count": 120,
-                    "scene_count": 3,
-                    "role_distribution": {"AI助手": 2, "自己": 1},
-                },
+                "openmy.skill_dispatch.dispatch_skill_action",
+                return_value=(
+                    {
+                        "ok": True,
+                        "action": "status.get",
+                        "version": "v1",
+                        "data": {
+                            "items": [
+                                {
+                                    "date": "2026-04-08",
+                                    "has_transcript": True,
+                                    "has_raw": True,
+                                    "has_scenes": True,
+                                    "has_briefing": True,
+                                    "word_count": 120,
+                                    "scene_count": 3,
+                                    "role_distribution": {"AI助手": 2, "自己": 1},
+                                }
+                            ],
+                            "total_days": 1,
+                            "latest_date": "2026-04-08",
+                        },
+                        "human_summary": "共有 1 天数据；最近一天是 2026-04-08。",
+                        "artifacts": {"data_root": "data"},
+                        "next_actions": [],
+                    },
+                    0,
+                ),
             ),
             patch("sys.stdout", stdout),
         ):
@@ -288,8 +304,10 @@ class TestOpenMyCli(unittest.TestCase):
 
         self.assertEqual(result, 0)
         payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["ok"])
         self.assertEqual(payload["action"], "status.get")
-        self.assertEqual(payload["items"][0]["date"], "2026-04-08")
+        self.assertEqual(payload["version"], "v1")
+        self.assertEqual(payload["data"]["items"][0]["date"], "2026-04-08")
 
     def test_cli_quick_start_launches_report_on_partial_run(self):
         """quick-start 部分完成时也应该拉起本地网页。"""
@@ -946,7 +964,7 @@ class TestOpenMyCli(unittest.TestCase):
                 updates_path.write_text(original_updates, encoding="utf-8")
 
     def test_agent_recent_routes_to_context(self):
-        """openmy agent --recent 应该走活动上下文入口。"""
+        """openmy agent --recent 应该输出 context.get 的稳定 JSON 契约。"""
         context_path = PROJECT_ROOT / "data" / "active_context.json"
         compact_path = PROJECT_ROOT / "data" / "active_context.compact.md"
         updates_path = PROJECT_ROOT / "data" / "active_context_updates.jsonl"
@@ -964,7 +982,10 @@ class TestOpenMyCli(unittest.TestCase):
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("Level 0", result.stdout)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["action"], "context.get")
+            self.assertEqual(payload["version"], "v1")
         finally:
             if original_context is None:
                 context_path.unlink(missing_ok=True)
@@ -982,7 +1003,7 @@ class TestOpenMyCli(unittest.TestCase):
                 updates_path.write_text(original_updates, encoding="utf-8")
 
     def test_agent_day_routes_to_view(self):
-        """openmy agent --day 应该走单日查看入口。"""
+        """openmy agent --day 应该输出 day.get 的稳定 JSON 契约。"""
         date_str = "2099-01-11"
         self.seed_view_day(date_str)
         try:
@@ -994,12 +1015,15 @@ class TestOpenMyCli(unittest.TestCase):
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("日报", result.stdout)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["action"], "day.get")
+            self.assertEqual(payload["data"]["date"], date_str)
         finally:
             self.cleanup_day_dir(date_str)
 
     def test_agent_reject_decision_routes_to_correct(self):
-        """openmy agent --reject-decision 应该追加 correction 事件。"""
+        """openmy agent --reject-decision 应该走 correction.apply 契约。"""
         corrections_path = PROJECT_ROOT / "data" / "corrections.jsonl"
         context_path = PROJECT_ROOT / "data" / "active_context.json"
         original_corrections = corrections_path.read_text(encoding="utf-8") if corrections_path.exists() else None
@@ -1020,6 +1044,9 @@ class TestOpenMyCli(unittest.TestCase):
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["action"], "correction.apply")
             payload = corrections_path.read_text(encoding="utf-8")
             self.assertIn("reject_decision", payload)
             self.assertIn("decision_lunch", payload)
@@ -1035,7 +1062,7 @@ class TestOpenMyCli(unittest.TestCase):
                 context_path.write_text(original_context, encoding="utf-8")
 
     def test_agent_ingest_reuses_existing_artifacts(self):
-        """openmy agent --ingest 配合 --skip-transcribe 应该能复用现有数据。"""
+        """openmy agent --ingest 配合 --skip-transcribe 应该映射到 day.run 契约。"""
         date_str = "2099-01-09"
         day_dir = self.make_day_dir(date_str)
         (day_dir / "transcript.md").write_text(
@@ -1064,6 +1091,9 @@ class TestOpenMyCli(unittest.TestCase):
                 env=env,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["action"], "day.run")
             self.assertTrue((day_dir / "daily_briefing.json").exists())
         finally:
             self.cleanup_day_dir(date_str)
