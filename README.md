@@ -125,18 +125,23 @@ openmy quick-start path/to/audio.wav
 
 ## 流程长什么样
 
-```mermaid
-flowchart LR
-    A["Audio"] --> B["Transcribe"]
-    B --> C["Clean"]
-    C --> D["Scene Split"]
-    D --> E["Role Resolve"]
-    E --> F["Distill"]
-    F --> G["Briefing"]
-    G --> H["Extract"]
-    H --> I["Active Context"]
-    I --> J["Web Report"]
+```text
+Audio
+  → Transcribe
+  → Clean
+  → Scene Split
+  → Role Resolve
+  → Distill
+  → Briefing
+  → Extract
+  → Active Context
+  → Web Report
 ```
+
+默认打开的是本机网页：
+
+- 地址：`http://127.0.0.1:8420`
+- 默认只绑定本机，不会自动开放到局域网
 
 ## 配置说明
 

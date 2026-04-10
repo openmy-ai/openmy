@@ -7,7 +7,12 @@ import argparse
 import json
 import os
 import re
+import shutil
+import socket
+import subprocess
 import sys
+import time
+import webbrowser
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -38,6 +43,11 @@ ROLE_COLORS = {
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 DATE_MD_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
 AUDIO_TIME_RE = re.compile(r".*?(\d{8})_(\d{2})(\d{2})(\d{2}).*")
+DATE_IN_FILENAME_RE = re.compile(r"(?P<iso>\d{4}-\d{2}-\d{2})|(?P<compact>\d{8})")
+
+
+class FriendlyCliError(RuntimeError):
+    """给最终用户看的中文错误。"""
 
 
 def find_all_dates() -> list[str]:
@@ -179,9 +189,118 @@ def parse_audio_time(audio_path: Path) -> str:
     return f"{match.group(2)}:{match.group(3)}"
 
 
+def infer_date_from_path(path: Path) -> str:
+    """从文件名推断日期，支持 YYYY-MM-DD / YYYYMMDD。"""
+    match = DATE_IN_FILENAME_RE.search(path.name)
+    if not match:
+        return date.today().isoformat()
+    if match.group("iso"):
+        return match.group("iso")
+    raw = match.group("compact")
+    return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
+
+
+def load_project_env(env_path: Path | None = None) -> bool:
+    """从项目根目录读取 .env，不覆盖已有环境变量。"""
+    final_path = env_path or (ROOT_DIR / ".env")
+    if not final_path.exists():
+        return False
+
+    for raw_line in final_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("'").strip('"')
+        if key and key not in os.environ:
+            os.environ[key] = value
+    return True
+
+
+def ensure_runtime_dependencies() -> None:
+    """给 quick-start 做最小依赖自检。"""
+    if sys.version_info < (3, 10):
+        raise FriendlyCliError("需要 Python 3.10 以上版本。可先运行 `brew install python@3.11`。")
+
+    missing_bins = [name for name in ("ffmpeg", "ffprobe") if shutil.which(name) is None]
+    if missing_bins:
+        missing = "、".join(missing_bins)
+        raise FriendlyCliError(f"缺少 {missing}。macOS 可先运行 `brew install ffmpeg`。")
+
+    has_env_file = load_project_env()
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        if has_env_file:
+            raise FriendlyCliError("已读取项目根目录 `.env`，但里面没有 `GEMINI_API_KEY`。请把你的 Gemini key 填进去。")
+        raise FriendlyCliError("没找到项目根目录 `.env`，也没有检测到 `GEMINI_API_KEY`。先 `cp .env.example .env`，再把 key 填进去。")
+
+
+def is_local_report_running(host: str = "127.0.0.1", port: int = 8420) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=0.3):
+            return True
+    except OSError:
+        return False
+
+
+def launch_local_report(host: str = "127.0.0.1", port: int = 8420) -> None:
+    """启动本地网页并打开浏览器；服务已在运行时只打开页面。"""
+    url = f"http://{host}:{port}"
+    if not is_local_report_running(host=host, port=port):
+        server_entry = ROOT_DIR / "app" / "server.py"
+        subprocess.Popen(
+            [sys.executable, str(server_entry)],
+            cwd=ROOT_DIR,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        time.sleep(0.8)
+    webbrowser.open(url)
+
+
 def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def infer_scene_role_profile(addressed_to: str) -> tuple[str, str]:
+    """根据人工确认的对象名推导场景类别和展示标签。"""
+    normalized = str(addressed_to or "").strip()
+    lowered = normalized.lower()
+    if not normalized:
+        return ("uncertain", "不确定")
+    if lowered in {"ai", "ai助手", "gpt", "chatgpt", "gemini", "claude", "codex"}:
+        return ("ai", "跟AI说")
+    if normalized in {"商家", "客服", "老板", "服务员"}:
+        return ("merchant", "跟商家")
+    if normalized in {"宠物", "小狗", "小猫"}:
+        return ("pet", "跟宠物")
+    if normalized in {"自己", "自言自语"}:
+        return ("self", "自言自语")
+    if normalized in {"未识别", "不确定"}:
+        return ("uncertain", "不确定")
+    return ("interpersonal", "跟人聊")
+
+
+def rebuild_scene_stats(data: dict[str, Any]) -> dict[str, Any]:
+    """根据 scenes 重新计算 role_distribution 和 needs_review_count。"""
+    scenes = data.get("scenes", []) if isinstance(data.get("scenes", []), list) else []
+    distribution: dict[str, int] = {}
+    needs_review_count = 0
+    for scene in scenes:
+        role = scene.get("role", {}) if isinstance(scene.get("role", {}), dict) else {}
+        addressed_to = str(role.get("addressed_to", "")).strip()
+        label = addressed_to or str(role.get("scene_type_label", "")).strip() or "未识别"
+        distribution[label] = distribution.get(label, 0) + 1
+        if bool(role.get("needs_review")):
+            needs_review_count += 1
+    return {
+        "total_scenes": len(scenes),
+        "role_distribution": distribution,
+        "needs_review_count": needs_review_count,
+    }
 
 
 def upsert_correction(wrong: str, right: str, context: str = "") -> Path:
@@ -304,6 +423,84 @@ def _append_context_correction(
         reason=reason,
     )
     append_correction(DATA_ROOT, event)
+    return 0
+
+
+def _cmd_correct_scene_role(date_str: str, scene_query: str, addressed_to: str) -> int:
+    """人工修正某个场景的角色归因。"""
+    scenes_path, data = read_scenes_payload(date_str)
+    if not scenes_path.exists():
+        console.print(f"[red]❌ 找不到 {date_str}/scenes.json，先运行 openmy roles {date_str}[/red]")
+        return 1
+
+    scenes = data.get("scenes", []) if isinstance(data.get("scenes", []), list) else []
+    target = None
+    for scene in scenes:
+        if _score_match(
+            scene_query,
+            str(scene.get("scene_id", "")),
+            str(scene.get("time_start", "")),
+            str(scene.get("time_end", "")),
+        ) >= 0:
+            target = scene
+            break
+
+    if target is None:
+        console.print(f"[red]❌ 没找到场景：{scene_query}[/red]")
+        return 1
+
+    scene_id = str(target.get("scene_id", "")).strip() or scene_query
+    old_role = target.get("role", {}) if isinstance(target.get("role", {}), dict) else {}
+    old_addressed_to = str(old_role.get("addressed_to", "")).strip() or "未识别"
+    scene_type, scene_type_label = infer_scene_role_profile(addressed_to)
+
+    updated_role = dict(old_role)
+    updated_role.update(
+        {
+            "category": scene_type,
+            "entity_id": addressed_to,
+            "relation_label": addressed_to,
+            "scene_type": scene_type,
+            "scene_type_label": scene_type_label,
+            "addressed_to": addressed_to,
+            "confidence": 1.0,
+            "evidence_chain": [f"人工修正为 {addressed_to}"],
+            "source": "human_confirmed",
+            "source_label": "你确认的",
+            "evidence": f"人工修正为 {addressed_to}",
+            "needs_review": False,
+        }
+    )
+    target["role"] = updated_role
+    data["stats"] = rebuild_scene_stats(data)
+    write_json(scenes_path, data)
+
+    from openmy.services.context.corrections import append_correction, create_correction_event
+
+    event = create_correction_event(
+        actor="user",
+        op="confirm_scene_role",
+        target_type="scene",
+        target_id=f"{date_str}:{scene_id}",
+        payload={
+            "date": date_str,
+            "scene_id": scene_id,
+            "from": old_addressed_to,
+            "to": addressed_to,
+            "time_start": str(target.get("time_start", "")),
+        },
+    )
+    append_correction(DATA_ROOT, event)
+
+    console.print(
+        f"[green]✅ 已修正场景角色[/green]: {date_str} {scene_id} "
+        f"{old_addressed_to} → {addressed_to}"
+    )
+    console.print(
+        "[dim]如需同步到日报，请重新运行 "
+        f"`python3 -m openmy briefing {date_str}` 或完整 "
+        f"`python3 -m openmy run {date_str} --skip-transcribe`。[/dim]"
+    )
     return 0
 
 
@@ -516,7 +713,13 @@ def cmd_distill(args: argparse.Namespace) -> int:
             if scene.get("summary"):
                 continue
             text = scene.get("text", "").strip()
-            scene["summary"] = summarize_scene(text, api_key, GEMINI_MODEL) if text else ""
+            role = scene.get("role", {}) if isinstance(scene.get("role", {}), dict) else {}
+            addressed_to = str(role.get("addressed_to", "")).strip()
+            scene["summary"] = (
+                summarize_scene(text, api_key, GEMINI_MODEL, role_info=addressed_to)
+                if text
+                else ""
+            )
             progress.advance(task)
 
     write_json(scenes_path, data)
@@ -572,186 +775,15 @@ def cmd_extract(args: argparse.Namespace) -> int:
 
 
 def cmd_correct(args: argparse.Namespace) -> int:
-    """终端纠错。"""
-    tokens = list(args.correct_args)
-    if not tokens:
-        console.print("[yellow]用法：openmy correct <date> <wrong> <right> 或 openmy correct <action> ...[/yellow]")
-        return 1
+    from openmy.commands.correct import cmd_correct as _cmd_correct
 
-    if DATE_RE.match(tokens[0]):
-        if len(tokens) != 3:
-            console.print("[red]❌ 旧纠错命令需要 3 个参数：<date> <wrong> <right>[/red]")
-            return 1
-        return _cmd_correct_typo(tokens[0], tokens[1], tokens[2])
-
-    action = tokens[0]
-
-    if action == "typo":
-        if len(tokens) != 4:
-            console.print("[red]❌ typo 用法：openmy correct typo <date> <wrong> <right>[/red]")
-            return 1
-        return _cmd_correct_typo(tokens[1], tokens[2], tokens[3])
-
-    if action == "list":
-        return cmd_correct_list(args)
-
-    ctx = _load_context_snapshot()
-    if ctx is None:
-        return 1
-
-    if action == "close-loop":
-        if len(tokens) != 2:
-            console.print("[red]❌ close-loop 用法：openmy correct close-loop <title> [--status done|abandoned][/red]")
-            return 1
-        loop = _resolve_item(
-            ctx.rolling_context.open_loops,
-            tokens[1],
-            lambda item: [item.loop_id, item.id, item.title],
-        )
-        if loop is None:
-            console.print(f"[red]❌ 没找到待办：{tokens[1]}[/red]")
-            return 1
-        _append_context_correction(
-            op="close_loop",
-            target_type="loop",
-            target_id=loop.loop_id or loop.id or loop.title,
-            payload={"status": args.status, "target_title": loop.title},
-        )
-        console.print(f"[green]✅ 已关闭待办[/green]: {loop.title}")
-        console.print("[dim]运行 `python3 -m openmy context` 重新生成快照[/dim]")
-        return 0
-
-    if action == "reject-loop":
-        if len(tokens) != 2:
-            console.print("[red]❌ reject-loop 用法：openmy correct reject-loop <title>[/red]")
-            return 1
-        loop = _resolve_item(
-            ctx.rolling_context.open_loops,
-            tokens[1],
-            lambda item: [item.loop_id, item.id, item.title],
-        )
-        if loop is None:
-            console.print(f"[red]❌ 没找到待办：{tokens[1]}[/red]")
-            return 1
-        _append_context_correction(
-            op="reject_loop",
-            target_type="loop",
-            target_id=loop.loop_id or loop.id or loop.title,
-            payload={"target_title": loop.title},
-        )
-        console.print(f"[green]✅ 已排除误判待办[/green]: {loop.title}")
-        console.print("[dim]运行 `python3 -m openmy context` 重新生成快照[/dim]")
-        return 0
-
-    if action == "merge-project":
-        if len(tokens) != 3:
-            console.print("[red]❌ merge-project 用法：openmy correct merge-project <from> <into>[/red]")
-            return 1
-        from_project = _resolve_item(
-            ctx.rolling_context.active_projects,
-            tokens[1],
-            lambda item: [item.project_id, item.id, item.title],
-        )
-        into_project = _resolve_item(
-            ctx.rolling_context.active_projects,
-            tokens[2],
-            lambda item: [item.project_id, item.id, item.title],
-        )
-        if from_project is None or into_project is None:
-            console.print("[red]❌ 找不到要合并的项目，请先运行 context 确认当前项目名[/red]")
-            return 1
-        _append_context_correction(
-            op="merge_project",
-            target_type="project",
-            target_id=from_project.project_id or from_project.id or from_project.title,
-            payload={
-                "target_title": from_project.title,
-                "merge_into": into_project.project_id or into_project.id or into_project.title,
-                "merge_into_title": into_project.title,
-            },
-        )
-        console.print(f"[green]✅ 已合并项目[/green]: {from_project.title} → {into_project.title}")
-        console.print("[dim]运行 `python3 -m openmy context` 重新生成快照[/dim]")
-        return 0
-
-    if action == "reject-project":
-        if len(tokens) != 2:
-            console.print("[red]❌ reject-project 用法：openmy correct reject-project <title>[/red]")
-            return 1
-        project = _resolve_item(
-            ctx.rolling_context.active_projects,
-            tokens[1],
-            lambda item: [item.project_id, item.id, item.title],
-        )
-        if project is None:
-            console.print(f"[red]❌ 没找到项目：{tokens[1]}[/red]")
-            return 1
-        _append_context_correction(
-            op="reject_project",
-            target_type="project",
-            target_id=project.project_id or project.id or project.title,
-            payload={"target_title": project.title},
-        )
-        console.print(f"[green]✅ 已排除误判项目[/green]: {project.title}")
-        console.print("[dim]运行 `python3 -m openmy context` 重新生成快照[/dim]")
-        return 0
-
-    if action == "reject-decision":
-        if len(tokens) != 2:
-            console.print("[red]❌ reject-decision 用法：openmy correct reject-decision <text>[/red]")
-            return 1
-        decision = _resolve_item(
-            ctx.rolling_context.recent_decisions,
-            tokens[1],
-            lambda item: [item.decision_id, item.id, item.decision, item.topic],
-        )
-        if decision is None:
-            console.print(f"[red]❌ 没找到决策：{tokens[1]}[/red]")
-            return 1
-        _append_context_correction(
-            op="reject_decision",
-            target_type="decision",
-            target_id=decision.decision_id or decision.id or decision.decision,
-            payload={"target_title": decision.decision},
-        )
-        console.print(f"[green]✅ 已排除非关键决策[/green]: {decision.decision}")
-        console.print("[dim]运行 `python3 -m openmy context` 重新生成快照[/dim]")
-        return 0
-
-    console.print(f"[red]❌ 不支持的纠错动作：{action}[/red]")
-    return 1
+    return _cmd_correct(args)
 
 
 def cmd_context(args: argparse.Namespace) -> int:
-    """生成/查看活动上下文。"""
-    from openmy.services.context.active_context import ActiveContext
-    from openmy.services.context.consolidation import consolidate
-    from openmy.services.context.renderer import (
-        render_compact_md,
-        render_level0,
-        render_level1,
-    )
+    from openmy.commands.context import cmd_context as _cmd_context
 
-    ctx_path = DATA_ROOT / "active_context.json"
-    compact_path = DATA_ROOT / "active_context.compact.md"
-    existing = ActiveContext.load(ctx_path) if ctx_path.exists() else None
-
-    with console.status("[bold cyan]🧠 正在生成活动上下文..."):
-        ctx = consolidate(DATA_ROOT, existing_context=existing)
-        ctx.save(ctx_path)
-
-    if args.compact:
-        markdown = render_compact_md(ctx)
-        compact_path.write_text(markdown, encoding="utf-8")
-        console.print(f"[green]✅ 已保存[/green]: {compact_path}")
-        console.print(Markdown(markdown))
-    elif args.level == 0:
-        console.print(Panel(render_level0(ctx), title="🧠 Level 0", border_style="cyan"))
-    else:
-        console.print(Panel(render_level1(ctx), title="🧠 Active Context", border_style="cyan"))
-
-    console.print(f"[dim]context_seq: {ctx.context_seq} | generated_at: {ctx.generated_at}[/dim]")
-    return 0
+    return _cmd_context(args)
 
 
 def cmd_agent(args: argparse.Namespace) -> int:
@@ -779,167 +811,21 @@ def cmd_agent(args: argparse.Namespace) -> int:
 
 
 def transcribe_audio_files(date_str: str, audio_files: list[str]) -> int:
-    """把本地音频文件转成 raw transcript。"""
-    from openmy.services.ingest.audio_pipeline import transcribe_audio_files as run_ingest_pipeline
+    from openmy.commands.run import transcribe_audio_files as _transcribe_audio_files
 
-    try:
-        output_path = run_ingest_pipeline(
-            date_str=date_str,
-            audio_files=audio_files,
-            output_dir=ensure_day_dir(date_str),
-        )
-    except Exception as exc:
-        console.print(f"[red]❌ 转写失败[/red]: {exc}")
-        return 1
-
-    console.print(f"[green]✅ 原始转写已生成[/green]: {output_path}")
-    return 0
+    return _transcribe_audio_files(date_str, audio_files)
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    """全流程：转写 → 清洗 → 角色 → 蒸馏 → 日报。"""
-    date_str = args.date
-    console.print(
-        Panel(
-            f"🎙️ OpenMy 全流程处理\n📅 日期: {date_str}",
-            border_style="bright_blue",
-        )
-    )
+    from openmy.commands.run import cmd_run as _cmd_run
 
-    paths = resolve_day_paths(date_str)
-    if args.audio and not args.skip_transcribe:
-        console.print("[bold]Step 0: 🎙️ 转写音频[/bold]")
-        result = transcribe_audio_files(date_str, args.audio)
-        if result != 0:
-            return result
-        paths = resolve_day_paths(date_str)
+    return _cmd_run(args)
 
-    if args.skip_transcribe and not paths["raw"].exists() and not paths["transcript"].exists() and not paths["scenes"].exists():
-        console.print(f"[red]❌ {date_str} 没有可复用的数据，至少需要 transcript/raw/scenes 之一[/red]")
-        return 1
 
-    if not args.audio and not args.skip_transcribe and not paths["raw"].exists() and not paths["transcript"].exists():
-        console.print("[red]❌ 没有输入音频，也没有现成 raw/transcript 数据[/red]")
-        return 1
+def cmd_quick_start(args: argparse.Namespace) -> int:
+    from openmy.commands.run import cmd_quick_start as _cmd_quick_start
 
-    if not paths["transcript"].exists():
-        console.print("\n[bold]🧹 清洗[/bold]")
-        result = cmd_clean(args)
-        if result != 0:
-            console.print("[red]❌ 清洗失败，终止[/red]")
-            return result
-        paths = resolve_day_paths(date_str)
-    else:
-        console.print("\n[dim]⏭️ 跳过清洗：已存在 transcript.md[/dim]")
-
-    scenes_data = read_json(paths["scenes"], {}) if paths["scenes"].exists() else {}
-    if not paths["scenes"].exists():
-        console.print("\n[bold]🔪 场景切分[/bold]")
-        transcript_path = paths["transcript"]
-        if not transcript_path.exists():
-            console.print(f"[red]❌ 找不到 {date_str} 的转写文本[/red]")
-            return 1
-
-        from openmy.services.segmentation.segmenter import segment, build_scenes_payload
-
-        markdown = strip_document_header(transcript_path.read_text(encoding="utf-8"))
-        with console.status("[bold cyan]🔪 场景切分中..."):
-            raw_scenes = segment(markdown)
-            result = build_scenes_payload(raw_scenes)
-            result["stats"] = {"total_scenes": len(raw_scenes)}
-
-        output_path = ensure_day_dir(date_str) / "scenes.json"
-        write_json(output_path, result)
-        console.print(f"[green]✅ 场景切分完成[/green]: {len(raw_scenes)} 个场景")
-        console.print("[dim]ℹ️ 角色归因已冻结，如需手动归因可运行 openmy roles {date_str}[/dim]")
-        paths = resolve_day_paths(date_str)
-        scenes_data = read_json(paths["scenes"], {})
-    else:
-        console.print("\n[dim]⏭️ 跳过场景切分：已存在 scenes.json[/dim]")
-
-    # ── 角色识别（在蒸馏之前，给已有 scenes 补充 role 信息）──
-    if os.getenv("GEMINI_API_KEY", "").strip():
-        console.print("\n[bold]👥 角色识别[/bold]")
-        try:
-            from openmy.domain.models import SceneBlock
-            from openmy.services.roles.resolver import tag_all_scenes, resolve_roles as _resolve_roles, scenes_to_dict
-
-            # 读取已有 scenes，只做角色归因，不重新切分
-            raw_scenes_list = scenes_data.get("scenes", [])
-            scene_blocks = [SceneBlock.from_dict(s) if hasattr(SceneBlock, 'from_dict') else SceneBlock(
-                scene_id=s.get('scene_id', ''),
-                time_start=s.get('time_start', ''),
-                time_end=s.get('time_end', ''),
-                text=s.get('text', ''),
-                preview=s.get('preview', ''),
-            ) for s in raw_scenes_list]
-            screen_client = get_screen_client()
-            scene_blocks = _resolve_roles(scene_blocks, date_str=date_str, screen_client=screen_client)
-            result = scenes_to_dict(scene_blocks)
-
-            output_path = ensure_day_dir(date_str) / "scenes.json"
-            write_json(output_path, result)
-            paths = resolve_day_paths(date_str)
-            scenes_data = read_json(paths["scenes"], {})
-            console.print("[green]✅ 角色识别完成[/green]")
-        except Exception as exc:
-            console.print(f"[yellow]⚠️ 角色识别异常: {exc}，继续[/yellow]")
-    else:
-        console.print("\n[dim]⏭️ 跳过角色识别：缺少 GEMINI_API_KEY[/dim]")
-
-    missing_summaries = [scene for scene in scenes_data.get("scenes", []) if not scene.get("summary")]
-    if missing_summaries:
-        if os.getenv("GEMINI_API_KEY", "").strip():
-            console.print("\n[bold]🧪 蒸馏[/bold]")
-            result = cmd_distill(args)
-            if result != 0:
-                console.print("[red]❌ 蒸馏失败，终止[/red]")
-                return result
-        else:
-            console.print("\n[yellow]⏭️ 跳过蒸馏：缺少 GEMINI_API_KEY，继续生成基础日报[/yellow]")
-    else:
-        console.print("\n[dim]⏭️ 跳过蒸馏：场景摘要已齐全[/dim]")
-
-    console.print("\n[bold]📋 日报[/bold]")
-    result = cmd_briefing(args)
-    if result != 0:
-        console.print("[red]❌ 日报生成失败，终止[/red]")
-        return result
-
-    # ── 结构化提取（intents + facts）──
-    if os.getenv("GEMINI_API_KEY", "").strip() and paths["transcript"].exists():
-        console.print("\n[bold]🔍 提取[/bold]")
-        try:
-            from openmy.services.extraction.extractor import run_extraction
-            from openmy.config import GEMINI_MODEL as _extract_model
-            run_extraction(
-                str(paths["transcript"]),
-                date=date_str,
-                model=_extract_model,
-            )
-            console.print("[green]✅ 提取完成[/green]")
-        except Exception as exc:
-            console.print(f"[yellow]⚠️ 提取异常: {exc}，继续[/yellow]")
-    else:
-        console.print("\n[dim]⏭️ 跳过提取：缺少 API key 或转写文件[/dim]")
-
-    # ── 聚合 active_context ──
-    console.print("\n[bold]🧠 聚合上下文[/bold]")
-    try:
-        from openmy.services.context.consolidation import consolidate
-        data_root = ensure_day_dir(date_str).parent
-        consolidate(data_root)
-        console.print("[green]✅ active_context 已更新[/green]")
-    except Exception as exc:
-        console.print(f"[yellow]⚠️ 聚合异常: {exc}，继续[/yellow]")
-
-    console.print(
-        Panel(
-            f"[green]✅ {date_str} 处理完成！[/green]\n运行 [bold]openmy view {date_str}[/bold] 查看结果",
-            border_style="green",
-        )
-    )
-    return 0
+    return _cmd_quick_start(args)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -979,6 +865,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--audio", nargs="+", help="音频文件路径")
     p_run.add_argument("--skip-transcribe", action="store_true", help="跳过转写（使用已有数据）")
 
+    p_quick = sub.add_parser("quick-start", help="第一次使用：自动处理音频并打开本地日报")
+    p_quick.add_argument("audio_path", help="音频文件路径")
+
     p_correct = sub.add_parser("correct", help="纠正转写或活动上下文")
     p_correct.add_argument("correct_args", nargs="*", help="纠错参数")
     p_correct.add_argument(
@@ -1004,10 +893,8 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
-    parser = build_parser()
-    args = parser.parse_args()
-
+def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | None = None) -> int:
+    parser = parser or build_parser()
     if not args.command:
         parser.print_help()
         return 0
@@ -1020,6 +907,7 @@ def main() -> int:
         "correct": cmd_correct,
         "distill": cmd_distill,
         "extract": cmd_extract,
+        "quick-start": cmd_quick_start,
         "roles": cmd_roles,
         "run": cmd_run,
         "status": cmd_status,
@@ -1039,6 +927,12 @@ def main() -> int:
     except Exception:
         console.print_exception(show_locals=False)
         return 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return main_with_args(args, parser=parser)
 
 
 if __name__ == "__main__":

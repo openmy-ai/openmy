@@ -1,0 +1,143 @@
+from __future__ import annotations
+
+import json
+from http.server import SimpleHTTPRequestHandler
+from urllib.parse import parse_qs, urlparse
+
+from app.context_api import (
+    handle_close_loop,
+    handle_merge_project,
+    handle_reject_decision,
+    handle_reject_loop,
+    handle_reject_project,
+)
+from app.http_responses import send_json, send_options, serve_index
+from app.payloads import (
+    get_all_dates,
+    get_briefing,
+    get_context_decisions_payload,
+    get_context_loops_payload,
+    get_context_payload,
+    get_context_projects_payload,
+    get_corrections,
+    get_date_briefing_payload,
+    get_date_detail,
+    get_date_meta_payload,
+    get_stats,
+    handle_correction,
+    search_content,
+)
+from app.pipeline_api import (
+    get_pipeline_job_payload,
+    get_pipeline_jobs_payload,
+    handle_create_pipeline_job,
+)
+
+
+class BrainHandler(SimpleHTTPRequestHandler):
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        params = parse_qs(parsed.query)
+
+        if path == "/api/context":
+            send_json(self, get_context_payload())
+        elif path == "/api/context/loops":
+            send_json(self, get_context_loops_payload())
+        elif path == "/api/context/projects":
+            send_json(self, get_context_projects_payload())
+        elif path == "/api/context/decisions":
+            send_json(self, get_context_decisions_payload())
+        elif path == "/api/dates":
+            send_json(self, get_all_dates())
+        elif path == "/api/search":
+            query = params.get("q", [""])[0]
+            send_json(self, [] if not query else search_content(query))
+        elif path == "/api/stats":
+            send_json(self, get_stats())
+        elif path.startswith("/api/briefing/"):
+            date = path.split("/api/briefing/")[-1]
+            briefing = get_briefing(date)
+            if briefing:
+                send_json(self, briefing)
+            else:
+                send_json(self, {"error": "no briefing", "date": date}, status=404)
+        elif path.startswith("/api/date/") and path.endswith("/meta"):
+            date = path.removeprefix("/api/date/").removesuffix("/meta")
+            payload = get_date_meta_payload(date)
+            if payload:
+                send_json(self, payload)
+            else:
+                send_json(self, {"error": "no meta", "date": date}, status=404)
+        elif path.startswith("/api/date/") and path.endswith("/briefing"):
+            date = path.removeprefix("/api/date/").removesuffix("/briefing")
+            payload = get_date_briefing_payload(date)
+            if payload:
+                send_json(self, payload)
+            else:
+                send_json(self, {"error": "no briefing", "date": date}, status=404)
+        elif path == "/api/pipeline/jobs":
+            send_json(self, get_pipeline_jobs_payload())
+        elif path.startswith("/api/pipeline/jobs/"):
+            job_id = path.removeprefix("/api/pipeline/jobs/")
+            payload = get_pipeline_job_payload(job_id)
+            if payload:
+                send_json(self, payload)
+            else:
+                send_json(self, {"error": "job not found", "job_id": job_id}, status=404)
+        elif path.startswith("/api/date/"):
+            date = path.split("/api/date/")[-1]
+            detail = get_date_detail(date)
+            if detail:
+                send_json(self, detail)
+            else:
+                self.send_error(404, "日期不存在")
+        elif path == "/api/corrections":
+            send_json(self, get_corrections())
+        elif path in {"/", "/index.html"}:
+            serve_index(self)
+        else:
+            self.send_error(404, "Not Found")
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8") if content_length else "{}"
+
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self.send_error(400, "无效的 JSON")
+            return
+
+        if path == "/api/correct":
+            send_json(self, handle_correction(data))
+        elif path == "/api/correct/typo":
+            send_json(self, handle_correction(data))
+        elif path == "/api/context/loops/close":
+            payload = handle_close_loop(data)
+            send_json(self, payload, status=200 if payload.get("success") else 400)
+        elif path == "/api/context/loops/reject":
+            payload = handle_reject_loop(data)
+            send_json(self, payload, status=200 if payload.get("success") else 400)
+        elif path == "/api/context/projects/merge":
+            payload = handle_merge_project(data)
+            send_json(self, payload, status=200 if payload.get("success") else 400)
+        elif path == "/api/context/projects/reject":
+            payload = handle_reject_project(data)
+            send_json(self, payload, status=200 if payload.get("success") else 400)
+        elif path == "/api/context/decisions/reject":
+            payload = handle_reject_decision(data)
+            send_json(self, payload, status=200 if payload.get("success") else 400)
+        elif path == "/api/pipeline/jobs":
+            payload = handle_create_pipeline_job(data)
+            send_json(self, payload, status=200 if payload.get("job_id") else 400)
+        else:
+            self.send_error(404, "未知接口")
+
+    def do_OPTIONS(self):
+        send_options(self)
+
+    def log_message(self, format, *args):
+        pass

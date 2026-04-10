@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import json
 import os
 import shutil
@@ -6,6 +7,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -176,6 +178,65 @@ class TestOpenMyCli(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue("openmy" in result.stdout.lower() or "OpenMy" in result.stdout)
 
+    def test_cli_help_lists_quick_start(self):
+        """openmy --help 应该显式列出 quick-start。"""
+        result = subprocess.run(
+            [sys.executable, "-m", "openmy", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=PROJECT_ROOT,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("quick-start", result.stdout)
+
+    def test_cli_quick_start_infers_date_and_reuses_run(self):
+        """quick-start 应该自动推断日期并复用 run 主链。"""
+        import openmy.cli as cli
+
+        audio_path = PROJECT_ROOT / "tests" / "fixtures" / "TX01_MIC005_20260408_131552_orig.wav"
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        audio_path.write_bytes(b"wav")
+
+        parser = cli.build_parser()
+        args = parser.parse_args(["quick-start", str(audio_path)])
+
+        with (
+            patch("openmy.cli.cmd_run", return_value=0) as run_mock,
+            patch("openmy.cli.ensure_runtime_dependencies", return_value=None),
+            patch("openmy.cli.launch_local_report", return_value=None),
+        ):
+            result = cli.main_with_args(args)
+
+        self.assertEqual(result, 0)
+        self.assertEqual(run_mock.call_count, 1)
+        forwarded_args = run_mock.call_args.args[0]
+        self.assertEqual(forwarded_args.date, "2026-04-08")
+        self.assertEqual(forwarded_args.audio, [str(audio_path)])
+        self.assertFalse(forwarded_args.skip_transcribe)
+
+    def test_cli_quick_start_reports_missing_gemini_key_in_plain_chinese(self):
+        """quick-start 缺 key 时应该给中文人话提示。"""
+        audio_path = PROJECT_ROOT / "tests" / "fixtures" / "sample.wav"
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        audio_path.write_bytes(b"wav")
+
+        env = os.environ.copy()
+        env.pop("GEMINI_API_KEY", None)
+
+        result = subprocess.run(
+            [sys.executable, "-m", "openmy", "quick-start", str(audio_path)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=PROJECT_ROOT,
+            env=env,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("GEMINI_API_KEY", result.stdout + result.stderr)
+        self.assertIn(".env", result.stdout + result.stderr)
+
     def test_cli_view_existing_date(self):
         """openmy view 2026-04-06 应该输出场景概览。"""
         date_str = "2099-01-10"
@@ -299,6 +360,56 @@ class TestOpenMyCli(unittest.TestCase):
                 env=env,
             )
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        finally:
+            self.cleanup_day_dir(date_str)
+
+    def test_cli_distill_passes_role_hint_to_summarizer(self):
+        """openmy distill 应该把 addressed_to 传进蒸馏 prompt。"""
+        date_str = "2099-01-11"
+        day_dir = self.make_day_dir(date_str)
+        (day_dir / "scenes.json").write_text(
+            json.dumps(
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "s01",
+                            "time_start": "10:00",
+                            "time_end": "10:10",
+                            "text": "老婆，今天晚上吃火锅。",
+                            "summary": "",
+                            "preview": "老婆，今天晚上吃火锅。",
+                            "role": {
+                                "addressed_to": "老婆",
+                                "scene_type": "interpersonal",
+                                "scene_type_label": "跟人聊",
+                            },
+                        }
+                    ],
+                    "stats": {"total_scenes": 1, "role_distribution": {"老婆": 1}, "needs_review_count": 0},
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        try:
+            from openmy import cli as openmy_cli
+            from openmy.config import GEMINI_MODEL
+
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=False):
+                with patch("openmy.services.distillation.distiller.summarize_scene", return_value="新的摘要") as mock_summarize:
+                    result = openmy_cli.cmd_distill(argparse.Namespace(date=date_str))
+
+            self.assertEqual(result, 0)
+            mock_summarize.assert_called_once_with(
+                "老婆，今天晚上吃火锅。",
+                "test-key",
+                GEMINI_MODEL,
+                role_info="老婆",
+            )
+            payload = json.loads((day_dir / "scenes.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["scenes"][0]["summary"], "新的摘要")
         finally:
             self.cleanup_day_dir(date_str)
 
@@ -433,6 +544,100 @@ class TestOpenMyCli(unittest.TestCase):
             else:
                 corrections_path.write_text(original_corrections, encoding="utf-8")
 
+    def test_correct_scene_role_updates_scene_and_stats(self):
+        """openmy correct scene-role 应该原地修正 scenes.json 并更新统计。"""
+        date_str = "2099-01-12"
+        day_dir = self.make_day_dir(date_str)
+        scenes_path = day_dir / "scenes.json"
+        corrections_path = PROJECT_ROOT / "data" / "corrections.jsonl"
+        original_corrections = corrections_path.read_text(encoding="utf-8") if corrections_path.exists() else None
+        scenes_path.write_text(
+            json.dumps(
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "s01",
+                            "time_start": "13:15",
+                            "time_end": "13:25",
+                            "text": "OpenMy 怎么样？对，可以。",
+                            "summary": "讨论产品名。",
+                            "preview": "OpenMy 怎么样？",
+                            "role": {
+                                "category": "interpersonal",
+                                "entity_id": "妈妈",
+                                "relation_label": "妈妈",
+                                "confidence": 0.95,
+                                "scene_type": "interpersonal",
+                                "scene_type_label": "跟人聊",
+                                "addressed_to": "妈妈",
+                                "source": "declared",
+                                "source_label": "亲口说的",
+                                "evidence": "亲口说了妈妈",
+                                "needs_review": False,
+                            },
+                        },
+                        {
+                            "scene_id": "s02",
+                            "time_start": "13:30",
+                            "time_end": "13:35",
+                            "text": "Codex，继续跑一下。",
+                            "summary": "继续让 AI 跑任务。",
+                            "preview": "Codex，继续跑一下。",
+                            "role": {
+                                "category": "ai",
+                                "entity_id": "AI助手",
+                                "relation_label": "AI助手",
+                                "confidence": 0.9,
+                                "scene_type": "ai",
+                                "scene_type_label": "跟AI说",
+                                "addressed_to": "AI助手",
+                                "source": "rule_matched",
+                                "source_label": "一看就知道",
+                                "evidence": "命中关键词：Codex",
+                                "needs_review": False,
+                            },
+                        },
+                    ],
+                    "stats": {
+                        "total_scenes": 2,
+                        "role_distribution": {"妈妈": 1, "AI助手": 1},
+                        "needs_review_count": 0,
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "openmy", "correct", "scene-role", date_str, "s01", "AI助手"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+            payload = json.loads(scenes_path.read_text(encoding="utf-8"))
+            scene = payload["scenes"][0]
+            self.assertEqual(scene["role"]["addressed_to"], "AI助手")
+            self.assertEqual(scene["role"]["scene_type"], "ai")
+            self.assertEqual(scene["role"]["scene_type_label"], "跟AI说")
+            self.assertEqual(scene["role"]["source"], "human_confirmed")
+            self.assertEqual(payload["stats"]["role_distribution"], {"AI助手": 2})
+
+            corrections_log = corrections_path.read_text(encoding="utf-8")
+            self.assertIn("confirm_scene_role", corrections_log)
+            self.assertIn(f"{date_str}:s01", corrections_log)
+        finally:
+            if original_corrections is None:
+                corrections_path.unlink(missing_ok=True)
+            else:
+                corrections_path.write_text(original_corrections, encoding="utf-8")
+            self.cleanup_day_dir(date_str)
+
     def test_cli_run_reuses_existing_artifacts(self):
         """openmy run --skip-transcribe 应该能复用已有 transcript/scenes 生成 briefing。"""
         date_str = "2099-01-07"
@@ -452,12 +657,15 @@ class TestOpenMyCli(unittest.TestCase):
         )
 
         try:
+            env = os.environ.copy()
+            env.pop("GEMINI_API_KEY", None)
             result = subprocess.run(
                 [sys.executable, "-m", "openmy", "run", date_str, "--skip-transcribe"],
                 capture_output=True,
                 text=True,
                 timeout=60,
                 cwd=PROJECT_ROOT,
+                env=env,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue((day_dir / "daily_briefing.json").exists())
@@ -610,12 +818,15 @@ class TestOpenMyCli(unittest.TestCase):
         )
 
         try:
+            env = os.environ.copy()
+            env.pop("GEMINI_API_KEY", None)
             result = subprocess.run(
                 [sys.executable, "-m", "openmy", "agent", "--ingest", date_str, "--skip-transcribe"],
                 capture_output=True,
                 text=True,
                 timeout=60,
                 cwd=PROJECT_ROOT,
+                env=env,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue((day_dir / "daily_briefing.json").exists())
