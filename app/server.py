@@ -61,13 +61,13 @@ from openmy.services.cleaning.cleaner import sync_correction_to_vocab
 from openmy.services.segmentation.segmenter import parse_time_segments
 
 try:
-    from openmy.adapters.screenpipe.client import ScreenpipeClient
+    from openmy.adapters.screen_recognition.client import ScreenRecognitionClient
 
-    _screenpipe = ScreenpipeClient()
-    _screenpipe_available = _screenpipe.is_available()
+    _screen_context_client = ScreenRecognitionClient()
+    _screen_context_available = _screen_context_client.is_available()
 except Exception:
-    _screenpipe = None
-    _screenpipe_available = False
+    _screen_context_client = None
+    _screen_context_available = False
 
 DATA_ROOT = ROOT_DIR / "data"
 LEGACY_ROOT = ROOT_DIR
@@ -209,10 +209,10 @@ def main(argv: list[str] | None = None):
     print(f"📊 {stats['total_dates']} 天 | {stats['total_segments']} 段 | {stats['total_words']} 字")
     if stats["role_distribution"]:
         print(f"🏷️ 角色分布: {json.dumps(stats['role_distribution'], ensure_ascii=False)}")
-    if _screenpipe_available:
-        print("🖥️ Screenpipe 已连接（hints 模式）")
+    if _screen_context_available:
+        print("🖥️ 屏幕上下文已连接")
     else:
-        print("🖥️ Screenpipe 未检测到（角色归因仍正常工作）")
+        print("🖥️ 屏幕上下文未检测到（系统会退化为纯语音模式）")
     print(f"🌐 http://{args.host}:{args.port}")
     print("按 Ctrl+C 停止\n")
 

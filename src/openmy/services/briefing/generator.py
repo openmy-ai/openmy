@@ -10,6 +10,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from openmy.services.screen_recognition.settings import (
+    load_screen_context_settings,
+    screen_context_participation_enabled,
+)
+
 
 @dataclass
 class TimeBlock:
@@ -46,6 +51,8 @@ class DailyBriefing:
     insights: list[str] = field(default_factory=list)
     people_interaction_map: dict[str, Any] = field(default_factory=dict)
     work_sessions: dict[str, str] = field(default_factory=dict)
+    screen_highlights: list[str] = field(default_factory=list)
+    completion_candidates: list[str] = field(default_factory=list)
     total_scenes: int = 0
     total_words: int = 0
     voice_hours: float = 0.0
@@ -101,8 +108,8 @@ def _minutes_between(time_start: str, time_end: str) -> int:
     return max(0, minutes)
 
 
-def _get_screenpipe_apps(client, date_str: str, time_start: str, time_end: str) -> list[str]:
-    """查询 Screenpipe 获取指定时间段使用的 App 列表。"""
+def _get_screen_context_apps(client, date_str: str, time_start: str, time_end: str) -> list[str]:
+    """查询屏幕上下文服务，获取指定时间段使用的 App 列表。"""
     if not client:
         return []
     try:
@@ -118,7 +125,7 @@ def _get_screenpipe_apps(client, date_str: str, time_start: str, time_end: str) 
         return []
 
 
-def _get_screenpipe_app_usage(client, date_str: str) -> dict[str, float]:
+def _get_screen_context_app_usage(client, date_str: str) -> dict[str, float]:
     """用 activity_summary API 获取各 App 真实使用时长（分钟）。"""
     if not client:
         return {}
@@ -150,6 +157,8 @@ def _get_screenpipe_app_usage(client, date_str: str) -> dict[str, float]:
 def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> DailyBriefing:
     """生成 Daily Briefing。"""
     briefing = DailyBriefing(date=date_str, generated_at=datetime.now().isoformat())
+    screen_settings = load_screen_context_settings()
+    screen_participation_enabled = screen_context_participation_enabled(screen_settings)
 
     if not scenes_path.exists():
         briefing.summary = f"{date_str} 没有语音数据"
@@ -164,7 +173,17 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
         1,
     )
 
-    if screen_client:
+    scene_has_screen_context = any(
+        isinstance(scene.get("screen_context"), dict) and (
+            scene.get("screen_context", {}).get("summary") or scene.get("screen_context", {}).get("primary_app")
+        )
+        for scene in scenes
+    )
+
+    if scene_has_screen_context:
+        briefing.screen_recognition_available = True
+
+    if screen_participation_enabled and screen_client:
         try:
             briefing.screen_recognition_available = screen_client.is_available()
         except Exception:
@@ -188,6 +207,7 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
         for scene in grouped_scenes:
             role = scene.get("role", {})
             addressed_to = role.get("addressed_to", "")
+            screen_context = scene.get("screen_context", {}) if isinstance(scene.get("screen_context", {}), dict) else {}
             if addressed_to:
                 addressed_people.append(addressed_to)
                 if addressed_to not in people:
@@ -201,11 +221,34 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
             if summary:
                 summaries.append(summary)
 
+            screen_summary = str(screen_context.get("summary", "")).strip()
+            if screen_summary and screen_summary not in briefing.screen_highlights:
+                briefing.screen_highlights.append(screen_summary)
+
+            for candidate in screen_context.get("completion_candidates", []):
+                if not isinstance(candidate, dict):
+                    continue
+                label = str(candidate.get("label", "") or candidate.get("kind", "")).strip()
+                if label and label not in briefing.completion_candidates:
+                    briefing.completion_candidates.append(label)
+
         apps: list[str] = []
         mode = "voice_only"
-        if briefing.screen_recognition_available and time_range:
+        if scene_has_screen_context:
+            apps = sorted(
+                {
+                    str(scene.get("screen_context", {}).get("primary_app", "")).strip()
+                    for scene in grouped_scenes
+                    if isinstance(scene.get("screen_context"), dict)
+                    and str(scene.get("screen_context", {}).get("primary_app", "")).strip()
+                }
+            )
+            if apps:
+                mode = "dual"
+        if screen_participation_enabled and briefing.screen_recognition_available and time_range:
             start_time, end_time = time_range.split("-")
-            apps = _get_screenpipe_apps(screen_client, date_str, start_time, end_time)
+            provider_apps = _get_screen_context_apps(screen_client, date_str, start_time, end_time)
+            apps = provider_apps or apps
             if apps:
                 mode = "dual"
 
@@ -252,8 +295,8 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
         else:
             briefing.key_events.append(summary)
 
-    if briefing.screen_recognition_available:
-        app_usage = _get_screenpipe_app_usage(screen_client, date_str)
+    if screen_participation_enabled and briefing.screen_recognition_available:
+        app_usage = _get_screen_context_app_usage(screen_client, date_str)
         for app, minutes in app_usage.items():
             if isinstance(minutes, (int, float)) and minutes > 0:
                 if minutes >= 60:
@@ -263,6 +306,16 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
             else:
                 briefing.work_sessions[app] = "<1分钟"
 
+    if not briefing.work_sessions and briefing.screen_highlights:
+        app_counts: Counter[str] = Counter()
+        for scene in scenes:
+            screen_context = scene.get("screen_context", {}) if isinstance(scene.get("screen_context", {}), dict) else {}
+            app_name = str(screen_context.get("primary_app", "")).strip()
+            if app_name:
+                app_counts[app_name] += 1
+        for app, count in app_counts.most_common(5):
+            briefing.work_sessions[app] = f"{count} 段场景"
+
     summary_parts: list[str] = []
     people_names = list(briefing.people_interaction_map.keys())
     if people_names:
@@ -270,7 +323,9 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
     if briefing.time_blocks:
         active_periods = [block.period.split(" ")[0] for block in briefing.time_blocks]
         summary_parts.append(f"活跃时段：{'、'.join(active_periods)}")
-    if briefing.work_sessions:
+    if briefing.screen_highlights:
+        summary_parts.append(f"屏幕上主要在处理 {briefing.screen_highlights[0]}")
+    elif briefing.work_sessions:
         top_apps = list(briefing.work_sessions.keys())[:3]
         summary_parts.append(f"主要用了 {'、'.join(top_apps)}")
 
@@ -278,6 +333,8 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
     briefing.key_events = briefing.key_events[:10]
     briefing.decisions = briefing.decisions[:10]
     briefing.todos_open = briefing.todos_open[:10]
+    briefing.screen_highlights = briefing.screen_highlights[:10]
+    briefing.completion_candidates = briefing.completion_candidates[:10]
     return briefing
 
 

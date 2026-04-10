@@ -23,9 +23,11 @@ from app.payloads import (
     get_date_briefing_payload,
     get_date_detail,
     get_date_meta_payload,
+    get_screen_context_settings_payload,
     get_stats,
     handle_correction,
     search_content,
+    update_screen_context_settings_payload,
 )
 from app.pipeline_api import (
     get_pipeline_job_payload,
@@ -94,6 +96,8 @@ class BrainHandler(SimpleHTTPRequestHandler):
                 self.send_error(404, "日期不存在")
         elif path == "/api/corrections":
             send_json(self, get_corrections())
+        elif path == "/api/settings/screen-context":
+            send_json(self, get_screen_context_settings_payload())
         elif path in {"/", "/index.html"}:
             serve_index(self)
         else:
@@ -133,6 +137,8 @@ class BrainHandler(SimpleHTTPRequestHandler):
         elif path == "/api/pipeline/jobs":
             payload = handle_create_pipeline_job(data)
             send_json(self, payload, status=200 if payload.get("job_id") else 400)
+        elif path == "/api/settings/screen-context":
+            send_json(self, update_screen_context_settings_payload(data))
         else:
             self.send_error(404, "未知接口")
 
