@@ -4,12 +4,14 @@
 
 **一段音频 → 一整天的结构化上下文**
 
+开源个人上下文引擎。录一段音频，自动完成转写、清洗、场景切分、角色识别、摘要蒸馏、结构化提取，生成可浏览的每日报告。
+
 [![Release](https://img.shields.io/github/v/release/openmy-ai/openmy?style=flat-square&color=blue)](https://github.com/openmy-ai/openmy/releases)
 [![MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![Tests](https://img.shields.io/badge/tests-167%20passed-brightgreen?style=flat-square)]()
 
-[快速开始](#-快速开始) · [English](README.en.md)
+[English](README.en.md)
 
 </div>
 
@@ -25,80 +27,74 @@ echo "GEMINI_API_KEY=你的key" > .env
 openmy quick-start path/to/your-audio.wav
 ```
 
-浏览器自动打开 `http://127.0.0.1:8420`，展示你的第一份日报。
-
-缺 FFmpeg / Python 版本不对 / 没配 Key？CLI 会用中文一行说清楚怎么修，不会给你一屏 traceback。
+> 依赖：Python 3.10+、FFmpeg、一个 Gemini API Key。
 
 ---
 
-## 🧠 不止转写
-
-大多数工具到文字就结束了。OpenMy 继续往下走：
-
-- **场景切分** — 一天的碎碎念切成独立对话段
-- **角色识别** — 自动判断在跟谁说话：AI、朋友、商家、自己
-- **蒸馏摘要** — 每个场景一到两句话概括
-- **结构化提取** — 事件、事实、洞察分桶输出
-- **日报生成** — 有摘要、有数据、有时间线
-- **活跃上下文** — 跨天累积的项目、待办、人物，7 天没提自动标 stale
-
-**OpenMy 不是更好的转写工具，是转写之后的事。**
-
----
-
-## 🔬 工作流程
+## 🔬 处理流程
 
 ```mermaid
-graph LR
-    A[🎙️ 音频] --> B[转写]
-    B --> C[清洗]
-    C --> D[场景切分]
-    D --> E[角色识别]
-    E --> F[蒸馏摘要]
-    F --> G[结构化提取]
-    G --> H[日报]
-    H --> I[活跃上下文]
-    I --> J[🖥️ 工作台]
+graph TD
+    A["🎙️ 音频文件"] --> B["转写"]
+    B --> C["清洗"]
+    C --> D["场景切分"]
+    D --> E["角色识别"]
+    E --> F["蒸馏摘要"]
+    F --> G["结构化提取"]
+    G --> H["日报生成"]
+    H --> I["活跃上下文"]
+    I --> J["🖥️ 每日报告"]
 
     style A fill:#6366f1,stroke:#4f46e5,color:#fff
     style J fill:#06b6d4,stroke:#0891b2,color:#fff
 ```
 
-清洗阶段是纯规则引擎，不调 API。其余阶段使用 Gemini，模型和参数集中在 [`config.py`](src/openmy/config.py)。
+### 每一步做什么
+
+**转写** — 音频转成带时间戳的逐字文本。
+
+**清洗** — 去掉口语噪音（嗯、啊、重复词），修标点，应用纠错词典。纯规则，不调 API。
+
+**场景切分** — 按时间间隔和话题转换，把一整天的文本切成独立的对话段落。
+
+**角色识别** — 判断每段对话在跟谁说话：AI 助手、朋友、商家、宠物、自言自语。结合屏幕上下文提高准确率。
+
+**蒸馏摘要** — 每个场景压缩成一到两句话，保留核心信息，感知角色身份。
+
+**结构化提取** — 从全天内容中分桶提取三类信息：
+- 🚀 **事件** — 做了什么、打算做什么
+- 📌 **事实** — 确认的信息、数据、结论
+- ⚡ **洞察** — 想法、判断、灵感
+
+**日报生成** — 汇总当天所有场景，生成有摘要、有时间线、有统计的每日报告。
+
+**活跃上下文** — 跨天累积项目进展、人物关系、待办事项。7 天没再提到的自动标记过期。
 
 ---
 
-## 🖥️ 本地工作台
+## 🖼️ 输出效果
 
 <div align="center">
-<img src="docs/images/openmy-quick-start.png" alt="OpenMy 工作台" width="700" />
+<img src="docs/images/openmy-quick-start.png" alt="OpenMy 报告" width="700" />
 </div>
 
-打开 `http://127.0.0.1:8420`：概览、日报、摘要时间线、场景表格、图表、校正词典、流程重跑。
+生成的报告包含 7 个视图：
 
-所有数据存本地 `data/`，服务默认 `127.0.0.1`，不开外网，不是 SaaS。
-
----
-
-## 🤖 给 Agent 开发者
-
-OpenMy 的 CLI 是给 Agent 调的，不是给人敲的：
-
-```bash
-openmy context --compact      # 输出 Markdown，直接注入 system prompt
-openmy agent --recent         # Agent 启动时自动读
-openmy correct merge-project "AI思维" "OpenMy"  # 发现上下文有误，一条命令纠正
-```
-
-一行命令，你的 Agent 就知道用户最近在做什么、跟谁互动、还差什么。
+- **概览** — 当天统计：场景数、字数、语音时长、角色分布
+- **日报** — 结构化的每日摘要
+- **摘要时间线** — 按时间排列每个场景的蒸馏结果
+- **场景表格** — 完整场景列表，可展开查看原文
+- **图表** — 角色分布和场景时长可视化
+- **校正** — 纠错词典管理，支持全局搜索替换
+- **流程** — 重跑管线任意阶段
 
 ---
 
 ## 📍 路线图
 
 - ~~**v0.1**~~ ✅ 核心管线跑通
-- **v0.2** 🟢 当前 — quick-start、前端工作台、纠错词典、结构化提取、活跃上下文
-- **v0.3** 🔜 多语言、更智能的跨天上下文、Obsidian 插件
+- **v0.2** 🟢 当前 — quick-start、报告工作台、纠错词典、结构化提取、活跃上下文
+- **v0.3** 🔜 多语言、跨天上下文增强、Obsidian 插件
 - **v1.0** 📋 稳定 API、插件系统、多 LLM 后端
 
 ---
@@ -115,9 +111,9 @@ python3 -m pytest tests/ -v   # 167 tests，不需要 API key
 ## 📂 仓库结构
 
 ```
-src/openmy/           CLI + 9 个服务模块
+src/openmy/
   services/
-    ingest/            音频导入
+    ingest/            音频导入与预处理
     cleaning/          文本清洗（规则引擎）
     segmentation/      场景切分
     roles/             角色识别
@@ -126,8 +122,8 @@ src/openmy/           CLI + 9 个服务模块
     briefing/          日报生成
     context/           活跃上下文
     screen_recognition/  屏幕上下文
-app/                  本地 Web 工作台
-tests/                167 个测试
+app/                  报告页面
+tests/                自动化测试
 ```
 
 ---
