@@ -5,14 +5,14 @@ from unittest.mock import patch
 
 from openmy.domain.models import RoleTag, SceneBlock, ScreenSession
 from openmy.services.roles.resolver import resolve_roles
-from openmy.services.screenpipe.hints import (
+from openmy.services.screen_recognition.hints import (
     APP_ROLE_HINTS,
     apply_hints,
     enrich_with_hints,
     get_role_hint,
     sessionize,
 )
-from openmy.adapters.screenpipe.client import ScreenEvent, ScreenpipeClient
+from openmy.adapters.screen_recognition.client import ScreenEvent, ScreenRecognitionClient
 
 
 class FakeResponse:
@@ -24,20 +24,20 @@ class FakeResponse:
         return json.dumps(self._payload).encode("utf-8")
 
 
-class TestScreenpipeClient(unittest.TestCase):
+class TestScreenRecognitionClient(unittest.TestCase):
     def test_is_available_returns_true_on_200(self):
-        client = ScreenpipeClient(base_url="http://localhost:3030", timeout=1)
+        client = ScreenRecognitionClient(base_url="http://localhost:3030", timeout=1)
         with patch("urllib.request.urlopen", return_value=FakeResponse(status=200)) as mocked:
             self.assertTrue(client.is_available())
         self.assertIn("/health", mocked.call_args.args[0].full_url)
 
     def test_is_available_returns_false_on_error(self):
-        client = ScreenpipeClient(base_url="http://localhost:3030", timeout=1)
+        client = ScreenRecognitionClient(base_url="http://localhost:3030", timeout=1)
         with patch("urllib.request.urlopen", side_effect=OSError("boom")):
             self.assertFalse(client.is_available())
 
     def test_search_ocr_maps_response_and_truncates_text(self):
-        client = ScreenpipeClient(base_url="http://localhost:3030", timeout=1)
+        client = ScreenRecognitionClient(base_url="http://localhost:3030", timeout=1)
         payload = {
             "data": [
                 {
@@ -66,7 +66,7 @@ class TestScreenpipeClient(unittest.TestCase):
         self.assertIn("app_name=Claude", mocked.call_args.args[0].full_url)
 
     def test_search_ocr_returns_empty_on_error(self):
-        client = ScreenpipeClient(base_url="http://localhost:3030", timeout=1)
+        client = ScreenRecognitionClient(base_url="http://localhost:3030", timeout=1)
         with patch("urllib.request.urlopen", side_effect=OSError("boom")):
             self.assertEqual(
                 client.search_ocr(
@@ -188,7 +188,7 @@ class TestApplyHints(unittest.TestCase):
         self.assertTrue(scene.role.needs_review)
 
 
-class StubScreenpipeClient:
+class StubScreenRecognitionClient:
     def __init__(self, available=True, events=None):
         self.available = available
         self.events = events or []
@@ -213,7 +213,7 @@ class TestEnrichWithHints(unittest.TestCase):
     def test_skips_when_client_unavailable(self):
         scene = SceneBlock(time_start="12:00", time_end="12:01", text="test")
         scene.role = RoleTag(scene_type="uncertain", scene_type_label="不确定")
-        client = StubScreenpipeClient(available=False)
+        client = StubScreenRecognitionClient(available=False)
 
         result = enrich_with_hints([scene], client, "2026-04-07")
 
@@ -223,7 +223,7 @@ class TestEnrichWithHints(unittest.TestCase):
     def test_enriches_scene_with_client_results(self):
         scene = SceneBlock(time_start="12:00", time_end="12:01", text="test")
         scene.role = RoleTag(scene_type="uncertain", scene_type_label="不确定", evidence_chain=[])
-        client = StubScreenpipeClient(
+        client = StubScreenRecognitionClient(
             available=True,
             events=[
                 ScreenEvent(
@@ -243,9 +243,10 @@ class TestEnrichWithHints(unittest.TestCase):
 
 
 class TestResolveRolesWithScreenpipe(unittest.TestCase):
-    def test_screenpipe_hint_can_fill_uncertain_role(self):
+    @unittest.mock.patch("openmy.services.roles.resolver.infer_role_with_model", return_value=None)
+    def test_screenpipe_hint_can_fill_uncertain_role(self, _mock_infer):
         scenes = [SceneBlock(time_start="12:00", time_end="12:01", text="天气不错")]
-        client = StubScreenpipeClient(
+        client = StubScreenRecognitionClient(
             available=True,
             events=[
                 ScreenEvent(
@@ -257,7 +258,7 @@ class TestResolveRolesWithScreenpipe(unittest.TestCase):
             ],
         )
 
-        result = resolve_roles(scenes, date_str="2026-04-07", screenpipe_client=client)
+        result = resolve_roles(scenes, date_str="2026-04-07", screen_client=client)
 
         self.assertEqual(result[0].role.scene_type, "interpersonal")
         self.assertEqual(result[0].role.source, "screen_hint")

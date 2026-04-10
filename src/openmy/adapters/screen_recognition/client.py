@@ -16,7 +16,7 @@ class ScreenEvent:
     url: str = ""
 
 
-class ScreenpipeClient:
+class ScreenRecognitionClient:
     def __init__(self, base_url: str = "http://localhost:3030", timeout: int = 2):
         self.base_url = base_url
         self.timeout = timeout
@@ -65,5 +65,36 @@ class ScreenpipeClient:
                     )
                 )
             return events
+        except Exception:
+            return []
+
+    def activity_summary(self, start_time: str, end_time: str) -> dict:
+        """GET /activity-summary — 时段内的应用使用摘要。"""
+        params = {"start_time": start_time, "end_time": end_time}
+        try:
+            req = urllib.request.Request(f"{self.base_url}/activity-summary?{urlencode(params)}")
+            resp = urllib.request.urlopen(req, timeout=30)
+            return json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return {}
+
+    def search_elements(self, start_time: str, end_time: str, limit: int = 50) -> list[dict]:
+        """GET /elements — UI 元素搜索。"""
+        params = {"start_time": start_time, "end_time": end_time, "limit": limit}
+        try:
+            req = urllib.request.Request(f"{self.base_url}/elements?{urlencode(params)}")
+            resp = urllib.request.urlopen(req, timeout=10)
+            data = json.loads(resp.read().decode("utf-8"))
+            return data.get("data", [])
+        except Exception:
+            return []
+
+    def get_memories(self, limit: int = 20) -> list[dict]:
+        """GET /memories — 用户记忆列表。"""
+        params = {"limit": limit, "order_by": "created_at", "order_dir": "desc"}
+        try:
+            req = urllib.request.Request(f"{self.base_url}/memories?{urlencode(params)}")
+            resp = urllib.request.urlopen(req, timeout=10)
+            return json.loads(resp.read().decode("utf-8"))
         except Exception:
             return []

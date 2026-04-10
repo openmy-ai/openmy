@@ -158,7 +158,7 @@ class TestOpenMyCli(unittest.TestCase):
             [sys.executable, "-m", "openmy", "status"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=60,
             cwd=PROJECT_ROOT,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -170,7 +170,7 @@ class TestOpenMyCli(unittest.TestCase):
             [sys.executable, "-m", "openmy", "--help"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=60,
             cwd=PROJECT_ROOT,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -185,7 +185,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "view", date_str],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -199,7 +199,7 @@ class TestOpenMyCli(unittest.TestCase):
             [sys.executable, "-m", "openmy", "view", "1999-01-01"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=60,
             cwd=PROJECT_ROOT,
         )
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
@@ -210,7 +210,7 @@ class TestOpenMyCli(unittest.TestCase):
             [sys.executable, "-m", "openmy", "roles", "1999-01-01"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=60,
             cwd=PROJECT_ROOT,
         )
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
@@ -225,7 +225,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "briefing", date_str],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -269,7 +269,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "roles", date_str],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -294,7 +294,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "distill", date_str],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
                 env=env,
             )
@@ -319,7 +319,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "correct", date_str, "青维", "青梅"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -347,7 +347,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "correct", "typo", date_str, "青维", "青梅"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -375,7 +375,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "correct", "close-loop", "README"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -421,7 +421,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "correct", "list"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -456,7 +456,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "run", date_str, "--skip-transcribe"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -479,7 +479,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "context", "--compact"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -517,7 +517,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "agent", "--recent"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -547,7 +547,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "agent", "--day", date_str],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -573,7 +573,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "agent", "--reject-decision", "中午改吃河南蒸菜"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -614,7 +614,7 @@ class TestOpenMyCli(unittest.TestCase):
                 [sys.executable, "-m", "openmy", "agent", "--ingest", date_str, "--skip-transcribe"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)

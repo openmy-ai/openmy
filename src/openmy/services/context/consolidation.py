@@ -10,7 +10,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from openmy.domain.intent import Intent, intent_to_loop_type, should_generate_open_loop
+from openmy.domain.intent import DONE_STATUSES, Intent, intent_to_loop_type, should_generate_open_loop
 from openmy.services.context.active_context import (
     ActiveContext,
     ChangeItem,
@@ -171,6 +171,10 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
         title = str(item).strip()
         if not title:
             continue
+        # 截断保护：超过 80 字的不是待办，是段落摘要，截断取第一句
+        if len(title) > 80:
+            first_sentence = re.split(r'[。！？!?]', title)[0]
+            title = first_sentence[:80] if first_sentence else title[:80]
         loops.setdefault(
             title,
             OpenLoop(
@@ -195,6 +199,10 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
             priority = "medium"
         if not title:
             continue
+        # 截断保护
+        if len(title) > 80:
+            first_sentence = re.split(r'[。！？!?]', title)[0]
+            title = first_sentence[:80] if first_sentence else title[:80]
         loops.setdefault(
             title,
             OpenLoop(
@@ -211,6 +219,54 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
         )
 
     return list(loops.values())
+
+
+def _filter_stale_loops(loops: list[OpenLoop], stale_days: int = 3, expire_days: int = 7) -> list[OpenLoop]:
+    """Fix B: 过期机制 — 3 天 stale，7 天踢出。"""
+    today = date.today()
+    result: list[OpenLoop] = []
+    for loop in loops:
+        last_seen = loop.last_seen_at or ""
+        if last_seen:
+            try:
+                seen_date = date.fromisoformat(last_seen[:10])
+                age = (today - seen_date).days
+                if age >= expire_days:
+                    continue  # 超过 7 天，踢出
+                if age >= stale_days:
+                    loop.status = "stale"
+            except (ValueError, TypeError):
+                pass
+        result.append(loop)
+    return result[:10]
+
+
+def _auto_close_loops(
+    loops: dict[str, OpenLoop],
+    all_metas: list[dict],
+) -> None:
+    """Fix I: 用新录音的 done intents 自动关闭匹配的 open_loops。"""
+    done_whats: set[str] = set()
+    for meta in all_metas:
+        for raw in meta.get("intents", []):
+            if not isinstance(raw, dict):
+                continue
+            intent = Intent.from_dict(raw)
+            if intent.status in DONE_STATUSES and intent.what.strip():
+                done_whats.add(intent.what.strip().lower())
+
+    if not done_whats:
+        return
+
+    for title, loop in loops.items():
+        if loop.status != "open":
+            continue
+        title_lower = title.lower()
+        for done_what in done_whats:
+            # 模糊匹配：done_what 包含在 loop title 里，或反过来
+            if done_what in title_lower or title_lower in done_what:
+                loop.status = "closed"
+                break
 
 
 def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: str) -> list[DecisionItem]:
@@ -371,6 +427,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
     all_projects: dict[str, dict[str, Any]] = {}
     all_loops: dict[str, OpenLoop] = {}
     all_decisions: dict[str, DecisionItem] = {}
+    all_metas_for_close: list[dict[str, Any]] = []
     recent_changes: list[ChangeItem] = []
     scene_count_7d = 0
     coverage_days_30d = 0
@@ -387,6 +444,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
         scenes_payload = _load_json(paths["scenes"])
         briefing_payload = _load_json(paths["briefing"])
         meta_payload = _load_json(paths["meta"])
+        all_metas_for_close.append(meta_payload)
         scenes = scenes_payload.get("scenes", [])
 
         if date_str == latest_date:
@@ -446,6 +504,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
                     )
                 )
 
+    # Fix D: 门槛从 >=2天 降到 >=1天，首次出现 confidence 0.5
     ctx.stable_profile.key_people_registry = [
         EntityRegistryCard(
             id=_slug("entity", name),
@@ -453,13 +512,32 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             display_name=name,
             relation_type=_known_relation_type(name),
             aliases=[name],
-            confidence=0.9,
+            confidence=0.9 if len(date_hits) >= 2 else 0.5,
             source_rank="aggregate",
-            last_seen_at=max(addressed_date_hits[name]) + "T23:59:59+08:00",
+            last_seen_at=max(date_hits) + "T23:59:59+08:00",
         )
         for name, date_hits in sorted(addressed_date_hits.items())
-        if len(date_hits) >= 2
+        if len(date_hits) >= 1
     ]
+
+    # Fix I: 用 done intents 自动关闭匹配的 open_loops
+    _auto_close_loops(all_loops, all_metas_for_close)
+
+    # 项目去重 — 合并相似名、过滤一次性提及（映射表在 config.py）
+    from openmy.config import PROJECT_MERGE_MAP
+    filtered_projects: dict[str, Any] = {}
+    for title, snippets in all_projects.items():
+        merged = PROJECT_MERGE_MAP.get(title, title)
+        if merged is None:
+            continue  # 过滤掉非项目
+        if merged in filtered_projects:
+            # 合并 snippets
+            existing = filtered_projects[merged]
+            existing["snippets"]["snippets"].extend(snippets["snippets"])
+            if snippets["last_touched_at"] > existing["snippets"]["last_touched_at"]:
+                existing["snippets"]["last_touched_at"] = snippets["last_touched_at"]
+        else:
+            filtered_projects[merged] = {"snippets": snippets}
 
     ctx.rolling_context = RollingContext(
         recent_changes=recent_changes[:10],
@@ -470,7 +548,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
                 title=title,
                 status="active",
                 priority="high" if "OpenMy" in title else "medium",
-                current_goal=snippets["snippets"][0] if snippets["snippets"] else title,
+                current_goal=info["snippets"]["snippets"][0] if info["snippets"]["snippets"] else title,
                 next_actions=[
                     loop.title
                     for loop in all_loops.values()
@@ -478,13 +556,13 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
                 ][:3],
                 blockers=[],
                 momentum="steady",
-                last_touched_at=snippets["last_touched_at"],
+                last_touched_at=info["snippets"]["last_touched_at"],
                 confidence=0.85,
                 source_rank="aggregate",
             )
-            for title, snippets in sorted(all_projects.items())
+            for title, info in sorted(filtered_projects.items())
         ],
-        open_loops=sorted(all_loops.values(), key=lambda item: item.title)[:10],
+        open_loops=_filter_stale_loops(sorted(all_loops.values(), key=lambda item: item.title)),
         recent_decisions=sorted(
             all_decisions.values(),
             key=lambda item: item.effective_from,
@@ -534,6 +612,16 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             if bool(scene.get("role", {}).get("needs_review"))
         )
         unresolved_ratio_1d = unresolved_count / len(latest_scenes)
+
+    # 截断保护：today_focus 和 pending_followups 不超过 80 字
+    def _truncate(text: str, limit: int = 80) -> str:
+        if len(text) <= limit:
+            return text
+        first = re.split(r'[。！？!?]', text)[0]
+        return (first[:limit] if first else text[:limit])
+
+    latest_events = [_truncate(e) for e in latest_events]
+    latest_todos = [_truncate(t) for t in latest_todos]
 
     ctx.realtime_context = RealtimeContext(
         today_focus=latest_events[:5],

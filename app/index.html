@@ -52,7 +52,8 @@ body {
   font-family: var(--font-body);
   background: var(--bg);
   color: var(--text);
-  line-height: 1.6;
+  font-size: 15px;
+  line-height: 1.7;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -243,7 +244,7 @@ body {
 }
 
 .callout-icon { font-size: 20px; flex-shrink: 0; }
-.callout-body { font-size: 14px; color: var(--text); flex: 1; }
+.callout-body { font-size: 15px; color: var(--text); flex: 1; line-height: 1.8; }
 
 .props-grid {
   display: grid;
@@ -271,7 +272,7 @@ body {
 }
 
 .prop-card-title .dot { width: 8px; height: 8px; border-radius: 50%; }
-.prop-item { font-size: 13px; color: var(--text-secondary); padding: 4px 0; border-bottom: 1px dashed var(--border); line-height: 1.5; }
+.prop-item { font-size: 14px; color: var(--text-secondary); padding: 6px 0; border-bottom: 1px dashed var(--border); line-height: 1.7; }
 .prop-item:last-child { border-bottom: none; }
 .prop-item .time-tag { font-size: 11px; color: var(--text-light); font-variant-numeric: tabular-nums; margin-right: 4px; }
 .prop-item .project-tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--accent-light); color: var(--accent); font-weight: 500; margin-right: 4px; }
@@ -431,11 +432,16 @@ body {
 .tb-tag-app { background: #f0fdf4; color: #15803d; }
 
 .event-item {
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-secondary);
-  padding: 6px 0;
-  border-bottom: 1px dashed var(--border);
-  line-height: 1.5;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  line-height: 1.8;
+  max-height: 5em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .event-item:last-child { border-bottom: none; }
