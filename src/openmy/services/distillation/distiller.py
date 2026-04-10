@@ -13,13 +13,8 @@ from openmy.config import GEMINI_MODEL, DISTILL_TEMPERATURE, DISTILL_THINKING_LE
 def summarize_scene(text: str, api_key: str, model: str, role_info: str = "") -> str:
     client = genai.Client(api_key=api_key)
 
-    role_hint = ""
-    if role_info:
-        role_hint = f"说话人在跟{role_info}说话。用具体的称呼，不要写'大家''有人''说话人'。\n"
-
     prompt = (
         f'这是一段个人录音日记。帮我提炼要点，写给我自己看的。\n\n'
-        f'{role_hint}'
         f'要求：\n'
         f'1. 只写干货，不写过渡句\n'
         f'2. 1-3 句话，每句话必须有具体信息\n'
@@ -48,9 +43,7 @@ def distill_scenes(scenes_path: Path, api_key: str, model: str) -> dict:
         if not text:
             scene['summary'] = ''
             continue
-        role = scene.get('role', {})
-        addressed_to = role.get('addressed_to', '')
-        scene['summary'] = summarize_scene(text, api_key, model, role_info=addressed_to)
+        scene['summary'] = summarize_scene(text, api_key, model)
     scenes_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
     return data
 

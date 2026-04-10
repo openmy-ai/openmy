@@ -90,6 +90,8 @@ def strip_document_header(markdown: str) -> str:
 
 def get_date_status(date_str: str) -> dict[str, Any]:
     """获取某一天的处理阶段。"""
+    from openmy.config import ROLE_RECOGNITION_ENABLED
+
     day_dir = DATA_ROOT / date_str
     legacy = LEGACY_ROOT / f"{date_str}.md"
 
@@ -117,7 +119,8 @@ def get_date_status(date_str: str) -> dict[str, Any]:
     if scenes_path.exists():
         data = read_json(scenes_path, {})
         status["scene_count"] = len(data.get("scenes", []))
-        status["role_distribution"] = data.get("stats", {}).get("role_distribution", {})
+        if ROLE_RECOGNITION_ENABLED:
+            status["role_distribution"] = data.get("stats", {}).get("role_distribution", {})
 
     return status
 
@@ -301,6 +304,45 @@ def rebuild_scene_stats(data: dict[str, Any]) -> dict[str, Any]:
         "role_distribution": distribution,
         "needs_review_count": needs_review_count,
     }
+
+
+def build_frozen_scene_stats(total_scenes: int) -> dict[str, Any]:
+    return {
+        "total_scenes": total_scenes,
+        "role_distribution": {},
+        "needs_review_count": 0,
+        "role_recognition_status": "frozen",
+    }
+
+
+def freeze_scene_roles(data: dict[str, Any]) -> dict[str, Any]:
+    scenes = data.get("scenes", []) if isinstance(data.get("scenes", []), list) else []
+    frozen_role = {
+        "category": "uncertain",
+        "entity_id": "",
+        "relation_label": "",
+        "confidence": 0.0,
+        "evidence_chain": [],
+        "scene_type": "uncertain",
+        "scene_type_label": "不确定",
+        "addressed_to": "",
+        "about": "",
+        "source": "frozen",
+        "source_label": "已冻结",
+        "evidence": "角色识别已冻结",
+        "needs_review": False,
+    }
+    for scene in scenes:
+        scene["role"] = dict(frozen_role)
+    data["stats"] = build_frozen_scene_stats(len(scenes))
+    return data
+
+
+def build_segmented_scenes_payload(markdown: str) -> dict[str, Any]:
+    from openmy.services.segmentation.segmenter import build_scenes_payload, segment
+
+    payload = build_scenes_payload(segment(markdown))
+    return freeze_scene_roles(payload)
 
 
 def upsert_correction(wrong: str, right: str, context: str = "") -> Path:
@@ -647,7 +689,7 @@ def cmd_clean(args: argparse.Namespace) -> int:
 
 
 def cmd_roles(args: argparse.Namespace) -> int:
-    """切场景 + 角色归因。"""
+    """兼容旧命令名：当前只切场景，不再自动角色归因。"""
     date_str = args.date
     paths = resolve_day_paths(date_str)
     transcript_path = paths["transcript"]
@@ -655,26 +697,17 @@ def cmd_roles(args: argparse.Namespace) -> int:
         console.print(f"[red]❌ 找不到 {date_str} 的清洗后文本，先运行 openmy clean {date_str}[/red]")
         return 1
 
-    from openmy.services.roles.resolver import resolve_roles, scenes_to_dict
-    from openmy.services.segmentation.segmenter import segment
-
     markdown = strip_document_header(transcript_path.read_text(encoding="utf-8"))
-    screen_client = get_screen_client()
 
-    with console.status("[bold cyan]🏷️ 场景切分 + 角色归因..."):
-        scenes = resolve_roles(segment(markdown), date_str=date_str, screen_client=screen_client)
-        result = scenes_to_dict(scenes)
+    with console.status("[bold cyan]🔪 场景切分中..."):
+        result = build_segmented_scenes_payload(markdown)
 
     output_path = ensure_day_dir(date_str) / "scenes.json"
     write_json(output_path, result)
 
     stats = result["stats"]
-    console.print(f"[green]✅ 角色归因完成[/green]: {stats['total_scenes']} 个场景")
-    for role_name, count in sorted(stats["role_distribution"].items(), key=lambda item: -item[1]):
-        color = ROLE_COLORS.get(role_name, "white")
-        console.print(f"  [{color}]■[/{color}] {role_name}: {count} 段")
-    if stats["needs_review_count"]:
-        console.print(f"  [yellow]⚠️ {stats['needs_review_count']} 段需要人工确认[/yellow]")
+    console.print(f"[green]✅ 场景切分完成[/green]: {stats['total_scenes']} 个场景")
+    console.print("[dim]ℹ️ 自动角色识别已冻结，当前只生成场景，不做对象识别[/dim]")
     return 0
 
 
@@ -713,13 +746,7 @@ def cmd_distill(args: argparse.Namespace) -> int:
             if scene.get("summary"):
                 continue
             text = scene.get("text", "").strip()
-            role = scene.get("role", {}) if isinstance(scene.get("role", {}), dict) else {}
-            addressed_to = str(role.get("addressed_to", "")).strip()
-            scene["summary"] = (
-                summarize_scene(text, api_key, GEMINI_MODEL, role_info=addressed_to)
-                if text
-                else ""
-            )
+            scene["summary"] = summarize_scene(text, api_key, GEMINI_MODEL) if text else ""
             progress.advance(task)
 
     write_json(scenes_path, data)

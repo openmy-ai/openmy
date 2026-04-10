@@ -109,7 +109,7 @@ class TestConsolidation(unittest.TestCase):
             self.assertTrue(ctx.status_line)
 
             registry_names = {item.display_name for item in ctx.stable_profile.key_people_registry}
-            self.assertIn("老婆", registry_names)
+            self.assertEqual(registry_names, set())
 
             loop_titles = {item.title for item in ctx.rolling_context.open_loops}
             self.assertIn("补 active context 第一版", loop_titles)
@@ -120,7 +120,7 @@ class TestConsolidation(unittest.TestCase):
             self.assertIn("先做第四层", decision_texts)
 
             entity_rollups = {item.entity_id: item for item in ctx.rolling_context.entity_rollups}
-            self.assertEqual(entity_rollups["老婆"].interaction_7d_count, 2)
+            self.assertEqual(entity_rollups, {})
 
             updates_path = data_root / "active_context_updates.jsonl"
             self.assertTrue(updates_path.exists())
