@@ -19,6 +19,7 @@ from app.payloads import (
     get_context_loops_payload,
     get_context_payload,
     get_context_projects_payload,
+    get_context_query_payload,
     get_corrections,
     get_date_briefing_payload,
     get_date_detail,
@@ -48,6 +49,22 @@ class BrainHandler(SimpleHTTPRequestHandler):
             send_json(self, get_context_projects_payload())
         elif path == "/api/context/decisions":
             send_json(self, get_context_decisions_payload())
+        elif path == "/api/context/query":
+            kind = params.get("kind", [""])[0]
+            query = params.get("q", [""])[0]
+            limit_raw = params.get("limit", ["5"])[0]
+            include_evidence = params.get("evidence", ["0"])[0].lower() in {"1", "true", "yes"}
+            try:
+                limit = int(limit_raw)
+            except ValueError:
+                limit = 5
+            payload = get_context_query_payload(
+                kind=kind,
+                query=query,
+                limit=limit,
+                include_evidence=include_evidence,
+            )
+            send_json(self, payload, status=200 if not payload.get("error") else 400)
         elif path == "/api/dates":
             send_json(self, get_all_dates())
         elif path == "/api/search":

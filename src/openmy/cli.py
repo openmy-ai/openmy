@@ -39,6 +39,7 @@ from openmy.config import (
     has_llm_credentials,
     stt_provider_requires_api_key,
 )
+from openmy.services.query.context_query import query_context, render_query_result
 
 
 console = Console()
@@ -869,6 +870,28 @@ def cmd_context(args: argparse.Namespace) -> int:
     return _cmd_context(args)
 
 
+def cmd_query(args: argparse.Namespace) -> int:
+    result = query_context(
+        DATA_ROOT,
+        kind=args.kind,
+        query=args.query or "",
+        limit=args.limit,
+        include_evidence=args.include_evidence,
+    )
+    if result.get("error"):
+        if getattr(args, "json", False):
+            _print_json(result)
+        else:
+            console.print(f"[red]❌ {result['error']}[/red]")
+        return 1
+
+    if getattr(args, "json", False):
+        _print_json(result)
+    else:
+        console.print(Panel(render_query_result(result), title=f"🔎 {args.kind}", border_style="cyan"))
+    return 0
+
+
 def cmd_agent(args: argparse.Namespace) -> int:
     """给 Agent 用的统一入口。"""
     if args.recent:
@@ -892,6 +915,17 @@ def cmd_agent(args: argparse.Namespace) -> int:
                 stt_word_timestamps=args.stt_word_timestamps,
                 stt_align=args.stt_align,
                 stt_diarize=args.stt_diarize,
+            )
+        )
+
+    if args.query:
+        return cmd_query(
+            argparse.Namespace(
+                kind=args.query_kind,
+                query=args.query,
+                limit=args.limit,
+                include_evidence=args.include_evidence,
+                json=False,
             )
         )
 
@@ -962,6 +996,17 @@ def cmd_skill(args: argparse.Namespace) -> int:
             payload["compact_markdown"] = render_compact_md(ctx)
         _print_json(payload)
         return 0
+
+    if action == "context.query":
+        result = query_context(
+            DATA_ROOT,
+            kind=args.kind,
+            query=args.query or "",
+            limit=args.limit,
+            include_evidence=args.include_evidence,
+        )
+        _print_json({"action": action, "result": result})
+        return 0 if not result.get("error") else 1
 
     if action == "day.run":
         if not args.date:
@@ -1084,12 +1129,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_context.add_argument("--compact", action="store_true", help="输出 Markdown 压缩版")
     p_context.add_argument("--level", type=int, default=1, choices=[0, 1], help="输出层级 (0=极简, 1=完整)")
 
+    p_query = sub.add_parser("query", help="基于结构化上下文查询项目/人物/待办/证据")
+    p_query.add_argument("--kind", required=True, choices=["project", "person", "open", "closed", "evidence"])
+    p_query.add_argument("--query", default="", help="查询关键词（project / person / evidence 必填）")
+    p_query.add_argument("--limit", type=int, default=5, help="最多返回多少条命中")
+    p_query.add_argument("--include-evidence", action="store_true", help="返回证据来源")
+    p_query.add_argument("--json", action="store_true", help="输出 JSON")
+
     p_agent = sub.add_parser("agent", help="给 Agent 调用的统一入口")
     agent_mode = p_agent.add_mutually_exclusive_group(required=True)
     agent_mode.add_argument("--recent", action="store_true", help="读取最近整体状态")
     agent_mode.add_argument("--day", help="查看某天结果 YYYY-MM-DD")
     agent_mode.add_argument("--ingest", help="处理某天输入 YYYY-MM-DD")
     agent_mode.add_argument("--reject-decision", dest="reject_decision", help="排除一条不重要的决策")
+    agent_mode.add_argument("--query", help="按结构化结果查询项目/人物/待办/证据")
+    p_agent.add_argument("--query-kind", default="project", choices=["project", "person", "open", "closed", "evidence"])
+    p_agent.add_argument("--limit", type=int, default=5, help="给 --query 使用")
+    p_agent.add_argument("--include-evidence", action="store_true", help="给 --query 使用：带上证据来源")
     p_agent.add_argument("--audio", nargs="+", help="给 --ingest 使用的音频文件路径")
     p_agent.add_argument("--skip-transcribe", action="store_true", help="给 --ingest 使用：复用已有数据")
     add_stt_runtime_args(p_agent)
@@ -1097,7 +1153,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_skill = sub.add_parser("skill", help="稳定 JSON 动作入口")
     p_skill.add_argument(
         "action",
-        choices=["context.get", "day.get", "day.run", "correction.apply", "status.get"],
+        choices=["context.get", "context.query", "day.get", "day.run", "correction.apply", "status.get"],
         help="稳定动作名",
     )
     p_skill.add_argument("--date", help="给 day.get / day.run 使用的日期 YYYY-MM-DD")
@@ -1111,6 +1167,10 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["done", "abandoned"],
         help="给 correction.apply 使用的 close-loop 状态",
     )
+    p_skill.add_argument("--kind", choices=["project", "person", "open", "closed", "evidence"], help="给 context.query 使用")
+    p_skill.add_argument("--query", default="", help="给 context.query 使用的查询词")
+    p_skill.add_argument("--limit", type=int, default=5, help="给 context.query 使用的最大命中数")
+    p_skill.add_argument("--include-evidence", action="store_true", help="给 context.query 返回证据来源")
     p_skill.add_argument("--level", type=int, default=1, choices=[0, 1], help="给 context.get 使用的层级")
     p_skill.add_argument("--compact", action="store_true", help="给 context.get 输出压缩 Markdown")
     p_skill.add_argument("--json", action="store_true", help="兼容参数；skill 默认输出 JSON")
@@ -1132,6 +1192,7 @@ def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | N
         "correct": cmd_correct,
         "distill": cmd_distill,
         "extract": cmd_extract,
+        "query": cmd_query,
         "quick-start": cmd_quick_start,
         "roles": cmd_roles,
         "run": cmd_run,
