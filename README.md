@@ -1,186 +1,307 @@
-# OpenMy
+<div align="center">
 
-把一段音频，变成可浏览的日报和结构化上下文。
+<img src="docs/images/openmy-banner.png" alt="OpenMy Banner" width="800" />
 
-![OpenMy quick start screenshot](docs/images/openmy-quick-start.png)
+<br />
 
-[English](README.en.md)
+### 🎙️ 一段音频 → 一整天的结构化上下文
 
-## 30 秒快速开始
+**OpenMy** 是开源的个人上下文引擎。  
+录一段音频，自动转写、清洗、切场景、识别对象、蒸馏摘要、生成日报。  
+让你的 AI Agent 真正「认识你」。
 
-### 1. clone
+<br />
+
+[![GitHub release](https://img.shields.io/github/v/release/openmy-ai/openmy?style=flat-square&color=blue)](https://github.com/openmy-ai/openmy/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![Tests](https://img.shields.io/badge/tests-167%20passed-brightgreen?style=flat-square)]()
+
+[快速开始](#-30-秒快速开始) · [功能亮点](#-功能亮点) · [前端工作台](#-前端工作台) · [English](README.en.md)
+
+</div>
+
+---
+
+## ⚡ 30 秒快速开始
 
 ```bash
-git clone https://github.com/openmy-ai/openmy.git
-cd openmy
-```
-
-### 2. 安装
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
+git clone https://github.com/openmy-ai/openmy.git && cd openmy
+python3 -m venv .venv && source .venv/bin/activate
 pip install .
-```
-
-### 3. 只配一个 API key
-
-```bash
-cp .env.example .env
-```
-
-把 `.env` 里的 `your-gemini-api-key` 换成你自己的 Gemini key。
-
-如果你已经有 key，也可以一条命令：
-
-```bash
 echo "GEMINI_API_KEY=你的key" > .env
-```
-
-### 4. 一条命令处理音频并打开日报
-
-```bash
 openmy quick-start path/to/your-audio.wav
 ```
 
-这个命令会自动：
+就这五步。浏览器会自动打开 `http://127.0.0.1:8420`，展示你的第一份日报。
 
-1. 检查 Python 和 FFmpeg
-2. 读取项目根目录 `.env`
-3. 转写音频
-4. 清洗文本、切场景、角色归因、蒸馏摘要
-5. 生成日报和结构化提取
-6. 启动本地 Web 页面
-7. 自动打开浏览器到 `http://127.0.0.1:8420`
+<details>
+<summary>🤔 缺 FFmpeg？Python 版本不对？<b>CLI 会用人话告诉你</b></summary>
 
-你不需要先读代码，不需要手动 export 环境变量，也不需要自己记日期格式。
+```
+❌ 缺少 ffmpeg、ffprobe。macOS 可先运行 `brew install ffmpeg`。
+❌ 需要 Python 3.10 以上版本。可先运行 `brew install python@3.11`。
+❌ 没找到项目根目录 `.env`，也没有检测到 `GEMINI_API_KEY`。先 `cp .env.example .env`，再把 key 填进去。
+```
 
-## 这是什么
+不会给你一屏 traceback。哪里缺什么，一行中文说清楚。
 
-OpenMy 是一个“个人上下文引擎”：
+</details>
 
-- 输入：一段音频
-- 输出：日报、时间线、结构化事件、活跃上下文
-- 适合：复盘一天在说什么、做什么、和谁互动、有哪些待办和事实
+---
 
-它不是纯转写工具。OpenMy 会在转写之后继续做清洗、场景切分、角色识别、摘要和提取，让结果变成可浏览、可消费的数据。
+## ✨ 功能亮点
 
-## 你会看到什么
+<table>
+<tr>
+<td width="50%" valign="top">
 
-跑完 `openmy quick-start` 后，浏览器会打开一份本地日报页面，里面包括：
+### 🧠 不止转写，是「理解」
 
-- 当天摘要
-- 时间线
-- 事件 / 事实 / 洞察卡片
-- 日报视图
-- 角色和场景统计
+普通转写工具到文字就结束了。OpenMy 继续往下走——
 
-## 依赖自检
+- **场景切分**：把一天的碎碎念切成独立对话段
+- **角色识别**：自动判断「在跟谁说话」—— AI、朋友、商家、自己
+- **蒸馏摘要**：每个场景用一到两句话概括
+- **结构化提取**：分桶输出事件、事实、洞察
 
-OpenMy 会在命令启动时尽量用人话告诉你缺什么。
+</td>
+<td width="50%" valign="top">
 
-### Python 版本
+### 📋 日报 + 活跃上下文
 
-- 要求：`Python 3.10+`
-- 如果版本不对，CLI 会直接提示怎么装
-- macOS 常用命令：
+不需要手写日记，也不需要 Notion 模板——
+
+- **每日日报**：自动生成，有摘要、有数据、有时间线
+- **活跃上下文**：跨天累积的项目、待办、人物关系
+- **自动去重**：相同项目不同叫法？自动合并
+- **过期机制**：7 天没提的事自动标记 stale
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🔧 CLI 就是 Agent 接口
+
+OpenMy 的 CLI 不是给人敲的——是给 Agent 调的。
 
 ```bash
-brew install python@3.11
+openmy context --compact    # 注入 prompt
+openmy correct merge-project "AI思维" "OpenMy"
+openmy agent --recent       # Agent 启动时自动读
 ```
 
-### FFmpeg
+让你的 AI Agent 每次开口前，先知道「你是谁、在做什么、还差什么」。
 
-音频导入依赖 `ffmpeg` 和 `ffprobe`。
+</td>
+<td width="50%" valign="top">
 
-- macOS：
+### 🖥️ 本地优先，数据在你手里
+
+- 所有数据存本地 `data/` 目录
+- 服务默认 `127.0.0.1`，不开放外网
+- 不是 SaaS，没有账号，没有上传
+- API Key 只在本机调用 Gemini
+
+**你的一天，你说了算。**
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🖼️ 前端工作台
+
+<div align="center">
+
+<img src="docs/images/openmy-quick-start.png" alt="OpenMy 工作台" width="700" />
+
+</div>
+
+打开 `http://127.0.0.1:8420`，你会看到一个本地工作台：
+
+| 视图 | 说明 |
+|------|------|
+| 📊 **概览** | 当天统计：场景数、字数、时长、角色分布 |
+| 📰 **日报** | AI 生成的结构化日报 |
+| 🕐 **摘要时间线** | 按时间顺序展示每个场景的蒸馏摘要 |
+| 📋 **表格** | 完整场景列表，可展开查看原文 |
+| 📈 **图表** | 角色分布、场景时长的可视化 |
+| ✏️ **校正** | 纠错词典管理 + 全局搜索替换 |
+| ⚙️ **流程** | 一键重跑管线任意阶段 |
+
+---
+
+## 🔬 工作原理
+
+```mermaid
+graph LR
+    A[🎙️ 音频文件] --> B[转写]
+    B --> C[清洗文本]
+    C --> D[场景切分]
+    D --> E[角色识别]
+    E --> F[蒸馏摘要]
+    F --> G[结构化提取]
+    G --> H[日报生成]
+    H --> I[活跃上下文]
+    I --> J[🖥️ 本地工作台]
+
+    style A fill:#6366f1,stroke:#4f46e5,color:#fff
+    style J fill:#06b6d4,stroke:#0891b2,color:#fff
+```
+
+| 阶段 | 做什么 | 怎么做 |
+|------|--------|--------|
+| **转写** | 音频 → 带时间戳的文字 | Gemini API |
+| **清洗** | 去噪音、修标点、补纠错词 | 纯规则引擎，不调 API |
+| **场景切分** | 按时间和话题切场景 | 规则 + 语义 |
+| **角色识别** | 判断在跟谁说话 | Gemini + Screenpipe 线索 |
+| **蒸馏** | 每场景一句话摘要 | Gemini（角色感知） |
+| **提取** | 输出事件 / 事实 / 洞察 | Gemini（JSON schema 约束） |
+| **日报** | 生成可读的每日报告 | Gemini |
+| **上下文** | 跨天累积项目、人物、待办 | 本地聚合 + 去重 |
+
+---
+
+## 🔌 可选：Screenpipe 屏幕上下文
+
+OpenMy 可以接 [Screenpipe](https://github.com/mediar-ai/screenpipe)，给角色识别加额外线索：
+
+```
+"你 09:30 在跟 AI 说话" ← 不止因为内容像，还因为当时屏幕上开着 Cursor
+```
+
+- **不装也能正常跑**，全部功能不受影响
+- 装了之后角色判断更准
+- 通过本地 HTTP 接口（`localhost:3030`）读取，不需要改代码
+
+---
+
+## 🤖 给 Agent 开发者
+
+OpenMy 的核心定位：**让 AI Agent 拥有关于「你」的持久记忆。**
+
+```python
+# 你的 Agent 启动时：
+import subprocess, json
+
+# 1. 拿到用户的活跃上下文
+result = subprocess.run(
+    ["openmy", "context", "--compact"],
+    capture_output=True, text=True
+)
+user_context = result.stdout
+
+# 2. 注入到 system prompt
+system_prompt = f"""你是用户的助手。以下是用户的近期上下文：
+{user_context}
+"""
+```
+
+一行命令，你的 Agent 就知道用户最近在做什么项目、跟谁互动、有哪些待办。
+
+---
+
+## ⚙️ 配置
+
+所有配置集中在 [`src/openmy/config.py`](src/openmy/config.py)。大多数人第一次用不需要改。
+
+<details>
+<summary>可调参数一览</summary>
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `GEMINI_MODEL` | `gemini-3.1-flash-lite-preview` | 全局模型 |
+| `TRANSCRIBE_TIMEOUT` | 900s | 转写超时 |
+| `EXTRACT_TEMPERATURE` | 0.2 | 提取温度 |
+| `DISTILL_TEMPERATURE` | 0.2 | 蒸馏温度 |
+| `SCREEN_RECOGNITION_ENABLED` | `True` | Screenpipe 开关 |
+| `SCREEN_RECOGNITION_API` | `localhost:3030` | Screenpipe 地址 |
+
+</details>
+
+---
+
+## 🧪 开发与测试
 
 ```bash
-brew install ffmpeg
+git clone https://github.com/openmy-ai/openmy.git && cd openmy
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+python3 -m pytest tests/ -v   # 167 tests, 0 API key needed
 ```
 
-- Ubuntu / Debian：
+测试不依赖真实 API Key。没有 `GEMINI_API_KEY` 也能全绿。
 
-```bash
-sudo apt install ffmpeg
+---
+
+## 📍 路线图
+
+| 阶段 | 状态 | 内容 |
+|------|------|------|
+| ~~v0.1 Alpha~~ | ✅ | 核心管线跑通：转写 → 清洗 → 场景 → 角色 → 蒸馏 → 日报 |
+| **v0.2 Beta** | 🟢 **当前** | quick-start 入口、前端工作台、纠错词典、结构化提取、活跃上下文 |
+| v0.3 | 🔜 | 多语言支持、更智能的跨天上下文、Obsidian 插件 |
+| v1.0 | 📋 | 稳定 API、插件系统、多 LLM 后端 |
+
+> 想参与？看 [CONTRIBUTING.md](CONTRIBUTING.md) 或直接开 Issue 聊。
+
+---
+
+## 🆚 这不是什么
+
+| | OpenMy | 纯转写工具 | 日记 App |
+|---|---|---|---|
+| 转写 | ✅ | ✅ | ❌ |
+| 场景切分 & 角色识别 | ✅ | ❌ | ❌ |
+| 结构化提取（事件/事实/洞察） | ✅ | ❌ | ❌ |
+| 活跃上下文（给 Agent 用） | ✅ | ❌ | ❌ |
+| 数据 100% 本地 | ✅ | 看厂商 | 看厂商 |
+| 开源 | ✅ | 少数 | 少数 |
+
+**OpenMy 不是更好的转写工具。它是转写之后的事。**
+
+---
+
+## 📂 仓库结构
+
+```
+src/openmy/          核心 Python 包（CLI + 9 个服务模块）
+├── services/
+│   ├── ingest/          音频导入与预处理
+│   ├── cleaning/        文本清洗（规则引擎）
+│   ├── segmentation/    场景切分
+│   ├── roles/           角色识别
+│   ├── distillation/    蒸馏摘要
+│   ├── extraction/      结构化提取
+│   ├── briefing/        日报生成
+│   ├── context/         活跃上下文管理
+│   └── screen_recognition/  Screenpipe 集成
+app/                 本地 Web 工作台
+tests/               167 个自动化测试
+docs/                设计文档与截图
 ```
 
-如果没装，`openmy quick-start` 会直接告诉你怎么补，不会给一串难懂的 subprocess 报错。
+---
 
-## 常用命令
+## 🤝 参与贡献
 
-```bash
-openmy --help
-openmy status
-openmy view 2026-04-10
-openmy run 2026-04-10 --audio path/to/audio.wav
-openmy quick-start path/to/audio.wav
-```
+欢迎一起建设！详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-说明：
+简单来说：Fork → 新分支 → 改代码 + 补测试 → `pytest` 全绿 → 提 PR。
 
-- `quick-start` 面向第一次使用的人
-- `run` 适合你已经知道日期和输入参数时单独控制
-- `view` 适合在终端快速看某天结果
+---
 
-## 流程长什么样
+## 📄 License
 
-```text
-Audio
-  → Transcribe
-  → Clean
-  → Scene Split
-  → Role Resolve
-  → Distill
-  → Briefing
-  → Extract
-  → Active Context
-  → Web Report
-```
+[MIT](LICENSE) · 作者：[周瑟夫 (Joseph Zhou)](https://github.com/openmy-ai)
 
-默认打开的是本机网页：
+---
 
-- 地址：`http://127.0.0.1:8420`
-- 默认只绑定本机，不会自动开放到局域网
+<div align="center">
 
-## 配置说明
+**如果觉得有用，给个 ⭐ 就是最大的支持。**
 
-默认配置在 [`src/openmy/config.py`](src/openmy/config.py)。
-
-大多数人第一次使用时不用改它。先配 `.env`，然后直接跑 `openmy quick-start` 就够了。
-
-如果你之后想调参数，常见会改的是：
-
-- Gemini 模型
-- 转写 / 音频管线超时
-- 提取 / 蒸馏温度
-
-## 可选：Screenpipe 屏幕上下文
-
-OpenMy 可以接 Screenpipe，为语音结果补充“当时在看什么 App / 页面”的上下文。
-
-- 不装也能正常跑日报
-- 装了之后，会在角色归因和摘要上提供额外线索
-- 默认通过本地 HTTP 接口读取，不要求你改业务代码
-
-## 开发与测试
-
-```bash
-python3 -m pytest tests
-```
-
-当前测试默认不依赖真实 API key；在没有 `GEMINI_API_KEY` 的环境里也应该能全绿。
-
-## 仓库结构
-
-```text
-src/openmy/        核心 Python 包
-app/               本地日报 Web 页面
-tests/             自动化测试
-docs/images/       README 截图
-skills/            项目技能与补充说明
-```
-
-## License
-
-[MIT](LICENSE)
+</div>
