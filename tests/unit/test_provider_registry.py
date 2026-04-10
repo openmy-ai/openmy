@@ -59,6 +59,26 @@ class TestProviderRegistry(unittest.TestCase):
 
         self.assertEqual(stt.name, "faster-whisper")
 
+    def test_registry_builds_local_funasr_provider_without_api_key(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENMY_STT_PROVIDER": "funasr",
+                "OPENMY_STT_MODEL": "paraformer-zh",
+                "OPENMY_LLM_PROVIDER": "gemini",
+                "OPENMY_LLM_API_KEY": "llm-key",
+            },
+            clear=True,
+        ):
+            from openmy.providers.registry import ProviderRegistry
+
+            registry = ProviderRegistry.from_env()
+            stt = registry.get_stt_provider()
+
+        self.assertEqual(stt.name, "funasr")
+        self.assertEqual(stt.model, "paraformer-zh")
+        self.assertEqual(stt.api_key, "")
+
     def test_registry_falls_back_to_gemini_compat_env_when_provider_is_gemini(self):
         with patch.dict(
             "os.environ",

@@ -26,8 +26,9 @@ DEFAULT_LLM_PROVIDER = "gemini"
 DEFAULT_STT_MODELS = {
     "gemini": GEMINI_MODEL,
     "faster-whisper": "small",
+    "funasr": "paraformer-zh",
 }
-LOCAL_STT_PROVIDERS = {"faster-whisper"}
+LOCAL_STT_PROVIDERS = {"faster-whisper", "funasr"}
 
 
 def _read_env(*names: str) -> str:
@@ -168,6 +169,7 @@ STT_VAD_ENABLED = False
 STT_WORD_TIMESTAMPS_ENABLED = False
 STT_ALIGN_ENABLED = False
 STT_DIARIZATION_ENABLED = False
+STT_ENRICH_MODE = "recommended"
 
 
 def get_stt_vad_enabled() -> bool:
@@ -184,6 +186,11 @@ def get_stt_align_enabled() -> bool:
 
 def get_stt_diarization_enabled() -> bool:
     return _read_bool_env("OPENMY_STT_DIARIZE", default=STT_DIARIZATION_ENABLED)
+
+
+def get_stt_enrich_mode() -> str:
+    value = (_read_env("OPENMY_STT_ENRICH_MODE") or STT_ENRICH_MODE).strip().lower()
+    return value if value in {"off", "recommended", "force"} else STT_ENRICH_MODE
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

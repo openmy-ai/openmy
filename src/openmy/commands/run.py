@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -95,6 +96,17 @@ def run_transcription_enrichment(day_dir: Path, *, diarize: bool = False) -> dic
     return _run(day_dir, diarize=diarize)
 
 
+def plan_transcription_enrichment(*, provider_name: str, enrich_mode: str, diarize_requested: bool) -> dict:
+    from openmy.services.ingest.transcription_enrichment import plan_transcription_enrichment as _plan
+
+    return _plan(
+        provider_name=provider_name,
+        enrich_mode=enrich_mode,
+        diarize_requested=diarize_requested,
+        diarization_token=os.getenv("HF_TOKEN", "") or os.getenv("HUGGINGFACE_TOKEN", ""),
+    )
+
+
 def apply_transcription_enrichment_to_scenes(day_dir: Path) -> None:
     from openmy.services.ingest.transcription_enrichment import (
         apply_transcription_enrichment_to_scenes as _apply,
@@ -175,20 +187,32 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         transcription_model=getattr(args, "stt_model", None) or "",
         transcription_vad=bool(getattr(args, "stt_vad", False)),
         transcription_word_timestamps=bool(getattr(args, "stt_word_timestamps", False)),
+        transcription_enrich_mode=getattr(args, "stt_enrich_mode", "recommended"),
     )
 
-    if bool(getattr(args, "stt_align", False)):
+    final_provider_name = (getattr(args, "stt_provider", None) or "faster-whisper").lower()
+    enrich_mode = str(getattr(args, "stt_enrich_mode", "recommended") or "recommended").lower()
+    if bool(getattr(args, "stt_align", False)) and enrich_mode == "off":
+        enrich_mode = "force"
+    diarize_requested = bool(getattr(args, "stt_diarize", False) or enrich_mode == "recommended")
+    enrichment_plan = plan_transcription_enrichment(
+        provider_name=final_provider_name,
+        enrich_mode=enrich_mode,
+        diarize_requested=diarize_requested,
+    )
+
+    if enrichment_plan["enabled"]:
         _mark_step(date_str, run_status, "transcribe_enrich", "running", message="正在执行 WhisperX 精标")
         try:
             enrichment = run_transcription_enrichment(
                 cli.ensure_day_dir(date_str),
-                diarize=bool(getattr(args, "stt_diarize", False)),
+                diarize=bool(enrichment_plan.get("diarize", False)),
             )
             update_pipeline_meta(
                 cli.ensure_day_dir(date_str),
                 transcription_enrich_status="completed",
-                transcription_enrich_message="",
-                transcription_diarization_status=enrichment.get("diarization_enabled", False),
+                transcription_enrich_message=enrichment_plan.get("message", ""),
+                transcription_diarization_status=enrichment_plan.get("diarization_status", "disabled"),
             )
             _mark_step(date_str, run_status, "transcribe_enrich", "completed", message="WhisperX 精标完成")
         except Exception as exc:
@@ -196,16 +220,24 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
                 cli.ensure_day_dir(date_str),
                 transcription_enrich_status="failed",
                 transcription_enrich_message=str(exc),
+                transcription_diarization_status=enrichment_plan.get("diarization_status", "disabled"),
             )
             cli.console.print(f"[yellow]⚠️ 精标失败，继续主链[/yellow]: {exc}")
             _mark_step(date_str, run_status, "transcribe_enrich", "failed", message=str(exc))
     else:
         update_pipeline_meta(
             cli.ensure_day_dir(date_str),
-            transcription_enrich_status="skipped",
-            transcription_enrich_message="未启用 WhisperX 精标层",
+            transcription_enrich_status=enrichment_plan.get("status", "skipped"),
+            transcription_enrich_message=enrichment_plan.get("message", "未启用 WhisperX 精标层"),
+            transcription_diarization_status=enrichment_plan.get("diarization_status", "disabled"),
         )
-        _mark_step(date_str, run_status, "transcribe_enrich", "skipped", message="未启用 WhisperX 精标层")
+        _mark_step(
+            date_str,
+            run_status,
+            "transcribe_enrich",
+            "failed" if enrichment_plan.get("status") == "failed" else "skipped",
+            message=enrichment_plan.get("message", "未启用 WhisperX 精标层"),
+        )
 
     if args.skip_transcribe and not paths["raw"].exists() and not paths["transcript"].exists() and not paths["scenes"].exists():
         cli.console.print(f"[red]❌ {date_str} 没有可复用的数据，至少需要 transcript/raw/scenes 之一[/red]")
@@ -461,6 +493,7 @@ def cmd_quick_start(args: argparse.Namespace) -> int:
         stt_model=getattr(args, "stt_model", None),
         stt_vad=bool(getattr(args, "stt_vad", False)),
         stt_word_timestamps=bool(getattr(args, "stt_word_timestamps", False)),
+        stt_enrich_mode=getattr(args, "stt_enrich_mode", "recommended"),
         stt_align=bool(getattr(args, "stt_align", False)),
         stt_diarize=bool(getattr(args, "stt_diarize", False)),
     )

@@ -297,6 +297,133 @@ class TestConsolidation(unittest.TestCase):
             loop_titles = {item.title for item in ctx.rolling_context.open_loops}
             self.assertIn("给张总回电话，对齐合同细节", loop_titles)
 
+    def test_consolidate_accumulates_repeated_loop_lineage_and_future_due(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            self.write_json(data_root / "2026-04-08" / "2026-04-08.meta.json", {
+                "intents": [
+                    {
+                        "intent_id": "intent_001",
+                        "kind": "action_item",
+                        "what": "给张总回电话",
+                        "status": "open",
+                        "who": {"kind": "user", "label": "老板"},
+                        "confidence_label": "high",
+                        "confidence_score": 0.9,
+                        "source_scene_id": "scene_001",
+                        "due": {"raw_text": "后天", "iso_date": "2026-04-12", "granularity": "day"},
+                        "project_hint": "合同对接",
+                    }
+                ]
+            })
+            self.write_json(data_root / "2026-04-09" / "2026-04-09.meta.json", {
+                "intents": [
+                    {
+                        "intent_id": "intent_002",
+                        "kind": "action_item",
+                        "what": "给张总回电话",
+                        "status": "open",
+                        "who": {"kind": "user", "label": "老板"},
+                        "confidence_label": "high",
+                        "confidence_score": 0.93,
+                        "source_scene_id": "scene_002",
+                        "project_hint": "合同对接",
+                    }
+                ]
+            })
+
+            ctx = consolidate(data_root)
+            loop = next(item for item in ctx.rolling_context.open_loops if item.title == "给张总回电话")
+
+            self.assertEqual(loop.first_seen_at[:10], "2026-04-08")
+            self.assertEqual(loop.last_seen_at[:10], "2026-04-09")
+            self.assertEqual(loop.reinforcement_count, 2)
+            self.assertEqual(loop.due_hint, "2026-04-12")
+            self.assertEqual(loop.current_state, "future")
+
+    def test_consolidate_closes_loop_using_done_intent_date_not_today(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            self.write_json(data_root / "2026-04-08" / "2026-04-08.meta.json", {
+                "intents": [
+                    {
+                        "intent_id": "intent_open",
+                        "kind": "action_item",
+                        "what": "给张总回电话",
+                        "status": "open",
+                        "who": {"kind": "user", "label": "老板"},
+                        "confidence_label": "high",
+                        "confidence_score": 0.9,
+                        "source_scene_id": "scene_001",
+                    }
+                ]
+            })
+            self.write_json(data_root / "2026-04-09" / "2026-04-09.meta.json", {
+                "intents": [
+                    {
+                        "intent_id": "intent_done",
+                        "kind": "action_item",
+                        "what": "给张总回电话",
+                        "status": "done",
+                        "who": {"kind": "user", "label": "老板"},
+                        "confidence_label": "high",
+                        "confidence_score": 0.94,
+                        "source_scene_id": "scene_002",
+                        "valid_until": "2026-04-09T18:00:00+08:00",
+                    }
+                ]
+            })
+
+            ctx = consolidate(data_root)
+            loop = next(item for item in ctx.rolling_context.open_loops if item.title == "给张总回电话")
+
+            self.assertEqual(loop.current_state, "closed")
+            self.assertTrue(loop.valid_until.startswith("2026-04-09"))
+
+    def test_consolidate_emits_recent_conflicts_for_incompatible_facts(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            self.write_json(data_root / "2026-04-08" / "2026-04-08.meta.json", {
+                "facts": [
+                    {
+                        "fact_id": "fact_fw",
+                        "fact_type": "project_update",
+                        "content": "OpenMy 默认 ASR 是 faster-whisper。",
+                        "topic": "OpenMy 默认 ASR",
+                        "confidence_score": 0.9,
+                        "source_scene_id": "scene_001",
+                        "evidence_quote": "默认先走 faster-whisper。",
+                    }
+                ]
+            })
+            self.write_json(data_root / "2026-04-09" / "2026-04-09.meta.json", {
+                "facts": [
+                    {
+                        "fact_id": "fact_funasr",
+                        "fact_type": "project_update",
+                        "content": "OpenMy 默认 ASR 是 FunASR。",
+                        "topic": "OpenMy 默认 ASR",
+                        "confidence_score": 0.9,
+                        "source_scene_id": "scene_002",
+                        "evidence_quote": "默认改成 FunASR。",
+                    }
+                ]
+            })
+
+            ctx = consolidate(data_root)
+
+            self.assertTrue(ctx.rolling_context.recent_conflicts)
+            self.assertEqual(ctx.rolling_context.recent_conflicts[0].conflict_type, "fact_conflict")
+
 
 class TestRenderer(unittest.TestCase):
     def make_context(self) -> ActiveContext:

@@ -181,6 +181,9 @@ class TestAppServer(unittest.TestCase):
                     "summary": "OpenMy 最近主要在接查询接口。",
                     "current_hits": [{"type": "project", "title": "OpenMy"}],
                     "history_hits": [],
+                    "daily_rollups": [{"date": "2026-04-10", "summary": "今天主要补查询接口。"}],
+                    "temporal_buckets": {"current": [{"title": "OpenMy"}], "past": [], "future": [], "closed": []},
+                    "conflicts": [],
                     "evidence": [],
                 },
             ):
@@ -200,6 +203,7 @@ class TestAppServer(unittest.TestCase):
             self.assertEqual(payload["kind"], "project")
             self.assertEqual(payload["query"], "OpenMy")
             self.assertEqual(payload["current_hits"][0]["title"], "OpenMy")
+            self.assertEqual(payload["daily_rollups"][0]["date"], "2026-04-10")
 
     def seed_day_workspace(self, project_root: Path, date_str: str) -> Path:
         day_dir = project_root / "data" / date_str

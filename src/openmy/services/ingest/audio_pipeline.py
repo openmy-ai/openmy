@@ -123,31 +123,33 @@ def transcribe_audio(
     )
 
 
-def prepare_audio_chunks(audio_path: Path, work_dir: Path, chunk_minutes: int = 10) -> list[PreparedChunk]:
+def prepare_audio_chunks(
+    audio_path: Path,
+    work_dir: Path,
+    chunk_minutes: int = 10,
+    provider_name: str | None = None,
+) -> list[PreparedChunk]:
     work_dir.mkdir(parents=True, exist_ok=True)
+    final_provider_name = (provider_name or "").lower()
+    prefer_wav_chunks = final_provider_name == "funasr"
     stripped_path = work_dir / f"{audio_path.stem}_stripped.wav"
     compressed_path = work_dir / f"{audio_path.stem}.mp3"
+    fallback_wav_path = work_dir / f"{audio_path.stem}_fallback.wav"
 
-    def compress_source_to_mp3(source_path: Path) -> Path:
-        run_ffmpeg(
-            [
-                "-i",
-                str(source_path),
-                "-ar",
-                "16000",
-                "-ac",
-                "1",
-                "-codec:a",
-                "libmp3lame",
-                "-qscale:a",
-                "4",
-                str(compressed_path),
-                "-y",
-                "-loglevel",
-                "error",
-            ]
-        )
-        return compressed_path
+    def normalize_source(source_path: Path, output_path: Path) -> Path:
+        command = [
+            "-i",
+            str(source_path),
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+        ]
+        if output_path.suffix == ".mp3":
+            command.extend(["-codec:a", "libmp3lame", "-qscale:a", "4"])
+        command.extend([str(output_path), "-y", "-loglevel", "error"])
+        run_ffmpeg(command)
+        return output_path
 
     run_ffmpeg(
         [
@@ -168,7 +170,7 @@ def prepare_audio_chunks(audio_path: Path, work_dir: Path, chunk_minutes: int = 
 
     stripped_duration = probe_duration_seconds(stripped_path)
     if stripped_duration < 3:
-        fallback_path = compress_source_to_mp3(audio_path)
+        fallback_path = normalize_source(audio_path, fallback_wav_path if prefer_wav_chunks else compressed_path)
         fallback_duration = probe_duration_seconds(fallback_path)
         base_time = parse_audio_time(audio_path)
         split_threshold = chunk_minutes * 60
@@ -177,62 +179,55 @@ def prepare_audio_chunks(audio_path: Path, work_dir: Path, chunk_minutes: int = 
 
         chunk_dir = work_dir / f"{audio_path.stem}_chunks"
         chunk_dir.mkdir(parents=True, exist_ok=True)
-        chunk_pattern = chunk_dir / "sub_%04d.mp3"
-        run_ffmpeg(
-            [
-                "-i",
-                str(fallback_path),
-                "-f",
-                "segment",
-                "-segment_time",
-                str(split_threshold),
-                "-c",
-                "copy",
-                "-reset_timestamps",
-                "1",
-                str(chunk_pattern),
-                "-y",
-                "-loglevel",
-                "warning",
-            ]
-        )
-        chunks = sorted(chunk_dir.glob("sub_*.mp3"))
+        chunk_suffix = "wav" if prefer_wav_chunks else "mp3"
+        chunk_pattern = chunk_dir / f"sub_%04d.{chunk_suffix}"
+        segment_args = [
+            "-i",
+            str(fallback_path),
+            "-f",
+            "segment",
+            "-segment_time",
+            str(split_threshold),
+        ]
+        if prefer_wav_chunks:
+            segment_args.extend(["-ar", "16000", "-ac", "1"])
+        else:
+            segment_args.extend(["-c", "copy", "-reset_timestamps", "1"])
+        segment_args.extend([str(chunk_pattern), "-y", "-loglevel", "warning"])
+        run_ffmpeg(segment_args)
+        chunks = sorted(chunk_dir.glob(f"sub_*.{chunk_suffix}"))
         return [
             PreparedChunk(path=chunk_path, time_label=offset_time_label(base_time, index * chunk_minutes))
             for index, chunk_path in enumerate(chunks)
         ]
 
-    compress_source_to_mp3(stripped_path)
-
-    processed_duration = probe_duration_seconds(compressed_path)
+    processed_path = stripped_path if prefer_wav_chunks else normalize_source(stripped_path, compressed_path)
+    processed_duration = probe_duration_seconds(processed_path)
     base_time = parse_audio_time(audio_path)
     split_threshold = chunk_minutes * 60
     if processed_duration <= split_threshold:
-        return [PreparedChunk(path=compressed_path, time_label=offset_time_label(base_time, 0))]
+        return [PreparedChunk(path=processed_path, time_label=offset_time_label(base_time, 0))]
 
     chunk_dir = work_dir / f"{audio_path.stem}_chunks"
     chunk_dir.mkdir(parents=True, exist_ok=True)
-    chunk_pattern = chunk_dir / "sub_%04d.mp3"
-    run_ffmpeg(
-        [
-            "-i",
-            str(compressed_path),
-            "-f",
-            "segment",
-            "-segment_time",
-            str(split_threshold),
-            "-c",
-            "copy",
-            "-reset_timestamps",
-            "1",
-            str(chunk_pattern),
-            "-y",
-            "-loglevel",
-            "warning",
-        ]
-    )
+    chunk_suffix = "wav" if prefer_wav_chunks else "mp3"
+    chunk_pattern = chunk_dir / f"sub_%04d.{chunk_suffix}"
+    segment_args = [
+        "-i",
+        str(processed_path),
+        "-f",
+        "segment",
+        "-segment_time",
+        str(split_threshold),
+    ]
+    if prefer_wav_chunks:
+        segment_args.extend(["-ar", "16000", "-ac", "1"])
+    else:
+        segment_args.extend(["-c", "copy", "-reset_timestamps", "1"])
+    segment_args.extend([str(chunk_pattern), "-y", "-loglevel", "warning"])
+    run_ffmpeg(segment_args)
 
-    chunks = sorted(chunk_dir.glob("sub_*.mp3"))
+    chunks = sorted(chunk_dir.glob(f"sub_*.{chunk_suffix}"))
     return [
         PreparedChunk(path=chunk_path, time_label=offset_time_label(base_time, index * chunk_minutes))
         for index, chunk_path in enumerate(chunks)
@@ -345,6 +340,7 @@ def transcribe_audio_files(
                 audio_path=audio_path,
                 work_dir=tmp_root / f"audio_{index:03d}",
                 chunk_minutes=chunk_minutes,
+                provider_name=final_provider_name,
             )
 
             for chunk in chunks:

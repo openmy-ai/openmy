@@ -11,11 +11,21 @@ from pathlib import Path
 from typing import Any
 
 from openmy.config import ROLE_RECOGNITION_ENABLED
-from openmy.domain.intent import DONE_STATUSES, Event, Fact, Intent, intent_to_loop_type, should_generate_open_loop
+from openmy.domain.intent import (
+    DONE_STATUSES,
+    Event,
+    Fact,
+    Intent,
+    adjudicate_temporal_state,
+    build_canonical_key,
+    intent_to_loop_type,
+    should_generate_open_loop,
+)
 from openmy.services.context.active_context import (
     ActiveContext,
     ChangeItem,
     CommunicationContract,
+    ConflictItem,
     CoreMemory,
     DecisionItem,
     EntityRegistryCard,
@@ -193,12 +203,28 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                     waiting_on=intent.who.label if intent.who.kind in {"agent", "other_person"} else "",
                     source_rank="declared",
                     confidence=intent.confidence_score or 0.8,
+                    first_seen_at=_iso_at(date_str),
                     last_seen_at=f"{date_str}T23:59:59+08:00",
+                    reinforcement_count=1,
+                    due_hint=intent.due.iso_date or intent.due.raw_text,
                     valid_from=intent.valid_from or _iso_at(date_str),
                     valid_until=intent.valid_until or "",
-                    current_state="future"
-                    if intent.due.iso_date and intent.due.iso_date > date_str
-                    else "active",
+                    current_state=adjudicate_temporal_state(
+                        status=intent.status,
+                        current_state=intent.current_state,
+                        valid_from=intent.valid_from or _iso_at(date_str),
+                        valid_until=intent.valid_until,
+                        due_iso_date=intent.due.iso_date,
+                        reference_date=date_str,
+                    )["state"],
+                    state_reason=adjudicate_temporal_state(
+                        status=intent.status,
+                        current_state=intent.current_state,
+                        valid_from=intent.valid_from or _iso_at(date_str),
+                        valid_until=intent.valid_until,
+                        due_iso_date=intent.due.iso_date,
+                        reference_date=date_str,
+                    )["reason"],
                     provenance_refs=_build_provenance(
                         date_str=date_str,
                         kind="intent",
@@ -230,9 +256,12 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                 status="open",
                 source_rank="aggregate",
                 confidence=0.8,
+                first_seen_at=_iso_at(date_str),
                 last_seen_at=f"{date_str}T23:59:59+08:00",
+                reinforcement_count=1,
                 valid_from=_iso_at(date_str),
                 current_state="active",
+                state_reason="briefing_open_loop",
                 provenance_refs=_build_provenance(
                     date_str=date_str,
                     kind="briefing.todo",
@@ -265,9 +294,12 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                 status="open",
                 source_rank="declared",
                 confidence=0.9,
+                first_seen_at=_iso_at(date_str),
                 last_seen_at=f"{date_str}T23:59:59+08:00",
+                reinforcement_count=1,
                 valid_from=_iso_at(date_str),
                 current_state="active",
+                state_reason="meta_open_loop",
                 provenance_refs=_build_provenance(
                     date_str=date_str,
                     kind="meta.todo",
@@ -302,17 +334,17 @@ def _filter_stale_loops(loops: list[OpenLoop], stale_days: int = 3, expire_days:
 
 def _auto_close_loops(
     loops: dict[str, OpenLoop],
-    all_metas: list[dict],
+    all_metas: list[tuple[str, dict]],
 ) -> None:
     """Fix I: 用新录音的 done intents 自动关闭匹配的 open_loops。"""
-    done_whats: set[str] = set()
-    for meta in all_metas:
+    done_whats: dict[str, str] = {}
+    for date_str, meta in all_metas:
         for raw in meta.get("intents", []):
             if not isinstance(raw, dict):
                 continue
             intent = Intent.from_dict(raw)
             if intent.status in DONE_STATUSES and intent.what.strip():
-                done_whats.add(intent.what.strip().lower())
+                done_whats[intent.what.strip().lower()] = intent.valid_until or _iso_at(date_str, "23:59")
 
     if not done_whats:
         return
@@ -321,12 +353,13 @@ def _auto_close_loops(
         if loop.status != "open":
             continue
         title_lower = title.lower()
-        for done_what in done_whats:
+        for done_what, done_at in done_whats.items():
             # 模糊匹配：done_what 包含在 loop title 里，或反过来
             if done_what in title_lower or title_lower in done_what:
                 loop.status = "closed"
                 loop.current_state = "closed"
-                loop.valid_until = date.today().isoformat() + "T23:59:59+08:00"
+                loop.valid_until = done_at
+                loop.state_reason = "matched_done_intent"
                 break
 
 
@@ -359,6 +392,10 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
                     valid_from=intent.valid_from or _iso_at(date_str),
                     valid_until=intent.valid_until or "",
                     current_state=intent.current_state or "active",
+                    first_seen_at=intent.valid_from or _iso_at(date_str),
+                    last_seen_at=f"{date_str}T23:59:59+08:00",
+                    reinforcement_count=1,
+                    state_reason="intent_decision",
                     provenance_refs=_build_provenance(
                         date_str=date_str,
                         kind="intent.decision",
@@ -388,6 +425,10 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
                 confidence=0.8,
                 valid_from=_iso_at(date_str),
                 current_state="active",
+                first_seen_at=_iso_at(date_str),
+                last_seen_at=f"{date_str}T23:59:59+08:00",
+                reinforcement_count=1,
+                state_reason="briefing_decision",
                 provenance_refs=_build_provenance(
                     date_str=date_str,
                     kind="briefing.decision",
@@ -418,6 +459,10 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
                 confidence=0.9,
                 valid_from=_iso_at(date_str),
                 current_state="active",
+                first_seen_at=_iso_at(date_str),
+                last_seen_at=f"{date_str}T23:59:59+08:00",
+                reinforcement_count=1,
+                state_reason="meta_decision",
                 provenance_refs=_build_provenance(
                     date_str=date_str,
                     kind="meta.decision",
@@ -508,6 +553,84 @@ def _append_update_log(data_root: Path, ctx: ActiveContext) -> None:
         fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
+def _merge_refs(existing: list[dict[str, Any]], incoming: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, str, str, str]] = set()
+    merged: list[dict[str, Any]] = []
+    for ref in [*existing, *incoming]:
+        if not isinstance(ref, dict):
+            continue
+        key = (
+            str(ref.get("date", "") or ""),
+            str(ref.get("kind", "") or ""),
+            str(ref.get("scene_id", "") or ""),
+            str(ref.get("quote", "") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(ref)
+    return merged
+
+
+def _merge_loop(existing: OpenLoop, incoming: OpenLoop) -> OpenLoop:
+    existing.first_seen_at = min(filter(None, [existing.first_seen_at, incoming.first_seen_at]), default="")
+    existing.last_seen_at = max(filter(None, [existing.last_seen_at, incoming.last_seen_at]), default="")
+    existing.reinforcement_count = max(existing.reinforcement_count, 1) + max(incoming.reinforcement_count, 1)
+    existing.confidence = max(existing.confidence, incoming.confidence)
+    existing.provenance_refs = _merge_refs(existing.provenance_refs, incoming.provenance_refs)
+    if incoming.due_hint and not existing.due_hint:
+        existing.due_hint = incoming.due_hint
+    if incoming.valid_from and (not existing.valid_from or incoming.valid_from < existing.valid_from):
+        existing.valid_from = incoming.valid_from
+    if incoming.valid_until and (not existing.valid_until or incoming.valid_until > existing.valid_until):
+        existing.valid_until = incoming.valid_until
+    if incoming.current_state == "closed":
+        existing.status = incoming.status
+        existing.current_state = "closed"
+        existing.valid_until = incoming.valid_until or existing.valid_until
+        existing.state_reason = incoming.state_reason or existing.state_reason
+    elif existing.current_state != "closed":
+        adjudicated = adjudicate_temporal_state(
+            status=existing.status,
+            current_state="future" if existing.due_hint and existing.due_hint[:10] > (existing.last_seen_at[:10] or "") else existing.current_state,
+            valid_from=existing.valid_from,
+            valid_until=existing.valid_until,
+            due_iso_date=existing.due_hint[:10] if re.match(r"^\d{4}-\d{2}-\d{2}$", existing.due_hint[:10]) else "",
+            reference_date=existing.last_seen_at[:10] or incoming.last_seen_at[:10],
+        )
+        existing.current_state = adjudicated["state"]
+        existing.state_reason = adjudicated["reason"]
+    return existing
+
+
+def _group_fact_conflicts(meta_payload: dict[str, Any], date_str: str) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for raw in meta_payload.get("facts", []):
+        if not isinstance(raw, dict):
+            continue
+        fact = Fact.from_dict(raw)
+        content_basis = re.split(r"(?:改成|改为|切到|切成|是)", fact.content, maxsplit=1)[0].strip()
+        basis = fact.topic if fact.topic and "默认" in fact.topic else content_basis or fact.topic or fact.fact_type or "fact"
+        canonical = build_canonical_key("fact", basis)
+        grouped[canonical].append(
+            {
+                "title": fact.topic or fact.content,
+                "variant": fact.content,
+                "date": date_str,
+                "refs": fact.provenance_refs
+                or _build_provenance(
+                    date_str=date_str,
+                    kind="fact",
+                    scene_id=fact.source_scene_id,
+                    recording_id=fact.source_recording_id,
+                    quote=fact.evidence_quote,
+                    source_path=f"{date_str}.meta.json",
+                ),
+            }
+        )
+    return grouped
+
+
 def consolidate(data_root: Path, existing_context: ActiveContext | None = None) -> ActiveContext:
     """扫描所有日期数据，生成新的 ActiveContext。"""
     project_root = data_root.parent
@@ -554,7 +677,8 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
     all_loops: dict[str, OpenLoop] = {}
     all_decisions: dict[str, DecisionItem] = {}
     all_events: list[EventItem] = []
-    all_metas_for_close: list[dict[str, Any]] = []
+    all_metas_for_close: list[tuple[str, dict[str, Any]]] = []
+    conflict_candidates: dict[str, list[dict[str, Any]]] = defaultdict(list)
     recent_changes: list[ChangeItem] = []
     scene_count_7d = 0
     coverage_days_30d = 0
@@ -571,7 +695,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
         scenes_payload = _load_json(paths["scenes"])
         briefing_payload = _load_json(paths["briefing"])
         meta_payload = _load_json(paths["meta"])
-        all_metas_for_close.append(meta_payload)
+        all_metas_for_close.append((date_str, meta_payload))
         scenes = scenes_payload.get("scenes", [])
 
         if date_str == latest_date:
@@ -605,12 +729,26 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
                     uncertain_count_7d += 1
 
         for loop in _make_open_loops(briefing_payload, meta_payload, date_str):
-            all_loops.setdefault(loop.title, loop)
+            canonical = build_canonical_key("loop", loop.title)
+            existing_loop = all_loops.get(canonical)
+            if existing_loop is None:
+                all_loops[canonical] = loop
+            else:
+                all_loops[canonical] = _merge_loop(existing_loop, loop)
 
         for decision in _make_decisions(briefing_payload, meta_payload, date_str):
-            all_decisions.setdefault(decision.decision, decision)
+            canonical = build_canonical_key("decision", decision.decision, decision.topic)
+            if canonical not in all_decisions:
+                all_decisions[canonical] = decision
+            else:
+                existing_decision = all_decisions[canonical]
+                existing_decision.provenance_refs = _merge_refs(existing_decision.provenance_refs, decision.provenance_refs)
+                existing_decision.last_seen_at = max(filter(None, [existing_decision.last_seen_at, decision.last_seen_at]), default=decision.last_seen_at)
+                existing_decision.reinforcement_count = max(existing_decision.reinforcement_count, 1) + 1
 
         all_events.extend(_make_recent_events(meta_payload, date_str))
+        for canonical, claims in _group_fact_conflicts(meta_payload, date_str).items():
+            conflict_candidates[canonical].extend(claims)
 
         for project_title, snippets in _extract_projects(briefing_payload, meta_payload).items():
             if not project_title:
@@ -658,6 +796,34 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
 
     # Fix I: 用 done intents 自动关闭匹配的 open_loops
     _auto_close_loops(all_loops, all_metas_for_close)
+
+    recent_conflicts: list[ConflictItem] = []
+    for canonical, claims in conflict_candidates.items():
+        variants = sorted({item["variant"] for item in claims if item.get("variant")})
+        if len(variants) < 2:
+            continue
+        title = next((item["title"] for item in claims if item.get("title")), canonical)
+        refs: list[dict[str, Any]] = []
+        for item in claims:
+            refs = _merge_refs(refs, item.get("refs", []))
+        recent_conflicts.append(
+            ConflictItem(
+                id=_slug("conflict", canonical),
+                conflict_id=_slug("conflict", canonical),
+                canonical_key=canonical,
+                title=title,
+                conflict_type="fact_conflict",
+                variants=variants,
+                confidence=0.9,
+                source_rank="aggregate",
+                first_seen_at=min((item["date"] for item in claims), default=""),
+                last_seen_at=max((item["date"] for item in claims), default=""),
+                reinforcement_count=len(claims),
+                current_state="active",
+                state_reason="multi_day_conflict",
+                provenance_refs=refs,
+            )
+        )
 
     # 项目去重 — 合并相似名、过滤一次性提及（映射表在 config.py）
     from openmy.config import PROJECT_MERGE_MAP
@@ -712,6 +878,11 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             key=lambda item: item.happened_at,
             reverse=True,
         )[:15],
+        recent_conflicts=sorted(
+            recent_conflicts,
+            key=lambda item: item.last_seen_at,
+            reverse=True,
+        )[:10],
         belief_shifts=[],
         entity_rollups=[
             EntityRollup(

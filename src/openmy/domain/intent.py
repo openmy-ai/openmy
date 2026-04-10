@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import re
 from typing import Any
 
 
@@ -201,3 +202,31 @@ def intent_to_loop_type(intent: Intent) -> str:
     if intent.who.kind == "shared":
         return "shared"
     return "actionable"
+
+
+def build_canonical_key(kind: str, text: str, topic: str = "") -> str:
+    seed = f"{topic} {text}".strip()
+    normalized = re.sub(r"[^\w\u4e00-\u9fff]+", "", seed.lower())
+    return f"{kind}:{normalized}" if normalized else f"{kind}:unknown"
+
+
+def adjudicate_temporal_state(
+    *,
+    status: str = "",
+    current_state: str = "",
+    valid_from: str = "",
+    valid_until: str = "",
+    due_iso_date: str = "",
+    reference_date: str = "",
+) -> dict[str, str]:
+    normalized_status = str(status or "").strip().lower()
+    normalized_state = str(current_state or "").strip().lower()
+    if normalized_status in DONE_STATUSES or valid_until:
+        return {"state": "closed", "reason": "status_or_valid_until"}
+    if normalized_state in {"past", "future", "active", "closed", "stale", "done"}:
+        return {"state": normalized_state, "reason": "explicit_current_state"}
+    if due_iso_date and reference_date and due_iso_date > reference_date:
+        return {"state": "future", "reason": "due_after_reference_date"}
+    if valid_from and reference_date and valid_from[:10] > reference_date:
+        return {"state": "future", "reason": "valid_from_after_reference_date"}
+    return {"state": "active", "reason": "default_active"}
