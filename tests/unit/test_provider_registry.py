@@ -50,10 +50,21 @@ class TestProviderRegistry(unittest.TestCase):
         self.assertEqual(llm.model, "gemini-llm-custom")
         self.assertEqual(llm.api_key, "llm-key")
 
-    def test_registry_falls_back_to_gemini_compat_env(self):
+    def test_registry_defaults_stt_to_local_faster_whisper(self):
+        with patch.dict("os.environ", {}, clear=True):
+            from openmy.providers.registry import ProviderRegistry
+
+            registry = ProviderRegistry.from_env()
+            stt = registry.get_stt_provider()
+
+        self.assertEqual(stt.name, "faster-whisper")
+
+    def test_registry_falls_back_to_gemini_compat_env_when_provider_is_gemini(self):
         with patch.dict(
             "os.environ",
             {
+                "OPENMY_STT_PROVIDER": "gemini",
+                "OPENMY_LLM_PROVIDER": "gemini",
                 "GEMINI_API_KEY": "compat-key",
                 "GEMINI_MODEL": "gemini-compat-model",
             },

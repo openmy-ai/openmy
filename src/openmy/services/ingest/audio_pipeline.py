@@ -125,6 +125,28 @@ def transcribe_audio(
 def prepare_audio_chunks(audio_path: Path, work_dir: Path, chunk_minutes: int = 10) -> list[PreparedChunk]:
     work_dir.mkdir(parents=True, exist_ok=True)
     stripped_path = work_dir / f"{audio_path.stem}_stripped.wav"
+    compressed_path = work_dir / f"{audio_path.stem}.mp3"
+
+    def compress_source_to_mp3(source_path: Path) -> Path:
+        run_ffmpeg(
+            [
+                "-i",
+                str(source_path),
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-codec:a",
+                "libmp3lame",
+                "-qscale:a",
+                "4",
+                str(compressed_path),
+                "-y",
+                "-loglevel",
+                "error",
+            ]
+        )
+        return compressed_path
 
     run_ffmpeg(
         [
@@ -145,23 +167,41 @@ def prepare_audio_chunks(audio_path: Path, work_dir: Path, chunk_minutes: int = 
 
     stripped_duration = probe_duration_seconds(stripped_path)
     if stripped_duration < 3:
-        return []
+        fallback_path = compress_source_to_mp3(audio_path)
+        fallback_duration = probe_duration_seconds(fallback_path)
+        base_time = parse_audio_time(audio_path)
+        split_threshold = chunk_minutes * 60
+        if fallback_duration <= split_threshold:
+            return [PreparedChunk(path=fallback_path, time_label=offset_time_label(base_time, 0))]
 
-    compressed_path = work_dir / f"{audio_path.stem}.mp3"
-    run_ffmpeg(
-        [
-            "-i",
-            str(stripped_path),
-            "-codec:a",
-            "libmp3lame",
-            "-qscale:a",
-            "4",
-            str(compressed_path),
-            "-y",
-            "-loglevel",
-            "error",
+        chunk_dir = work_dir / f"{audio_path.stem}_chunks"
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+        chunk_pattern = chunk_dir / "sub_%04d.mp3"
+        run_ffmpeg(
+            [
+                "-i",
+                str(fallback_path),
+                "-f",
+                "segment",
+                "-segment_time",
+                str(split_threshold),
+                "-c",
+                "copy",
+                "-reset_timestamps",
+                "1",
+                str(chunk_pattern),
+                "-y",
+                "-loglevel",
+                "warning",
+            ]
+        )
+        chunks = sorted(chunk_dir.glob("sub_*.mp3"))
+        return [
+            PreparedChunk(path=chunk_path, time_label=offset_time_label(base_time, index * chunk_minutes))
+            for index, chunk_path in enumerate(chunks)
         ]
-    )
+
+    compress_source_to_mp3(stripped_path)
 
     processed_duration = probe_duration_seconds(compressed_path)
     base_time = parse_audio_time(audio_path)
