@@ -46,6 +46,31 @@ class PrepareAudioChunksTest(unittest.TestCase):
 
 
 class TranscribeAudioFilesTest(unittest.TestCase):
+    def test_uses_sidecar_transcript_when_api_key_missing(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            audio_one = tmp_path / "sample.wav"
+            sidecar = tmp_path / "sample.transcript.txt"
+            audio_one.write_bytes(b"wav")
+            sidecar.write_text("老婆，今天晚上吃火锅。", encoding="utf-8")
+
+            with (
+                mock.patch.dict("os.environ", {}, clear=True),
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.load_vocab_terms",
+                    return_value="OpenMy",
+                ),
+            ):
+                output_path = transcribe_audio_files(
+                    date_str="2026-04-10",
+                    audio_files=[str(audio_one)],
+                    output_dir=tmp_path,
+                )
+
+            content = output_path.read_text(encoding="utf-8")
+            self.assertIn("## 00:00", content)
+            self.assertIn("老婆，今天晚上吃火锅。", content)
+
     def test_uses_prepared_chunks_instead_of_raw_audio(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
