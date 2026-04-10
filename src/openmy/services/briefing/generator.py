@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from openmy.config import ROLE_RECOGNITION_ENABLED
+
 
 @dataclass
 class TimeBlock:
@@ -186,16 +188,17 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
         summaries: list[str] = []
 
         for scene in grouped_scenes:
-            role = scene.get("role", {})
-            addressed_to = role.get("addressed_to", "")
-            if addressed_to:
-                addressed_people.append(addressed_to)
-                if addressed_to not in people:
-                    people[addressed_to] = PersonInteraction(name=addressed_to)
-                people[addressed_to].scene_count += 1
-                summary = scene.get("summary", "")
-                if summary and len(people[addressed_to].topics) < 5:
-                    people[addressed_to].topics.append(summary)
+            if ROLE_RECOGNITION_ENABLED:
+                role = scene.get("role", {})
+                addressed_to = role.get("addressed_to", "")
+                if addressed_to:
+                    addressed_people.append(addressed_to)
+                    if addressed_to not in people:
+                        people[addressed_to] = PersonInteraction(name=addressed_to)
+                    people[addressed_to].scene_count += 1
+                    summary = scene.get("summary", "")
+                    if summary and len(people[addressed_to].topics) < 5:
+                        people[addressed_to].topics.append(summary)
 
             summary = scene.get("summary", "")
             if summary:

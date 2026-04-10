@@ -169,61 +169,26 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             _finish_run(date_str, run_status, "failed", "segment")
             return 1
 
-        from openmy.services.segmentation.segmenter import segment, build_scenes_payload
-
         markdown = cli.strip_document_header(transcript_path.read_text(encoding="utf-8"))
         with cli.console.status("[bold cyan]🔪 场景切分中..."):
-            raw_scenes = segment(markdown)
-            result = build_scenes_payload(raw_scenes)
-            result["stats"] = {"total_scenes": len(raw_scenes)}
+            result = cli.build_segmented_scenes_payload(markdown)
+        scene_count = int(result.get("stats", {}).get("total_scenes", len(result.get("scenes", []))))
 
         output_path = cli.ensure_day_dir(date_str) / "scenes.json"
         cli.write_json(output_path, result)
-        cli.console.print(f"[green]✅ 场景切分完成[/green]: {len(raw_scenes)} 个场景")
-        cli.console.print("[dim]ℹ️ 角色归因已冻结，如需手动归因可运行 openmy roles {date_str}[/dim]")
+        cli.console.print(f"[green]✅ 场景切分完成[/green]: {scene_count} 个场景")
+        cli.console.print(f"[dim]ℹ️ 自动角色识别已冻结；如需重建场景可运行 openmy roles {date_str}[/dim]")
         paths = cli.resolve_day_paths(date_str)
         scenes_data = cli.read_json(paths["scenes"], {})
-        _mark_step(date_str, run_status, "segment", "completed", message=f"生成 {len(raw_scenes)} 个场景", artifact=output_path)
+        _mark_step(date_str, run_status, "segment", "completed", message=f"生成 {scene_count} 个场景", artifact=output_path)
     else:
         cli.console.print("\n[dim]⏭️ 跳过场景切分：已存在 scenes.json[/dim]")
+        scenes_data = cli.freeze_scene_roles(scenes_data)
+        cli.write_json(paths["scenes"], scenes_data)
         _mark_step(date_str, run_status, "segment", "skipped", message="复用已有 scenes.json", artifact=paths["scenes"])
 
-    if has_llm_credentials("roles"):
-        _mark_step(date_str, run_status, "roles", "running", message="正在做角色识别")
-        cli.console.print("\n[bold]👥 角色识别[/bold]")
-        try:
-            from openmy.domain.models import SceneBlock
-            from openmy.services.roles.resolver import resolve_roles as _resolve_roles, scenes_to_dict
-
-            raw_scenes_list = scenes_data.get("scenes", [])
-            scene_blocks = [
-                SceneBlock.from_dict(s)
-                if hasattr(SceneBlock, "from_dict")
-                else SceneBlock(
-                    scene_id=s.get("scene_id", ""),
-                    time_start=s.get("time_start", ""),
-                    time_end=s.get("time_end", ""),
-                    text=s.get("text", ""),
-                    preview=s.get("preview", ""),
-                )
-                for s in raw_scenes_list
-            ]
-            screen_client = cli.get_screen_client()
-            scene_blocks = _resolve_roles(scene_blocks, date_str=date_str, screen_client=screen_client)
-            result = scenes_to_dict(scene_blocks)
-
-            output_path = cli.ensure_day_dir(date_str) / "scenes.json"
-            cli.write_json(output_path, result)
-            paths = cli.resolve_day_paths(date_str)
-            scenes_data = cli.read_json(paths["scenes"], {})
-            cli.console.print("[green]✅ 角色识别完成[/green]")
-            _mark_step(date_str, run_status, "roles", "completed", message="角色识别完成", artifact=output_path)
-        except Exception as exc:
-            cli.console.print(f"[yellow]⚠️ 角色识别异常: {exc}，继续[/yellow]")
-            _mark_step(date_str, run_status, "roles", "failed", message=f"角色识别异常: {exc}")
-    else:
-        cli.console.print("\n[dim]⏭️ 跳过角色识别：缺少可用 LLM provider key[/dim]")
-        _mark_step(date_str, run_status, "roles", "skipped", message="缺少可用 LLM provider key")
+    cli.console.print("\n[dim]⏭️ 跳过角色识别：功能已冻结[/dim]")
+    _mark_step(date_str, run_status, "roles", "skipped", message="角色识别已冻结", artifact=paths["scenes"])
 
     missing_summaries = [scene for scene in scenes_data.get("scenes", []) if not scene.get("summary")]
     if missing_summaries:
