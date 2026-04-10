@@ -322,6 +322,20 @@ def handle_correction(data: dict) -> dict:
                 transcript_path.write_text(content.replace(wrong, right), encoding="utf-8")
                 replaced_in_file = content.count(wrong)
 
+        for extra_path in (
+            server.DATA_ROOT / date / "scenes.json",
+            server.DATA_ROOT / date / "daily_briefing.json",
+        ):
+            if not extra_path.exists():
+                continue
+            try:
+                raw = extra_path.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            if wrong not in raw:
+                continue
+            extra_path.write_text(raw.replace(wrong, right), encoding="utf-8")
+
     if sync_vocab:
         try:
             server.sync_correction_to_vocab(wrong, right, context)

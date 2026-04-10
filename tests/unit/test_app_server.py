@@ -276,6 +276,81 @@ class TestAppServer(unittest.TestCase):
             self.assertEqual(payload["summary"], "今天主要推进前端补齐。")
             self.assertEqual(payload["key_events"], ["接上 active_context"])
 
+    def test_handle_correction_syncs_transcript_scenes_and_briefing(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            date_str = "2026-04-08"
+            day_dir = data_root / date_str
+            day_dir.mkdir(parents=True, exist_ok=True)
+
+            (day_dir / "transcript.md").write_text(
+                "# sample\n\n---\n\n## 10:00\n\n青维今天把 OpenMy 写完了。",
+                encoding="utf-8",
+            )
+            (day_dir / "scenes.json").write_text(
+                json.dumps(
+                    {
+                        "scenes": [
+                            {
+                                "scene_id": "scene_001",
+                                "time_start": "10:00",
+                                "time_end": "10:05",
+                                "text": "青维今天把 OpenMy 写完了。",
+                                "summary": "青维正在收尾。",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            (day_dir / "daily_briefing.json").write_text(
+                json.dumps(
+                    {
+                        "summary": "青维今天把 OpenMy 写完了。",
+                        "key_events": ["青维完成第一版。"],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            corrections_file = project_root / "src" / "openmy" / "resources" / "corrections.json"
+            corrections_file.parent.mkdir(parents=True, exist_ok=True)
+
+            with (
+                patch.object(app_server, "DATA_ROOT", data_root),
+                patch.object(app_server, "LEGACY_ROOT", project_root),
+                patch.object(app_server, "CORRECTIONS_FILE", corrections_file),
+                patch.object(app_server, "sync_correction_to_vocab"),
+            ):
+                payload = app_server.handle_correction(
+                    {
+                        "wrong": "青维",
+                        "right": "青梅",
+                        "date": date_str,
+                        "context": "狗的名字",
+                        "sync_vocab": True,
+                    }
+                )
+
+            transcript = (day_dir / "transcript.md").read_text(encoding="utf-8")
+            scenes = json.loads((day_dir / "scenes.json").read_text(encoding="utf-8"))
+            briefing = json.loads((day_dir / "daily_briefing.json").read_text(encoding="utf-8"))
+
+            self.assertTrue(payload["success"])
+            self.assertEqual(payload["replaced_in_file"], 1)
+            self.assertIn("青梅", transcript)
+            self.assertNotIn("青维", transcript)
+            self.assertIn("青梅", scenes["scenes"][0]["text"])
+            self.assertIn("青梅", scenes["scenes"][0]["summary"])
+            self.assertIn("青梅", briefing["summary"])
+            self.assertIn("青梅", briefing["key_events"][0])
+
     def test_close_loop_endpoint_appends_correction_and_refreshes_context(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_root = Path(tmp_dir)
