@@ -78,11 +78,19 @@ class DeduplicationTest(unittest.TestCase):
 class ShortLineMergeTest(unittest.TestCase):
     """碎句合并"""
 
-    def test_short_fragment_merged(self):
-        result = clean.clean_text("前面的长内容长内容\n好\n后面的长内容")
-        # "好" 只有 1 字，应该被合并到上一行
+    def test_suffix_particle_merged(self):
+        """Fix 1: 句尾附着词（啊、呀、呢）合并到上一行"""
+        # 直接测 merge_short_lines，不走完整清洗流程（避免 filler 先删掉）
+        lines = ["前面的长内容长内容", "呢", "后面的长内容"]
+        result = clean.merge_short_lines(lines, min_length=3)
+        merged = '\n'.join(result)
+        self.assertIn("长内容呢", merged)
+
+    def test_reply_word_stays_independent(self):
+        """Fix 1: 回合词（好、对、行）保持独立行"""
+        result = clean.clean_text("你觉得怎么样？\n好\n那就这样吧")
         lines = [l for l in result.split('\n') if l.strip()]
-        self.assertTrue(all(len(l.strip()) >= 2 for l in lines if l.strip()))
+        self.assertIn("好", [l.strip() for l in lines])
 
 
 class LongParagraphSplitTest(unittest.TestCase):
@@ -152,6 +160,80 @@ class FullPipelineTest(unittest.TestCase):
         """规则引擎不需要 API key"""
         result = clean.clean_text("嗯\n正常内容")
         self.assertIn("正常内容", result)
+
+
+class ContextAwareFillerTest(unittest.TestCase):
+    """Fix 2: 嗯/哦 上下文感知"""
+
+    def test_en_after_question_preserved(self):
+        """问句后面的"嗯。"是肯定回答，不删"""
+        result = clean.clean_text("你确定吗？\n嗯。\n那好吧")
+        self.assertIn("嗯", result)
+
+    def test_en_standalone_removed(self):
+        """没有问句时，独立的"嗯。"是废词，删掉"""
+        result = clean.clean_text("今天天气不错\n嗯。\n明天也不错")
+        # "嗯。" 前面不是问句，应该被删
+        lines = [l.strip() for l in result.split('\n') if l.strip()]
+        self.assertNotIn("嗯。", lines)
+
+
+class EnvNoiseTest(unittest.TestCase):
+    """Fix 3: 环境噪音行清除"""
+
+    def test_noise_in_parens_removed(self):
+        result = clean.clean_text("正常内容\n（狗吠声）\n更多内容")
+        self.assertNotIn("狗吠", result)
+        self.assertIn("正常内容", result)
+
+    def test_noise_in_brackets_removed(self):
+        result = clean.clean_text("正常内容\n（背景粤语对话）\n更多内容")
+        self.assertNotIn("背景", result)
+
+    def test_normal_parens_preserved(self):
+        """普通括号内容不删"""
+        result = clean.clean_text("这是（非常重要的）内容")
+        self.assertIn("非常重要", result)
+
+
+class AssistantReplyTest(unittest.TestCase):
+    """Fix 4: 助手回复标记"""
+
+    def test_assistant_reply_marked(self):
+        question = "你帮我看一下这个架构？"
+        long_reply = "从 agent 架构来看，你的项目本质是一个上下文引擎。" + "后面补充内容。" * 10
+        result = clean.clean_text(f"{question}\n{long_reply}")
+        self.assertIn("[助手回复]", result)
+
+    def test_normal_long_line_not_marked(self):
+        """没有讲解式句型的长行不标记"""
+        long_line = "我今天跟二哥聊了很多关于创业的话题讨论了很久很久很久很久很久很久很久很久很久。"
+        result = clean.clean_text(f"你觉得呢？\n{long_line}")
+        self.assertNotIn("[助手回复]", result)
+
+
+class InlineAhPreservedTest(unittest.TestCase):
+    """Fix 5: 句中"啊"不删"""
+
+    def test_ah_in_sentence_preserved(self):
+        result = clean.clean_text("这网真是不稳定啊，在这个电梯里")
+        self.assertIn("不稳定啊，", result)
+
+
+class RoleSignalWordProtectionTest(unittest.TestCase):
+    """角色信号词保护：关键称呼不被清洗掉"""
+
+    def test_wife_preserved(self):
+        result = clean.clean_text("老婆，我回来了")
+        self.assertIn("老婆", result)
+
+    def test_erge_preserved(self):
+        result = clean.clean_text("二哥，干活呢")
+        self.assertIn("二哥", result)
+
+    def test_claude_preserved(self):
+        result = clean.clean_text("Claude 帮我看一下")
+        self.assertIn("Claude", result)
 
 
 if __name__ == "__main__":

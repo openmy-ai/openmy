@@ -49,7 +49,7 @@ class DailyBriefing:
     total_scenes: int = 0
     total_words: int = 0
     voice_hours: float = 0.0
-    screenpipe_available: bool = False
+    screen_recognition_available: bool = False
 
 
 def _time_to_period(time_str: str) -> str:
@@ -118,13 +118,25 @@ def _get_screenpipe_apps(client, date_str: str, time_start: str, time_end: str) 
         return []
 
 
-def _get_screenpipe_app_usage(client, date_str: str) -> dict[str, int]:
-    """统计全天各 App 出现次数（粗略估算使用时长）。"""
+def _get_screenpipe_app_usage(client, date_str: str) -> dict[str, float]:
+    """用 activity_summary API 获取各 App 真实使用时长（分钟）。"""
     if not client:
         return {}
     try:
         start_iso = f"{date_str}T00:00:00+08:00"
         end_iso = f"{date_str}T23:59:59+08:00"
+        # 优先用 activity_summary（精确时长）
+        if hasattr(client, "activity_summary"):
+            data = client.activity_summary(start_iso, end_iso)
+            result: dict[str, float] = {}
+            for app in data.get("apps", []):
+                name = app.get("name", "")
+                minutes = app.get("minutes", 0)
+                if name and name not in ("loginwindow", "screencaptureui") and minutes > 0:
+                    result[name] = round(minutes, 1)
+            # 按时长排序，取前 10
+            return dict(sorted(result.items(), key=lambda x: x[1], reverse=True)[:10])
+        # 降级：用 search_ocr 粗估
         events = client.search_ocr(start_time=start_iso, end_time=end_iso, limit=500)
         app_counts: Counter[str] = Counter()
         for event in events:
@@ -135,7 +147,7 @@ def _get_screenpipe_app_usage(client, date_str: str) -> dict[str, int]:
         return {}
 
 
-def generate_briefing(scenes_path: Path, date_str: str, screenpipe_client=None) -> DailyBriefing:
+def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> DailyBriefing:
     """生成 Daily Briefing。"""
     briefing = DailyBriefing(date=date_str, generated_at=datetime.now().isoformat())
 
@@ -152,9 +164,9 @@ def generate_briefing(scenes_path: Path, date_str: str, screenpipe_client=None) 
         1,
     )
 
-    if screenpipe_client:
+    if screen_client:
         try:
-            briefing.screenpipe_available = screenpipe_client.is_available()
+            briefing.screen_recognition_available = screen_client.is_available()
         except Exception:
             pass
 
@@ -191,9 +203,9 @@ def generate_briefing(scenes_path: Path, date_str: str, screenpipe_client=None) 
 
         apps: list[str] = []
         mode = "voice_only"
-        if briefing.screenpipe_available and time_range:
+        if briefing.screen_recognition_available and time_range:
             start_time, end_time = time_range.split("-")
-            apps = _get_screenpipe_apps(screenpipe_client, date_str, start_time, end_time)
+            apps = _get_screenpipe_apps(screen_client, date_str, start_time, end_time)
             if apps:
                 mode = "dual"
 
@@ -220,21 +232,36 @@ def generate_briefing(scenes_path: Path, date_str: str, screenpipe_client=None) 
             "topics": interaction.topics[:5],
         }
 
+    # 从 scene summaries 里提取关键事件、决策和待办
+    # 规则：每个 summary 只进一个桶，优先级：决策 > 待办 > 关键事件
+    # 避免和 time_blocks 里的 summary 重复
+    time_block_texts = {block.summary for block in briefing.time_blocks}
+    seen_events: set[str] = set()
     for scene in scenes:
         summary = scene.get("summary", "")
-        if not summary:
+        if not summary or summary in seen_events:
             continue
-        briefing.key_events.append(summary)
+        seen_events.add(summary)
+        # 跳过已经在 time_blocks 里完整出现的
+        if summary in time_block_texts:
+            continue
         if any(keyword in summary for keyword in ["决定", "确定", "选择", "定了"]):
             briefing.decisions.append(summary)
         elif any(keyword in summary for keyword in ["需要", "要去", "要做", "要买", "要找", "记得", "别忘", "待处理", "待确认", "还没"]):
             briefing.todos_open.append(summary)
+        else:
+            briefing.key_events.append(summary)
 
-    if briefing.screenpipe_available:
-        app_counts = _get_screenpipe_app_usage(screenpipe_client, date_str)
-        for app, count in app_counts.items():
-            minutes = count * 2 // 60
-            briefing.work_sessions[app] = f"约{minutes}分钟" if minutes > 0 else "<1分钟"
+    if briefing.screen_recognition_available:
+        app_usage = _get_screenpipe_app_usage(screen_client, date_str)
+        for app, minutes in app_usage.items():
+            if isinstance(minutes, (int, float)) and minutes > 0:
+                if minutes >= 60:
+                    briefing.work_sessions[app] = f"约{int(minutes // 60)}小时{int(minutes % 60)}分钟"
+                else:
+                    briefing.work_sessions[app] = f"约{int(minutes)}分钟"
+            else:
+                briefing.work_sessions[app] = "<1分钟"
 
     summary_parts: list[str] = []
     people_names = list(briefing.people_interaction_map.keys())

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from dataclasses import asdict
@@ -11,6 +12,7 @@ from typing import Optional
 
 from openmy.domain.models import RoleTag, SceneBlock
 from openmy.services.segmentation.segmenter import segment
+from openmy.config import GEMINI_MODEL
 
 
 ROLE_LABELS = {
@@ -208,6 +210,31 @@ def tag_scene_role(scene: SceneBlock, prev_role: Optional[RoleTag] = None) -> Sc
         )
         return scene
 
+    # ── 模型 fallback：规则都搞不定时，交给大模型判断 ──
+    api_key = os.environ.get('GEMINI_API_KEY', '')
+    if api_key:
+        model_result = infer_role_with_model(text, api_key)
+        if model_result:
+            cat = model_result.get('category', 'uncertain')
+            addr = model_result.get('addressed_to', '')
+            conf = min(0.75, max(0.2, model_result.get('confidence', 0.5)))
+            if cat in ROLE_LABELS and cat != 'uncertain':
+                scene.role = RoleTag(
+                    category=cat,
+                    entity_id=addr,
+                    relation_label=addr,
+                    scene_type=cat,
+                    scene_type_label=ROLE_LABELS.get(cat, '不确定'),
+                    addressed_to=addr,
+                    confidence=conf,
+                    source='model_inferred',
+                    source_label='AI判断',
+                    evidence=f"模型推断: {cat} → {addr}",
+                    evidence_chain=[f"模型推断: {cat} → {addr}"],
+                    needs_review=conf < 0.5,
+                )
+                return scene
+
     scene.role = RoleTag(
         category='uncertain',
         scene_type='uncertain',
@@ -222,6 +249,48 @@ def tag_scene_role(scene: SceneBlock, prev_role: Optional[RoleTag] = None) -> Sc
     return scene
 
 
+def infer_role_with_model(text: str, api_key: str, model: str = GEMINI_MODEL) -> dict | None:
+    """调 Gemini API 判断这段话在跟谁说。只在规则层全部失败时调用。"""
+    try:
+        from google import genai
+    except ImportError:
+        return None
+
+    prompt = f"""分析下面这段语音转写文本，判断说话人在跟谁说话。
+
+返回一个 JSON 对象，格式：
+{{"category": "...", "addressed_to": "...", "confidence": 0.0-1.0}}
+
+category 只能是以下之一：
+- "ai" — 在跟 AI 助手说话（Claude、GPT、Gemini 等）
+- "merchant" — 在跟商家/服务员/客服说话
+- "pet" — 在跟宠物说话
+- "self" — 自言自语、备忘、录任务记录
+- "interpersonal" — 在跟人聊天（朋友、家人、同事）
+
+addressed_to 填具体对象，比如"朋友"、"二哥"、"老婆"、"AI助手"。如果不确定是谁，填最合理的猜测。
+
+confidence 表示你多确定，0.0 完全不确定，1.0 非常确定。
+
+只返回 JSON，不要加其他内容。
+
+---
+
+{text[:2000]}"""
+
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(model=model, contents=[prompt])
+        raw = response.text.strip() if response.text else ''
+        # 清理 markdown 代码块包裹
+        if raw.startswith('```'):
+            raw = re.sub(r'^```\w*\n?', '', raw)
+            raw = re.sub(r'\n?```$', '', raw)
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
 def tag_all_scenes(scenes: list[SceneBlock]) -> list[SceneBlock]:
     prev_role: Optional[RoleTag] = None
     for scene in scenes:
@@ -233,14 +302,14 @@ def tag_all_scenes(scenes: list[SceneBlock]) -> list[SceneBlock]:
 def resolve_roles(
     scenes: list[SceneBlock],
     date_str: str | None = None,
-    screenpipe_client=None,
+    screen_client=None,
 ) -> list[SceneBlock]:
     scenes = tag_all_scenes(scenes)
-    if screenpipe_client:
+    if screen_client:
         try:
-            from openmy.services.screenpipe.hints import enrich_with_hints
+            from openmy.services.screen_recognition.hints import enrich_with_hints
 
-            scenes = enrich_with_hints(scenes, screenpipe_client, date_str)
+            scenes = enrich_with_hints(scenes, screen_client, date_str)
         except Exception:
             pass
     return scenes

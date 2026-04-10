@@ -86,7 +86,7 @@ class TestGenerateBriefing(unittest.TestCase):
             mock_client = MagicMock()
             mock_client.is_available.return_value = False
             briefing = generate_briefing(tmp_path, "2026-04-07", mock_client)
-            self.assertFalse(briefing.screenpipe_available)
+            self.assertFalse(briefing.screen_recognition_available)
             self.assertEqual(briefing.total_scenes, 1)
         finally:
             os.unlink(tmp_path)

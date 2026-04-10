@@ -22,9 +22,9 @@ def main() -> None:
 
     screenpipe = None
     try:
-        from openmy.adapters.screenpipe.client import ScreenpipeClient
+        from openmy.adapters.screen_recognition.client import ScreenRecognitionClient
 
-        client = ScreenpipeClient()
+        client = ScreenRecognitionClient()
         if client.is_available():
             screenpipe = client
             print("🖥️ Screenpipe 已连接")
@@ -43,7 +43,7 @@ def main() -> None:
     print(f"✅ 已生成: {output_path}")
     print(f"   📊 {briefing.total_scenes} 个场景 | {briefing.total_words} 字")
     print(f"   👥 互动: {', '.join(briefing.people_interaction_map.keys()) or '无'}")
-    print(f"   📱 Screenpipe: {'已融合' if briefing.screenpipe_available else '未使用'}")
+    print(f"   📱 Screenpipe: {'已融合' if briefing.screen_recognition_available else '未使用'}")
     if briefing.work_sessions:
         top_apps = list(briefing.work_sessions.items())[:3]
         print(f"   💻 Top Apps: {', '.join(f'{name}({duration})' for name, duration in top_apps)}")

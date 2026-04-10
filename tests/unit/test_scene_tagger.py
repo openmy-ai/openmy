@@ -2,11 +2,13 @@
 """test_scene_tagger.py — 场景切分和角色标注测试"""
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from openmy.domain.models import RoleTag, SceneBlock
 from openmy.services.roles.resolver import (
@@ -142,7 +144,10 @@ class TestInheritance(unittest.TestCase):
         self.assertEqual(scene.role.source, "inherited")
         self.assertLess(scene.role.confidence, prev_role.confidence)
 
-    def test_no_inherit_from_low_confidence(self):
+    @mock.patch.dict(os.environ, {}, clear=True)
+    @mock.patch("openmy.services.roles.resolver.infer_role_with_model")
+    def test_no_inherit_from_low_confidence(self, mock_infer):
+        mock_infer.return_value = None
         scene = SceneBlock(scene_id="s02", text="天气真好")
         prev_role = RoleTag(
             scene_type="merchant",
@@ -152,7 +157,10 @@ class TestInheritance(unittest.TestCase):
         tag_scene_role(scene, prev_role)
         self.assertEqual(scene.role.scene_type, "uncertain")
 
-    def test_no_inherit_from_uncertain(self):
+    @mock.patch.dict(os.environ, {}, clear=True)
+    @mock.patch("openmy.services.roles.resolver.infer_role_with_model")
+    def test_no_inherit_from_uncertain(self, mock_infer):
+        mock_infer.return_value = None
         scene = SceneBlock(scene_id="s02", text="天气真好")
         prev_role = RoleTag(scene_type="uncertain", confidence=0.0)
         tag_scene_role(scene, prev_role)
@@ -197,6 +205,53 @@ class TestRoleSignalWords(unittest.TestCase):
     def test_key_words_included(self):
         for word in ["老婆", "老公", "客服", "乖", "小狗", "记一下"]:
             self.assertIn(word, ROLE_SIGNAL_WORDS, f"缺少关键信号词: {word}")
+
+
+class TestModelFallback(unittest.TestCase):
+    """模型 fallback 层测试"""
+
+    @mock.patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"})
+    @mock.patch("openmy.services.roles.resolver.infer_role_with_model")
+    def test_model_fallback_used_when_rules_fail(self, mock_infer):
+        """当规则和继承都没命中时，调用模型判断"""
+        mock_infer.return_value = {
+            "category": "interpersonal",
+            "addressed_to": "二哥",
+            "confidence": 0.7,
+        }
+        scene = SceneBlock(
+            time_start="14:13",
+            text="你觉得这个东西牛逼吗？\n肯定啊，绝对。\n是吧？\n对，绝对。",
+        )
+        tag_scene_role(scene, prev_role=None)
+        self.assertEqual(scene.role.scene_type, "interpersonal")
+        self.assertEqual(scene.role.addressed_to, "二哥")
+        self.assertEqual(scene.role.source, "model_inferred")
+        mock_infer.assert_called_once()
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    @mock.patch("openmy.services.roles.resolver.infer_role_with_model")
+    def test_no_api_key_falls_to_uncertain(self, mock_infer):
+        """没有 API key 时跳过模型，走 uncertain"""
+        scene = SceneBlock(
+            time_start="14:13",
+            text="随便聊几句不着边际的话",
+        )
+        tag_scene_role(scene, prev_role=None)
+        self.assertEqual(scene.role.scene_type, "uncertain")
+        mock_infer.assert_not_called()
+
+    @mock.patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"})
+    @mock.patch("openmy.services.roles.resolver.infer_role_with_model")
+    def test_model_returns_none_falls_to_uncertain(self, mock_infer):
+        """模型调用失败时走 uncertain"""
+        mock_infer.return_value = None
+        scene = SceneBlock(
+            time_start="14:13",
+            text="随便聊几句",
+        )
+        tag_scene_role(scene, prev_role=None)
+        self.assertEqual(scene.role.scene_type, "uncertain")
 
 
 if __name__ == "__main__":

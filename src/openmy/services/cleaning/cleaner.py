@@ -30,12 +30,12 @@ FILLER_PATTERNS = [
 ]
 COMPILED_FILLERS = [re.compile(p) for p in FILLER_PATTERNS]
 
-# ── 句中废词（轻度清理，只处理最高频的）─────────────────
+# ── 句中废词（轻度清理，只处理最高频的中性填充词）─────
+# Fix 5: 不删"啊"，它在中文口语里承载语气和句法连接
 INLINE_FILLERS = [
     (r'嗯+[，、]', ''),           # "嗯，然后" → "然后"
-    (r'啊+[，、]', ''),           # "啊，就是" → "就是"
     (r'那个[，、]+那个[，、]*', ''),  # "那个，那个，" → ""
-    (r'[，、]*(嗯|啊|然后|那个)[，。、！？\s]*$', ''),  # 句尾残留废词
+    (r'[，、]*(呃|那个)[，。、！？\s]*$', ''),  # 句尾残留废词（不含 啊/嗯）
     (r'就是说[，、]+', ''),       # "就是说，" → ""
     (r'然后[，、]+然后[，、]*', '然后'),  # "然后，然后" → "然后"
 ]
@@ -54,6 +54,15 @@ AI_PREAMBLE_PATTERNS = [
 # ── [音乐] 标记 ────────────────────────────────────────
 MUSIC_RE = re.compile(r'\[音乐\]')
 
+# ── Fix 3: 环境噪音独立行（括号包裹的声音描述）────────
+ENV_NOISE_RE = re.compile(
+    r'^\s*[（\(【\[](背景|音乐|狗吠|电梯|金属|机器|重物|打火机|吐气|拍手|哨|惊呼|'
+    r'车|风|雨|水|门|铃|警报|喇叭|敲|摩擦|碰撞|脚步|咳嗽|笑|哭|叹气|呻吟|'
+    r'鸟|猫|鸡|虫|蝉|雷|钟|手机|电话|广播|喊|嘈杂|对话|谈话|聊天|歌|唱|哼)'
+    r'[^）\)\]】]*[）\)\]】]\s*$',
+    re.MULTILINE,
+)
+
 # ── 段落切分阈值 ────────────────────────────────────────
 MAX_PARAGRAPH_CHARS = 500
 SENTENCE_SPLIT_RE = re.compile(r'(?<=[。！？!?.])\s*')
@@ -63,14 +72,26 @@ SENTENCE_SPLIT_RE = re.compile(r'(?<=[。！？!?.])\s*')
 #  清洗步骤
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def is_filler_line(line: str) -> bool:
-    """整行是废词就返回 True"""
+# Fix 2: 上下文相关的答复词——前一行是问句时不删
+CONTEXT_REPLY_WORDS = {'嗯', '哦', '对', '是', '好', '行', '嗯嗯', '对对', '是的', '好的', '行的'}
+
+
+def is_filler_line(line: str, prev_line: str = '') -> bool:
+    """整行是废词就返回 True。
+    Fix 2: 如果前一行以问号结尾，"嗯"/"哦"/"对"等短答复保留。
+    """
     stripped = line.strip()
     if not stripped:
         return False
     # 保护时间头
     if TIME_HEADER_RE.match(stripped):
         return False
+    # Fix 2: 去掉标点后看是不是答复词
+    bare = re.sub(r'[，。、！？!?\s]+$', '', stripped)
+    if bare in CONTEXT_REPLY_WORDS:
+        prev_stripped = prev_line.strip()
+        if prev_stripped and prev_stripped.endswith(('？', '?', '吗', '呢', '吧')):
+            return False  # 前面是问句，这是回答，保留
     return any(p.match(stripped) for p in COMPILED_FILLERS)
 
 
@@ -106,8 +127,15 @@ def deduplicate_lines(lines: list[str]) -> list[str]:
     return result
 
 
+# Fix 1: 只合并句尾附着词，不合并完整回合词
+SUFFIX_PARTICLES = {'啊', '呀', '呢', '嘛', '吧', '了', '哇', '噢'}
+REPLY_WORDS = {'对', '是', '行', '好', '嗯', '哦', '对啊', '是啊', '行啊', '好的',
+               '谢谢', '拜拜', '小心', '没事', '不是', '不行', '不好', '不对',
+               '可以', '知道', '明白', '懂了', '收到'}
+
+
 def merge_short_lines(lines: list[str], min_length: int = 3) -> list[str]:
-    """合并过短的碎句到上一行（只合并 ≤min_length 字的碎片）"""
+    """Fix 1: 只合并句尾附着词到上一行，保留完整回合词的独立性。"""
     result: list[str] = []
     for line in lines:
         stripped = line.strip()
@@ -115,11 +143,46 @@ def merge_short_lines(lines: list[str], min_length: int = 3) -> list[str]:
         if not stripped or TIME_HEADER_RE.match(stripped) or stripped.startswith('#'):
             result.append(line)
             continue
-        # 太短的碎句合并到上一行
+        # 太短的碎句：看它是附着词还是回合词
+        bare = re.sub(r'[，。、！？!?\s]+$', '', stripped)
         if len(stripped) < min_length and result and result[-1].strip():
-            result[-1] = result[-1].rstrip() + stripped
+            if bare in SUFFIX_PARTICLES:
+                # 句尾附着词 → 合并到上一行
+                result[-1] = result[-1].rstrip() + stripped
+            else:
+                # 回合词或其他短句 → 保持独立
+                result.append(line)
         else:
             result.append(line)
+    return result
+
+
+# Fix 4: 助手回复检测关键词
+ASSISTANT_REPLY_CUES = re.compile(
+    r'(首先|其次|另一方面|从.*角度来看|你可以采用|本质是|'
+    r'建议.*方案|这里.*架构|总结来说|综上所述|'
+    r'我来.*解释|让我.*分析|具体来说)',
+)
+QUESTION_COMMAND_RE = re.compile(r'[？?]$|你先|帮我|给我|说中文|看一下|演示')
+
+
+def mark_assistant_replies(lines: list[str], min_length: int = 80) -> list[str]:
+    """Fix 4: 给疑似助手回复打标签，不删除。
+    条件：前一行是提问/命令 + 当前行较长 + 有讲解式句型。
+    """
+    result: list[str] = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or TIME_HEADER_RE.match(stripped) or stripped.startswith('#'):
+            result.append(line)
+            continue
+        # 检测助手回复特征
+        if len(stripped) >= min_length and ASSISTANT_REPLY_CUES.search(stripped):
+            prev = lines[i - 1].strip() if i > 0 else ''
+            if prev and QUESTION_COMMAND_RE.search(prev):
+                result.append(f'[助手回复] {line}')
+                continue
+        result.append(line)
     return result
 
 
@@ -244,18 +307,29 @@ def clean_text(text: str, api_key: str | None = None) -> str:
     # Step 2: 清除 [音乐] 标记
     text = remove_music_markers(text)
 
+    # Step 2.5 (Fix 3): 清除环境噪音行
+    text = ENV_NOISE_RE.sub('', text)
+
     lines = text.split('\n')
 
-    # Step 3: 去除纯废词行
-    lines = [l for l in lines if not is_filler_line(l)]
+    # Step 3 (Fix 2): 去除纯废词行（上下文感知）
+    filtered: list[str] = []
+    for i, line in enumerate(lines):
+        prev = lines[i - 1] if i > 0 else ''
+        if not is_filler_line(line, prev):
+            filtered.append(line)
+    lines = filtered
 
     # Step 4: 行内废词清理
     lines = [clean_inline(l) for l in lines]
 
+    # Step 4.5 (Fix 4): 给助手回复打标签
+    lines = mark_assistant_replies(lines)
+
     # Step 5: 去除连续重复行
     lines = deduplicate_lines(lines)
 
-    # Step 6: 合并单字残句（只合并 ≤2 字的碎片，保留对话节奏）
+    # Step 6 (Fix 1): 合并句尾附着词（不合并回合词）
     lines = merge_short_lines(lines, min_length=3)
 
     # Step 7: 合并连续空行

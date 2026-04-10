@@ -157,11 +157,11 @@ def role_bar(distribution: dict[str, int], width: int = 20) -> str:
     return "".join(parts)
 
 
-def get_screenpipe_client():
+def get_screen_client():
     try:
-        from openmy.adapters.screenpipe.client import ScreenpipeClient
+        from openmy.adapters.screen_recognition.client import ScreenRecognitionClient
 
-        client = ScreenpipeClient()
+        client = ScreenRecognitionClient()
         return client if client.is_available() else None
     except Exception:
         return None
@@ -462,10 +462,10 @@ def cmd_roles(args: argparse.Namespace) -> int:
     from openmy.services.segmentation.segmenter import segment
 
     markdown = strip_document_header(transcript_path.read_text(encoding="utf-8"))
-    screenpipe_client = get_screenpipe_client()
+    screen_client = get_screen_client()
 
     with console.status("[bold cyan]🏷️ 场景切分 + 角色归因..."):
-        scenes = resolve_roles(segment(markdown), date_str=date_str, screenpipe_client=screenpipe_client)
+        scenes = resolve_roles(segment(markdown), date_str=date_str, screen_client=screen_client)
         result = scenes_to_dict(scenes)
 
     output_path = ensure_day_dir(date_str) / "scenes.json"
@@ -531,9 +531,9 @@ def cmd_briefing(args: argparse.Namespace) -> int:
 
     from openmy.services.briefing.generator import generate_briefing, save_briefing
 
-    screenpipe_client = get_screenpipe_client()
+    screen_client = get_screen_client()
     with console.status("[bold magenta]📋 生成日报中..."):
-        briefing = generate_briefing(paths["scenes"], date_str, screenpipe_client)
+        briefing = generate_briefing(paths["scenes"], date_str, screen_client)
         output_path = ensure_day_dir(date_str) / "daily_briefing.json"
         save_briefing(briefing, output_path)
 
@@ -857,6 +857,36 @@ def cmd_run(args: argparse.Namespace) -> int:
     else:
         console.print("\n[dim]⏭️ 跳过场景切分：已存在 scenes.json[/dim]")
 
+    # ── 角色识别（在蒸馏之前，给已有 scenes 补充 role 信息）──
+    if os.getenv("GEMINI_API_KEY", "").strip():
+        console.print("\n[bold]👥 角色识别[/bold]")
+        try:
+            from openmy.domain.models import SceneBlock
+            from openmy.services.roles.resolver import tag_all_scenes, resolve_roles as _resolve_roles, scenes_to_dict
+
+            # 读取已有 scenes，只做角色归因，不重新切分
+            raw_scenes_list = scenes_data.get("scenes", [])
+            scene_blocks = [SceneBlock.from_dict(s) if hasattr(SceneBlock, 'from_dict') else SceneBlock(
+                scene_id=s.get('scene_id', ''),
+                time_start=s.get('time_start', ''),
+                time_end=s.get('time_end', ''),
+                text=s.get('text', ''),
+                preview=s.get('preview', ''),
+            ) for s in raw_scenes_list]
+            screen_client = get_screen_client()
+            scene_blocks = _resolve_roles(scene_blocks, date_str=date_str, screen_client=screen_client)
+            result = scenes_to_dict(scene_blocks)
+
+            output_path = ensure_day_dir(date_str) / "scenes.json"
+            write_json(output_path, result)
+            paths = resolve_day_paths(date_str)
+            scenes_data = read_json(paths["scenes"], {})
+            console.print("[green]✅ 角色识别完成[/green]")
+        except Exception as exc:
+            console.print(f"[yellow]⚠️ 角色识别异常: {exc}，继续[/yellow]")
+    else:
+        console.print("\n[dim]⏭️ 跳过角色识别：缺少 GEMINI_API_KEY[/dim]")
+
     missing_summaries = [scene for scene in scenes_data.get("scenes", []) if not scene.get("summary")]
     if missing_summaries:
         if os.getenv("GEMINI_API_KEY", "").strip():
@@ -875,6 +905,33 @@ def cmd_run(args: argparse.Namespace) -> int:
     if result != 0:
         console.print("[red]❌ 日报生成失败，终止[/red]")
         return result
+
+    # ── 结构化提取（intents + facts）──
+    if os.getenv("GEMINI_API_KEY", "").strip() and paths["transcript"].exists():
+        console.print("\n[bold]🔍 提取[/bold]")
+        try:
+            from openmy.services.extraction.extractor import run_extraction
+            from openmy.config import GEMINI_MODEL as _extract_model
+            run_extraction(
+                str(paths["transcript"]),
+                date=date_str,
+                model=_extract_model,
+            )
+            console.print("[green]✅ 提取完成[/green]")
+        except Exception as exc:
+            console.print(f"[yellow]⚠️ 提取异常: {exc}，继续[/yellow]")
+    else:
+        console.print("\n[dim]⏭️ 跳过提取：缺少 API key 或转写文件[/dim]")
+
+    # ── 聚合 active_context ──
+    console.print("\n[bold]🧠 聚合上下文[/bold]")
+    try:
+        from openmy.services.context.consolidation import consolidate
+        data_root = ensure_day_dir(date_str).parent
+        consolidate(data_root)
+        console.print("[green]✅ active_context 已更新[/green]")
+    except Exception as exc:
+        console.print(f"[yellow]⚠️ 聚合异常: {exc}，继续[/yellow]")
 
     console.print(
         Panel(
