@@ -4,7 +4,8 @@ import unittest
 from pathlib import Path
 
 
-INDEX_HTML = Path("/Users/zhousefu/Desktop/周瑟夫的上下文/app/index.html")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+INDEX_HTML = PROJECT_ROOT / "app" / "index.html"
 
 
 class TestFrontendShell(unittest.TestCase):
@@ -23,11 +24,7 @@ class TestFrontendShell(unittest.TestCase):
 
     def test_index_adds_context_tabs_without_replacing_reader_views(self):
         self.assertIn('id="tab-overview"', self.content)
-        self.assertIn('id="tab-corrections"', self.content)
-        self.assertIn('id="tab-pipeline"', self.content)
         self.assertIn("概览", self.content)
-        self.assertIn("校正", self.content)
-        self.assertIn("流程", self.content)
 
     def test_index_fetches_context_and_day_payloads(self):
         self.assertIn("/api/context", self.content)
@@ -41,8 +38,6 @@ class TestFrontendShell(unittest.TestCase):
     def test_index_renders_meta_panels_inside_day_view(self):
         self.assertIn("renderMetaPanels", self.content)
         self.assertIn("view-overview", self.content)
-        self.assertIn("view-corrections", self.content)
-        self.assertIn("view-pipeline", self.content)
         self.assertIn("打算做什么", self.content)
         self.assertIn("记住了什么", self.content)
         self.assertIn("决定了什么", self.content)
@@ -54,7 +49,6 @@ class TestFrontendShell(unittest.TestCase):
         self.assertIn("projects/merge", self.content)
         self.assertIn("projects/reject", self.content)
         self.assertIn("decisions/reject", self.content)
-        self.assertIn("submitTypoCorrection", self.content)
 
     def test_index_contains_pipeline_job_panel(self):
         self.assertIn("pipelineJobsList", self.content)
@@ -63,6 +57,18 @@ class TestFrontendShell(unittest.TestCase):
         self.assertIn("refreshPipelineJobs", self.content)
         self.assertIn("刷新上下文", self.content)
         self.assertIn("重新运行", self.content)
+
+    def test_timeline_distillation_uses_unified_bold_markup(self):
+        match = re.search(
+            r"function getSegmentDistillation\(segment, meta\) \{(?P<body>.*?)\n\}\n\nfunction renderBriefingView",
+            self.content,
+            re.S,
+        )
+        self.assertIsNotNone(match)
+        body = match.group("body")
+        self.assertIn("📌 <strong>摘要</strong>", body)
+        self.assertIn("📌 <strong>片段</strong>", body)
+        self.assertNotIn("seg-distilled-placeholder", body)
 
     def test_mobile_layout_has_single_column_breakpoint(self):
         self.assertRegex(

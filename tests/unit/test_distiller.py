@@ -34,5 +34,27 @@ class TestDistillerCli(unittest.TestCase):
         mock_distill.assert_called_once_with(scenes_path, "custom-key", distiller.GEMINI_MODEL)
 
 
+class TestDistillerScreenContext(unittest.TestCase):
+    @patch("openmy.services.distillation.distiller.ProviderRegistry.from_env")
+    def test_summarize_scene_includes_screen_summary_when_present(self, registry_factory):
+        from openmy.services.distillation import distiller
+
+        provider = registry_factory.return_value.get_llm_provider.return_value
+        provider.generate_text.return_value = "我正在继续推进。"
+
+        result = distiller.summarize_scene(
+            "这个我待会儿弄",
+            api_key="test-key",
+            model="gemini-test",
+            role_info="自己",
+            screen_summary="当时正在 Cursor 修改 OpenMy 的屏幕上下文主链",
+        )
+
+        self.assertEqual(result, "我正在继续推进。")
+        prompt = provider.generate_text.call_args.kwargs["prompt"]
+        self.assertIn("屏幕上下文", prompt)
+        self.assertIn("Cursor", prompt)
+
+
 if __name__ == "__main__":
     unittest.main()

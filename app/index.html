@@ -650,6 +650,13 @@ const state = {
   selectedJobDetail: null,
   handledCompletedJobs: new Set(),
   chartInstances: [],
+  screenSettings: {
+    enabled: true,
+    participation_mode: 'summary_only',
+    exclude_apps: [],
+    exclude_domains: [],
+    exclude_window_keywords: [],
+  },
 };
 
 let searchTimer = null;
@@ -764,6 +771,7 @@ async function init() {
   await loadSidebar();
   await Promise.all([
     loadContext(),
+    loadScreenContextSettings(),
     refreshCorrectionsFeed(),
     refreshPipelineJobs(),
   ]);
@@ -773,6 +781,19 @@ async function init() {
   }
 
   setInterval(refreshPipelineJobs, 5000);
+}
+
+async function loadScreenContextSettings() {
+  state.screenSettings = await fetchJson('/api/settings/screen-context', {
+    enabled: true,
+    participation_mode: 'summary_only',
+    exclude_apps: [],
+    exclude_domains: [],
+    exclude_window_keywords: [],
+  });
+  if (document.getElementById('view-overview')) {
+    renderOverviewView();
+  }
 }
 
 async function loadSidebar() {
@@ -990,6 +1011,8 @@ function renderOverviewView() {
   if (!node) return;
 
   const context = state.context || {};
+  const screenMode = state.screenSettings?.participation_mode || 'summary_only';
+  const modeLabel = screenMode === 'off' ? '关闭' : screenMode === 'full' ? '参与上下文' : '只保留摘要';
 
   node.innerHTML = `
     <div class="briefing-banner" style="background:linear-gradient(135deg,#0f766e 0%,#1d4ed8 100%)">
@@ -1027,6 +1050,34 @@ function renderOverviewView() {
       <div class="briefing-card briefing-card-full">
         <div class="briefing-card-title">🔍 搜索结果</div>
         <div class="search-stack">${renderSearchResultsMarkup()}</div>
+      </div>
+
+      <div class="briefing-card briefing-card-full">
+        <div class="briefing-card-title">🖥️ 屏幕上下文</div>
+        <div class="event-item">当前模式：${escapeHtml(modeLabel)}。关闭后系统退回纯语音；摘要模式默认保守；参与模式会让屏幕证据进入日报、提取和上下文闭环。</div>
+        <div class="inline-actions" style="margin-top:12px;flex-wrap:wrap">
+          <button class="action-btn ${screenMode === 'off' ? 'primary' : ''}" type="button" onclick="updateScreenContextMode('off')">关闭</button>
+          <button class="action-btn ${screenMode === 'summary_only' ? 'primary' : ''}" type="button" onclick="updateScreenContextMode('summary_only')">只保留摘要</button>
+          <button class="action-btn ${screenMode === 'full' ? 'primary' : ''}" type="button" onclick="updateScreenContextMode('full')">参与上下文</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:16px">
+          <div>
+            <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:6px">按应用排除</div>
+            <input id="screenExcludeApps" class="field-input" type="text" value="${escapeHtml((state.screenSettings.exclude_apps || []).join(', '))}" placeholder="例如：微信, 支付宝">
+          </div>
+          <div>
+            <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:6px">按域名排除</div>
+            <input id="screenExcludeDomains" class="field-input" type="text" value="${escapeHtml((state.screenSettings.exclude_domains || []).join(', '))}" placeholder="例如：taobao.com, bank.example.com">
+          </div>
+          <div>
+            <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:6px">按窗口标题排除</div>
+            <input id="screenExcludeWindows" class="field-input" type="text" value="${escapeHtml((state.screenSettings.exclude_window_keywords || []).join(', '))}" placeholder="例如：支付, 验证码, 钥匙串">
+          </div>
+        </div>
+        <div class="inline-actions" style="margin-top:12px">
+          <button class="action-btn primary" type="button" onclick="saveScreenContextExclusions()">保存屏幕上下文规则</button>
+        </div>
+        <div class="muted" style="margin-top:12px">会记录：时间、应用、窗口、域名、活动标签和过滤后的屏幕摘要。不会把密码、支付页、验证码、地址手机号等敏感内容直接送进主链。</div>
       </div>
     </div>
   `;
@@ -1067,8 +1118,8 @@ function getSegmentDistillation(segment, meta) {
     highlights.push(`✅ <strong>${escapeHtml(item.project || '待办')}</strong> ${escapeHtml(plainText(item.task || ''))}`);
   });
   if (highlights.length > 0) return highlights.join('<br>');
-  if (segment.summary) return `<div class="seg-distilled-placeholder">${escapeHtml(plainText(segment.summary))}</div>`;
-  return `<div class="seg-distilled-placeholder">${escapeHtml(plainText(segment.preview || ''))}</div>`;
+  if (segment.summary) return `📌 <strong>摘要</strong> ${escapeHtml(plainText(segment.summary))}`;
+  return `📌 <strong>片段</strong> ${escapeHtml(plainText(segment.preview || ''))}`;
 }
 
 function renderBriefingView() {
@@ -1091,11 +1142,25 @@ function renderBriefingView() {
       <div class="briefing-stat"><span class="briefing-stat-num">${briefing.total_scenes || 0}</span><span class="briefing-stat-label">场景</span></div>
       <div class="briefing-stat"><span class="briefing-stat-num">${fmtNum(briefing.total_words || 0)}</span><span class="briefing-stat-label">字数</span></div>
       <div class="briefing-stat"><span class="briefing-stat-num">${briefing.voice_hours || 0}h</span><span class="briefing-stat-label">语音时长</span></div>
-      <div class="briefing-stat"><span class="briefing-stat-num">${briefing.screenpipe_available ? '✅' : '—'}</span><span class="briefing-stat-label">Screenpipe</span></div>
+      <div class="briefing-stat"><span class="briefing-stat-num">${briefing.screen_recognition_available ? '✅' : '—'}</span><span class="briefing-stat-label">屏幕上下文</span></div>
     </div>
   </div>`;
 
   html += '<div class="briefing-grid">';
+
+  if (briefing.screen_highlights?.length) {
+    html += `<div class="briefing-card">
+      <div class="briefing-card-title">🖥️ 屏幕上下文 <span class="prop-count">${briefing.screen_highlights.length}</span></div>
+      ${briefing.screen_highlights.map((item) => `<div class="event-item">${escapeHtml(plainText(item))}</div>`).join('')}
+    </div>`;
+  }
+
+  if (briefing.completion_candidates?.length) {
+    html += `<div class="briefing-card">
+      <div class="briefing-card-title">✅ 完成候选 <span class="prop-count">${briefing.completion_candidates.length}</span></div>
+      ${briefing.completion_candidates.map((item) => `<div class="event-item">${escapeHtml(plainText(item))}</div>`).join('')}
+    </div>`;
+  }
 
   if (briefing.time_blocks?.length) {
     html += `<div class="briefing-card briefing-card-full">
@@ -1560,6 +1625,40 @@ async function submitContextAction(url, payload, successMessage) {
     showToast(successMessage);
     await loadContext();
     renderCorrectionsView();
+    renderOverviewView();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function splitSettingList(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+async function updateScreenContextMode(mode) {
+  try {
+    state.screenSettings = await postJson('/api/settings/screen-context', {
+      enabled: mode !== 'off',
+      participation_mode: mode,
+    });
+    showToast(`屏幕上下文已切换为：${mode === 'off' ? '关闭' : mode === 'full' ? '参与上下文' : '只保留摘要'}`);
+    renderOverviewView();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function saveScreenContextExclusions() {
+  try {
+    state.screenSettings = await postJson('/api/settings/screen-context', {
+      exclude_apps: splitSettingList(document.getElementById('screenExcludeApps')?.value),
+      exclude_domains: splitSettingList(document.getElementById('screenExcludeDomains')?.value),
+      exclude_window_keywords: splitSettingList(document.getElementById('screenExcludeWindows')?.value),
+    });
+    showToast('屏幕上下文规则已保存');
     renderOverviewView();
   } catch (error) {
     showToast(error.message);
