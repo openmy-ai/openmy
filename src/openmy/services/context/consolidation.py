@@ -311,11 +311,19 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
     return list(loops.values())
 
 
-def _filter_stale_loops(loops: list[OpenLoop], stale_days: int = 3, expire_days: int = 7) -> list[OpenLoop]:
+def _filter_stale_loops(
+    loops: list[OpenLoop],
+    stale_days: int = 3,
+    expire_days: int = 7,
+    reference_day: date | None = None,
+) -> list[OpenLoop]:
     """Fix B: 过期机制 — 3 天 stale，7 天踢出。"""
-    today = date.today()
+    today = reference_day or date.today()
     result: list[OpenLoop] = []
     for loop in loops:
+        if loop.status == "closed" or loop.current_state == "closed":
+            result.append(loop)
+            continue
         last_seen = loop.last_seen_at or ""
         if last_seen:
             try:
@@ -359,6 +367,7 @@ def _auto_close_loops(
                 loop.status = "closed"
                 loop.current_state = "closed"
                 loop.valid_until = done_at
+                loop.last_seen_at = done_at
                 loop.state_reason = "matched_done_intent"
                 break
 
@@ -867,7 +876,10 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             )
             for title, info in sorted(filtered_projects.items())
         ],
-        open_loops=_filter_stale_loops(sorted(all_loops.values(), key=lambda item: item.title)),
+        open_loops=_filter_stale_loops(
+            sorted(all_loops.values(), key=lambda item: item.title),
+            reference_day=latest_day,
+        ),
         recent_decisions=sorted(
             all_decisions.values(),
             key=lambda item: item.effective_from,

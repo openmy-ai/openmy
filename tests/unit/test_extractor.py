@@ -304,6 +304,164 @@ class TestExtractorCallGemini(unittest.TestCase):
         self.assertEqual(payload["events"], [])
         self.assertEqual(payload["role_hints"], [])
 
+    def test_normalize_extraction_payload_demotes_past_life_event_to_fact(self):
+        payload = extractor.normalize_extraction_payload(
+            {
+                "daily_summary": "今天有一件生活记录。",
+                "intents": [
+                    {
+                        "intent_id": "intent_001",
+                        "kind": "action_item",
+                        "what": "去按摩",
+                        "status": "open",
+                        "who": {"kind": "user", "label": "老板"},
+                        "confidence_label": "high",
+                        "evidence_quote": "我昨天下午去按摩了，按完舒服很多。",
+                        "topic": "生活",
+                    }
+                ],
+                "facts": [],
+            },
+            reference_date="2026-04-08",
+        )
+
+        self.assertEqual(payload["intents"], [])
+        self.assertEqual(payload["facts"][0]["content"], "我昨天下午去按摩了，按完舒服很多。")
+        self.assertEqual(payload["facts"][0]["fact_type"], "observation")
+
+    def test_normalize_extraction_payload_keeps_future_action_item(self):
+        payload = extractor.normalize_extraction_payload(
+            {
+                "daily_summary": "明天有待办。",
+                "intents": [
+                    {
+                        "intent_id": "intent_001",
+                        "kind": "action_item",
+                        "what": "给张总回电话",
+                        "status": "open",
+                        "who": {"kind": "user", "label": "老板"},
+                        "confidence_label": "high",
+                        "evidence_quote": "明天下午三点给张总回电话。",
+                        "topic": "合同对接",
+                        "due": {"raw_text": "明天下午三点"},
+                    }
+                ],
+                "facts": [],
+            },
+            reference_date="2026-04-08",
+        )
+
+        self.assertEqual(len(payload["intents"]), 1)
+        self.assertEqual(payload["intents"][0]["what"], "给张总回电话")
+        self.assertEqual(payload["intents"][0]["temporal_state"], "future")
+        self.assertEqual(payload["facts"], [])
+
+    def test_normalize_extraction_payload_marks_ongoing_work_as_active(self):
+        payload = extractor.normalize_extraction_payload(
+            {
+                "daily_summary": "正在推进中。",
+                "intents": [
+                    {
+                        "intent_id": "intent_001",
+                        "kind": "action_item",
+                        "what": "改提取器",
+                        "status": "open",
+                        "who": {"kind": "user", "label": "老板"},
+                        "confidence_label": "high",
+                        "evidence_quote": "提取器我在改，还没改完。",
+                        "topic": "OpenMy",
+                    }
+                ],
+                "facts": [],
+            },
+            reference_date="2026-04-08",
+        )
+
+        self.assertEqual(payload["intents"][0]["status"], "active")
+        self.assertEqual(payload["intents"][0]["temporal_state"], "ongoing")
+
+    def test_normalize_extraction_payload_keeps_mixed_past_future_sentence_as_future_intent(self):
+        payload = extractor.normalize_extraction_payload(
+            {
+                "daily_summary": "今天先记一个混合句。",
+                "intents": [
+                    {
+                        "intent_id": "intent_001",
+                        "kind": "action_item",
+                        "what": "继续推进 README",
+                        "status": "open",
+                        "who": {"kind": "user", "label": "老板"},
+                        "confidence_label": "high",
+                        "evidence_quote": "刚把 README 改完，明天再继续推进。",
+                        "topic": "OpenMy",
+                        "project_hint": "OpenMy",
+                    }
+                ],
+                "facts": [],
+            },
+            reference_date="2026-04-08",
+        )
+
+        self.assertEqual(len(payload["intents"]), 1)
+        self.assertEqual(payload["intents"][0]["temporal_state"], "future")
+        self.assertEqual(payload["intents"][0]["status"], "open")
+
+    def test_normalize_extraction_payload_keeps_completed_task_as_done_intent(self):
+        payload = extractor.normalize_extraction_payload(
+            {
+                "daily_summary": "有一项工作已经做完。",
+                "intents": [
+                    {
+                        "intent_id": "intent_001",
+                        "kind": "action_item",
+                        "what": "改 README",
+                        "status": "open",
+                        "who": {"kind": "user", "label": "老板"},
+                        "confidence_label": "high",
+                        "evidence_quote": "README 我已经改完了。",
+                        "topic": "OpenMy",
+                        "project_hint": "OpenMy",
+                    }
+                ],
+                "facts": [],
+            },
+            reference_date="2026-04-08",
+        )
+
+        self.assertEqual(len(payload["intents"]), 1)
+        self.assertEqual(payload["intents"][0]["status"], "done")
+        self.assertEqual(payload["intents"][0]["temporal_state"], "past")
+        self.assertEqual(payload["facts"], [])
+
+    def test_save_meta_json_does_not_turn_past_events_into_todos(self):
+        payload = extractor.normalize_extraction_payload(
+            {
+                "daily_summary": "今天主要是生活记录。",
+                "intents": [
+                    {
+                        "intent_id": "intent_001",
+                        "kind": "action_item",
+                        "what": "去按摩",
+                        "status": "open",
+                        "who": {"kind": "user", "label": "老板"},
+                        "confidence_label": "high",
+                        "evidence_quote": "我昨天下午去按摩了，按完舒服很多。",
+                        "topic": "生活",
+                    }
+                ],
+                "facts": [],
+            },
+            reference_date="2026-04-08",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            extractor.save_meta_json(payload, "2026-04-08", tmp_dir)
+            saved = json.loads((Path(tmp_dir) / "2026-04-08.meta.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(saved["todos"], [])
+        self.assertEqual(saved["legacy_todos"], [])
+        self.assertEqual(saved["facts"][0]["content"], "我昨天下午去按摩了，按完舒服很多。")
+
     def test_merge_enrichment_only_fills_empty_fields_without_overwriting_core_truth(self):
         core_payload = extractor.normalize_extraction_payload(
             {
