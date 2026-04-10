@@ -228,6 +228,39 @@ class TestOpenMyCli(unittest.TestCase):
         self.assertEqual(forwarded_args.audio, [str(audio_path)])
         self.assertFalse(forwarded_args.skip_transcribe)
 
+    def test_cli_quick_start_accepts_stt_provider_flags(self):
+        import openmy.cli as cli
+
+        audio_path = PROJECT_ROOT / "tests" / "fixtures" / "TX01_MIC005_20260408_131552_orig.wav"
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        audio_path.write_bytes(b"wav")
+
+        parser = cli.build_parser()
+        args = parser.parse_args(
+            [
+                "quick-start",
+                str(audio_path),
+                "--stt-provider",
+                "faster-whisper",
+                "--stt-model",
+                "small",
+                "--stt-vad",
+            ]
+        )
+
+        with (
+            patch("openmy.cli.cmd_run", return_value=0) as run_mock,
+            patch("openmy.cli.ensure_runtime_dependencies", return_value=None),
+            patch("openmy.cli.launch_local_report", return_value=None),
+        ):
+            result = cli.main_with_args(args)
+
+        self.assertEqual(result, 0)
+        forwarded_args = run_mock.call_args.args[0]
+        self.assertEqual(forwarded_args.stt_provider, "faster-whisper")
+        self.assertEqual(forwarded_args.stt_model, "small")
+        self.assertTrue(forwarded_args.stt_vad)
+
     def test_cli_quick_start_reports_missing_gemini_key_in_plain_chinese(self):
         """quick-start 缺 key 时应该给中文人话提示。"""
         audio_path = PROJECT_ROOT / "tests" / "fixtures" / "sample.wav"
@@ -259,6 +292,18 @@ class TestOpenMyCli(unittest.TestCase):
         finally:
             if backup_path.exists():
                 backup_path.rename(env_path)
+
+    def test_ensure_runtime_dependencies_allows_local_stt_without_api_key(self):
+        import openmy.cli as cli
+
+        with (
+            patch("openmy.cli.shutil.which", return_value="/opt/homebrew/bin/ffmpeg"),
+            patch("openmy.cli.load_project_env", return_value=False),
+            patch("openmy.cli.get_stt_provider_name", return_value="faster-whisper"),
+            patch("openmy.cli.get_stt_api_key", return_value=""),
+            patch("openmy.cli.get_llm_api_key", return_value="llm-key"),
+        ):
+            cli.ensure_runtime_dependencies()
 
     def test_skill_status_get_outputs_json(self):
         import openmy.cli as cli

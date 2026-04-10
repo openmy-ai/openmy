@@ -32,7 +32,10 @@ from openmy.config import (
     get_llm_api_key,
     get_stage_llm_model,
     get_stt_api_key,
+    get_stt_model,
+    get_stt_provider_name,
     has_llm_credentials,
+    stt_provider_requires_api_key,
 )
 
 
@@ -232,7 +235,7 @@ def load_project_env(env_path: Path | None = None) -> bool:
     return True
 
 
-def ensure_runtime_dependencies() -> None:
+def ensure_runtime_dependencies(*, stt_provider: str | None = None) -> None:
     """给 quick-start 做最小依赖自检。"""
     if sys.version_info < (3, 10):
         raise FriendlyCliError("需要 Python 3.10 以上版本。可先运行 `brew install python@3.11`。")
@@ -243,18 +246,39 @@ def ensure_runtime_dependencies() -> None:
         raise FriendlyCliError(f"缺少 {missing}。macOS 可先运行 `brew install ffmpeg`。")
 
     has_env_file = load_project_env()
-    stt_api_key = get_stt_api_key()
-    llm_api_key = get_llm_api_key("extract")
-    if not stt_api_key or not llm_api_key:
+    final_stt_provider = (stt_provider or get_stt_provider_name()).lower()
+    stt_api_key = get_stt_api_key(final_stt_provider)
+    if stt_provider_requires_api_key(final_stt_provider) and not stt_api_key:
         if has_env_file:
             raise FriendlyCliError(
-                "已读取项目根目录 `.env`，但里面缺少可用的 provider key。默认推荐 Gemini；可直接填 `GEMINI_API_KEY`，"
-                "或分别设置 `OPENMY_STT_API_KEY` / `OPENMY_LLM_API_KEY`。"
+                "已读取项目根目录 `.env`，但里面缺少可用的 STT provider key。"
+                "如果继续用 Gemini，可直接填 `GEMINI_API_KEY`；"
+                "如果想走本地转写，可把 `OPENMY_STT_PROVIDER` 设成 `faster-whisper`。"
             )
         raise FriendlyCliError(
-            "没找到项目根目录 `.env`，也没有检测到可用的 provider key。先 `cp .env.example .env`，"
-            "再填 `GEMINI_API_KEY`，或分别设置 `OPENMY_STT_API_KEY` / `OPENMY_LLM_API_KEY`。"
+            "没找到项目根目录 `.env`，也没有检测到可用的 STT provider key。"
+            "先 `cp .env.example .env` 并填写 `GEMINI_API_KEY`，"
+            "或在运行时改用 `--stt-provider faster-whisper`。"
         )
+
+
+def add_stt_runtime_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--stt-provider",
+        default=get_stt_provider_name(),
+        help="转写后端（如 gemini / faster-whisper）",
+    )
+    parser.add_argument(
+        "--stt-model",
+        default=get_stt_model(get_stt_provider_name()) or GEMINI_MODEL,
+        help="转写模型名",
+    )
+    parser.add_argument("--stt-vad", action="store_true", help="启用转写后端自带 VAD")
+    parser.add_argument(
+        "--stt-word-timestamps",
+        action="store_true",
+        help="保留更细的词级时间信息（如果后端支持）",
+    )
 
 
 def is_local_report_running(host: str = "127.0.0.1", port: int = 8420) -> bool:
@@ -848,6 +872,10 @@ def cmd_agent(args: argparse.Namespace) -> int:
                 date=args.ingest,
                 audio=args.audio,
                 skip_transcribe=args.skip_transcribe,
+                stt_provider=args.stt_provider,
+                stt_model=args.stt_model,
+                stt_vad=args.stt_vad,
+                stt_word_timestamps=args.stt_word_timestamps,
             )
         )
 
@@ -929,6 +957,10 @@ def cmd_skill(args: argparse.Namespace) -> int:
                 date=args.date,
                 audio=args.audio,
                 skip_transcribe=args.skip_transcribe,
+                stt_provider=args.stt_provider,
+                stt_model=args.stt_model,
+                stt_vad=args.stt_vad,
+                stt_word_timestamps=args.stt_word_timestamps,
             ),
         )
         status_path = ensure_day_dir(args.date) / "run_status.json"
@@ -1015,9 +1047,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("date", help="日期 YYYY-MM-DD")
     p_run.add_argument("--audio", nargs="+", help="音频文件路径")
     p_run.add_argument("--skip-transcribe", action="store_true", help="跳过转写（使用已有数据）")
+    add_stt_runtime_args(p_run)
 
     p_quick = sub.add_parser("quick-start", help="第一次使用：自动处理音频并打开本地日报")
     p_quick.add_argument("audio_path", help="音频文件路径")
+    add_stt_runtime_args(p_quick)
 
     p_correct = sub.add_parser("correct", help="纠正转写或活动上下文")
     p_correct.add_argument("correct_args", nargs="*", help="纠错参数")
@@ -1040,6 +1074,7 @@ def build_parser() -> argparse.ArgumentParser:
     agent_mode.add_argument("--reject-decision", dest="reject_decision", help="排除一条不重要的决策")
     p_agent.add_argument("--audio", nargs="+", help="给 --ingest 使用的音频文件路径")
     p_agent.add_argument("--skip-transcribe", action="store_true", help="给 --ingest 使用：复用已有数据")
+    add_stt_runtime_args(p_agent)
 
     p_skill = sub.add_parser("skill", help="稳定 JSON 动作入口")
     p_skill.add_argument(
@@ -1050,6 +1085,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_skill.add_argument("--date", help="给 day.get / day.run 使用的日期 YYYY-MM-DD")
     p_skill.add_argument("--audio", nargs="+", help="给 day.run 使用的音频文件路径")
     p_skill.add_argument("--skip-transcribe", action="store_true", help="给 day.run 使用：复用已有数据")
+    add_stt_runtime_args(p_skill)
     p_skill.add_argument("--correct-args", nargs="*", help="给 correction.apply 透传的参数")
     p_skill.add_argument(
         "--status",

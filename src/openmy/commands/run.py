@@ -88,7 +88,15 @@ def _finish_run(date_str: str, payload: dict, final_status: str, current_step: s
     _save_run_status(date_str, payload)
 
 
-def transcribe_audio_files(date_str: str, audio_files: list[str]) -> int:
+def transcribe_audio_files(
+    date_str: str,
+    audio_files: list[str],
+    *,
+    stt_provider: str | None = None,
+    stt_model: str | None = None,
+    stt_vad: bool = False,
+    stt_word_timestamps: bool = False,
+) -> int:
     """把本地音频文件转成 raw transcript。"""
     cli = _cli()
     from openmy.services.ingest.audio_pipeline import transcribe_audio_files as run_ingest_pipeline
@@ -98,6 +106,10 @@ def transcribe_audio_files(date_str: str, audio_files: list[str]) -> int:
             date_str=date_str,
             audio_files=audio_files,
             output_dir=cli.ensure_day_dir(date_str),
+            provider_name=stt_provider,
+            model=stt_model,
+            vad_filter=stt_vad,
+            word_timestamps=stt_word_timestamps,
         )
     except Exception as exc:
         cli.console.print(f"[red]❌ 转写失败[/red]: {exc}")
@@ -123,7 +135,14 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     if args.audio and not args.skip_transcribe:
         _mark_step(date_str, run_status, "transcribe", "running", message="正在转写音频")
         cli.console.print("[bold]Step 0: 🎙️ 转写音频[/bold]")
-        result = transcribe_audio_files(date_str, args.audio)
+        result = transcribe_audio_files(
+            date_str,
+            args.audio,
+            stt_provider=getattr(args, "stt_provider", None),
+            stt_model=getattr(args, "stt_model", None),
+            stt_vad=bool(getattr(args, "stt_vad", False)),
+            stt_word_timestamps=bool(getattr(args, "stt_word_timestamps", False)),
+        )
         if result != 0:
             _mark_step(date_str, run_status, "transcribe", "failed", message="转写失败")
             _finish_run(date_str, run_status, "failed", "transcribe")
@@ -354,7 +373,7 @@ def cmd_quick_start(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        cli.ensure_runtime_dependencies()
+        cli.ensure_runtime_dependencies(stt_provider=getattr(args, "stt_provider", None))
     except cli.FriendlyCliError as exc:
         cli.console.print(f"[red]❌ {exc}[/red]")
         return 1
@@ -371,6 +390,10 @@ def cmd_quick_start(args: argparse.Namespace) -> int:
         date=target_date,
         audio=[str(audio_path)],
         skip_transcribe=False,
+        stt_provider=getattr(args, "stt_provider", None),
+        stt_model=getattr(args, "stt_model", None),
+        stt_vad=bool(getattr(args, "stt_vad", False)),
+        stt_word_timestamps=bool(getattr(args, "stt_word_timestamps", False)),
     )
     result = cli.cmd_run(run_args, entrypoint="quick-start")
     if result not in (0, PARTIAL_SUCCESS):
