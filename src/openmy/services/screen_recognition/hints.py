@@ -189,7 +189,7 @@ def apply_hints(scene: SceneBlock, sessions: list[ScreenSession]) -> SceneBlock:
 
 
 def enrich_with_hints(scenes: list[SceneBlock], client, date_str: str | None = None) -> list[SceneBlock]:
-    """为所有场景查询 Screenpipe 并应用 hints。"""
+    """为所有场景查询屏幕上下文服务并应用兼容 hints。"""
     if not client or not client.is_available():
         return scenes
 

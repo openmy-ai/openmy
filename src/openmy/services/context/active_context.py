@@ -241,11 +241,21 @@ class IngestionHealth:
 
 
 @dataclass
+class CompletionCandidateDigest:
+    scene_id: str = ""
+    kind: str = ""
+    label: str = ""
+    confidence: float = 0.0
+    evidence: str = ""
+
+
+@dataclass
 class RealtimeContext:
     today_focus: list[str] = field(default_factory=list)
     today_state: TodayState = field(default_factory=TodayState)
     latest_scene_refs: list[SceneRefDigest] = field(default_factory=list)
     pending_followups_today: list[str] = field(default_factory=list)
+    screen_completion_candidates: list[CompletionCandidateDigest] = field(default_factory=list)
     ingestion_health: IngestionHealth = field(default_factory=IngestionHealth)
 
 
@@ -385,6 +395,10 @@ class ActiveContext:
                 for s in rt.get("latest_scene_refs", [])
             ],
             pending_followups_today=rt.get("pending_followups_today", []),
+            screen_completion_candidates=[
+                _load_dataclass(CompletionCandidateDigest, item)
+                for item in rt.get("screen_completion_candidates", [])
+            ],
             ingestion_health=_load_dataclass(
                 IngestionHealth, rt.get("ingestion_health", {})
             ),

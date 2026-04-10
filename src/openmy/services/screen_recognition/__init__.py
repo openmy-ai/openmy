@@ -1,1 +1,1 @@
-# Screenpipe services namespace.
+"""屏幕上下文服务命名空间。"""

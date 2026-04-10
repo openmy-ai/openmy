@@ -284,6 +284,62 @@ class TestConsolidation(unittest.TestCase):
             loop_titles = {item.title for item in ctx.rolling_context.open_loops}
             self.assertIn("给张总回电话，对齐合同细节", loop_titles)
 
+    def test_consolidate_surfaces_screen_completion_candidates_in_realtime_context(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            self.write_json(
+                data_root / "2026-04-10" / "scenes.json",
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "scene_001",
+                            "time_start": "10:00",
+                            "time_end": "10:20",
+                            "summary": "准备继续推进 OpenMy。",
+                            "role": {"addressed_to": "", "needs_review": False},
+                            "screen_context": {
+                                "summary": "当时正在 Cursor 修改 OpenMy 的屏幕上下文主链",
+                                "primary_app": "Cursor",
+                                "completion_candidates": [
+                                    {
+                                        "kind": "saved",
+                                        "label": "保存成功",
+                                        "confidence": 0.92,
+                                        "evidence": "保存成功",
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                },
+            )
+            self.write_json(
+                data_root / "2026-04-10" / "daily_briefing.json",
+                {
+                    "date": "2026-04-10",
+                    "summary": "今天继续推进 OpenMy。",
+                    "key_events": ["继续推进 OpenMy"],
+                },
+            )
+            self.write_json(
+                data_root / "2026-04-10" / "2026-04-10.meta.json",
+                {
+                    "daily_summary": "今天继续推进 OpenMy。",
+                    "events": [{"time": "10:00", "project": "OpenMy", "summary": "继续推进屏幕上下文主链。"}],
+                    "intents": [],
+                    "facts": [],
+                },
+            )
+
+            ctx = consolidate(data_root)
+
+            self.assertIn("OpenMy", " ".join(ctx.realtime_context.today_focus))
+            self.assertTrue(ctx.realtime_context.screen_completion_candidates)
+            self.assertEqual(ctx.realtime_context.screen_completion_candidates[0].label, "保存成功")
+
 
 class TestRenderer(unittest.TestCase):
     def make_context(self) -> ActiveContext:

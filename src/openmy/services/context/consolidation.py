@@ -16,6 +16,7 @@ from openmy.services.context.active_context import (
     ActiveContext,
     ChangeItem,
     CommunicationContract,
+    CompletionCandidateDigest,
     DecisionItem,
     EntityRegistryCard,
     EntityRollup,
@@ -348,7 +349,19 @@ def _today_state_from_scenes(scenes: list[dict[str, Any]]) -> TodayState:
     if not scenes:
         return TodayState(primary_mode="idle", confidence=0.2)
 
-    summaries = " ".join(str(scene.get("summary", "")) for scene in scenes)
+    summaries = " ".join(
+        filter(
+            None,
+            [
+                str(scene.get("summary", ""))
+                for scene in scenes
+            ] + [
+                str((scene.get("screen_context", {}) or {}).get("summary", ""))
+                for scene in scenes
+                if isinstance(scene.get("screen_context", {}), dict)
+            ],
+        )
+    )
     primary_mode = "design" if any(word in summaries for word in ["OpenMy", "CLI", "设计", "代码"]) else "conversation"
     energy = "high" if len(scenes) >= 6 else "medium"
     if ROLE_RECOGNITION_ENABLED:
@@ -628,8 +641,34 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
     latest_events = [_truncate(e) for e in latest_events]
     latest_todos = [_truncate(t) for t in latest_todos]
 
+    latest_screen_focus = [
+        _truncate(str(scene.get("screen_context", {}).get("summary", "")).strip())
+        for scene in latest_scenes
+        if isinstance(scene.get("screen_context", {}), dict)
+        and str(scene.get("screen_context", {}).get("summary", "")).strip()
+    ]
+    latest_screen_candidates = [
+        CompletionCandidateDigest(
+            scene_id=str(scene.get("scene_id", "")),
+            kind=str(candidate.get("kind", "") or ""),
+            label=str(candidate.get("label", "") or candidate.get("kind", "") or ""),
+            confidence=float(candidate.get("confidence", 0.0) or 0.0),
+            evidence=str(candidate.get("evidence", "") or ""),
+        )
+        for scene in latest_scenes
+        if isinstance(scene.get("screen_context", {}), dict)
+        for candidate in scene.get("screen_context", {}).get("completion_candidates", [])
+        if isinstance(candidate, dict)
+    ]
+    today_focus = latest_events[:5]
+    for item in latest_screen_focus:
+        if item and item not in today_focus:
+            today_focus.append(item)
+        if len(today_focus) >= 5:
+            break
+
     ctx.realtime_context = RealtimeContext(
-        today_focus=latest_events[:5],
+        today_focus=today_focus[:5],
         today_state=_today_state_from_scenes(latest_scenes),
         latest_scene_refs=[
             SceneRefDigest(
@@ -640,6 +679,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             for scene in latest_scenes[-5:]
         ],
         pending_followups_today=latest_todos[:5],
+        screen_completion_candidates=latest_screen_candidates[:5],
         ingestion_health=IngestionHealth(
             last_processed_date=latest_date,
             unresolved_scene_ratio_1d=round(unresolved_ratio_1d, 3),

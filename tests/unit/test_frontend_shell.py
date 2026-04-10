@@ -4,7 +4,8 @@ import unittest
 from pathlib import Path
 
 
-INDEX_HTML = Path("/Users/zhousefu/Desktop/周瑟夫的上下文/app/index.html")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+INDEX_HTML = PROJECT_ROOT / "app" / "index.html"
 
 
 class TestFrontendShell(unittest.TestCase):
@@ -57,7 +58,7 @@ class TestFrontendShell(unittest.TestCase):
         self.assertIn("刷新上下文", self.content)
         self.assertIn("重新运行", self.content)
 
-    def test_timeline_distillation_uses_unified_bold_markup(self):
+    def test_timeline_distillation_uses_plain_summary_fallback(self):
         match = re.search(
             r"function getSegmentDistillation\(segment, meta\) \{(?P<body>.*?)\n\}\n\nfunction renderBriefingView",
             self.content,
@@ -65,8 +66,8 @@ class TestFrontendShell(unittest.TestCase):
         )
         self.assertIsNotNone(match)
         body = match.group("body")
-        self.assertIn("📌 <strong>摘要</strong>", body)
-        self.assertIn("📌 <strong>片段</strong>", body)
+        self.assertIn("if (segment.summary) return escapeHtml(plainText(segment.summary));", body)
+        self.assertIn("return escapeHtml(plainText(segment.preview || ''));", body)
         self.assertNotIn("seg-distilled-placeholder", body)
 
     def test_mobile_layout_has_single_column_breakpoint(self):
