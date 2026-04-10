@@ -940,8 +940,8 @@ function getSegmentDistillation(segment, meta) {
     highlights.push(`✅ <strong>${escapeHtml(item.project || '待办')}</strong> ${escapeHtml(plainText(item.task || ''))}`);
   });
   if (highlights.length > 0) return highlights.join('<br>');
-  if (segment.summary) return `📌 <strong>摘要</strong> ${escapeHtml(plainText(segment.summary))}`;
-  return `📌 <strong>片段</strong> ${escapeHtml(plainText(segment.preview || ''))}`;
+  if (segment.summary) return escapeHtml(plainText(segment.summary));
+  return escapeHtml(plainText(segment.preview || ''));
 }
 
 function renderBriefingView() {
