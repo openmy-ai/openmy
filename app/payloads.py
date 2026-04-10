@@ -46,6 +46,24 @@ def get_context_decisions_payload() -> list[dict]:
     return get_context_payload().get("recent_decisions", [])
 
 
+def get_context_query_payload(
+    kind: str,
+    query: str = "",
+    limit: int = 5,
+    include_evidence: bool = False,
+) -> dict:
+    server = _server()
+    from openmy.services.query.context_query import query_context
+
+    return query_context(
+        server.DATA_ROOT,
+        kind=kind,
+        query=query,
+        limit=limit,
+        include_evidence=include_evidence,
+    )
+
+
 def parse_segments(content: str) -> list[dict]:
     server = _server()
     if server.TIME_HEADER_RE.search(content):

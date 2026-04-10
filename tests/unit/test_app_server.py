@@ -167,6 +167,40 @@ class TestAppServer(unittest.TestCase):
 
             self.assertEqual(payload, snapshot["rolling_context"]["active_projects"])
 
+    def test_context_query_endpoint_returns_structured_result(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            with patch.object(app_server, "DATA_ROOT", data_root), patch(
+                "app.http_handlers.get_context_query_payload",
+                return_value={
+                    "kind": "project",
+                    "query": "OpenMy",
+                    "summary": "OpenMy 最近主要在接查询接口。",
+                    "current_hits": [{"type": "project", "title": "OpenMy"}],
+                    "history_hits": [],
+                    "evidence": [],
+                },
+            ):
+                server = app_server.build_server(port=0)
+                try:
+                    import threading
+
+                    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                    thread = threading.Thread(target=server.serve_forever, daemon=True)
+                    thread.start()
+                    with urlopen(f"{base_url}/api/context/query?kind=project&q=OpenMy", timeout=2) as response:
+                        payload = json.loads(response.read().decode("utf-8"))
+                finally:
+                    server.shutdown()
+                    server.server_close()
+
+            self.assertEqual(payload["kind"], "project")
+            self.assertEqual(payload["query"], "OpenMy")
+            self.assertEqual(payload["current_hits"][0]["title"], "OpenMy")
+
     def seed_day_workspace(self, project_root: Path, date_str: str) -> Path:
         day_dir = project_root / "data" / date_str
         day_dir.mkdir(parents=True, exist_ok=True)
