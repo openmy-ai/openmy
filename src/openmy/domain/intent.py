@@ -62,6 +62,10 @@ class Intent:
     due: DueDate = field(default_factory=DueDate)
     project_hint: str = ""
     source_recording_id: str = ""
+    valid_from: str = ""
+    valid_until: str = ""
+    current_state: str = "active"
+    provenance_refs: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any] | None) -> "Intent":
@@ -82,6 +86,10 @@ class Intent:
             due=DueDate.from_dict(payload.get("due")),
             project_hint=str(payload.get("project_hint", "") or ""),
             source_recording_id=str(payload.get("source_recording_id", "") or ""),
+            valid_from=str(payload.get("valid_from", "") or ""),
+            valid_until=str(payload.get("valid_until", "") or ""),
+            current_state=str(payload.get("current_state", "active") or "active"),
+            provenance_refs=list(payload.get("provenance_refs", []) or []),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -93,23 +101,72 @@ class Intent:
 
 @dataclass
 class Fact:
+    fact_id: str = ""
     fact_type: str = ""
     content: str = ""
     topic: str = ""
     confidence_label: str = "medium"
     confidence_score: float = 0.0
     source_scene_id: str = ""
+    source_recording_id: str = ""
+    evidence_quote: str = ""
+    valid_from: str = ""
+    valid_until: str = ""
+    current_state: str = "active"
+    provenance_refs: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any] | None) -> "Fact":
         payload = payload if isinstance(payload, dict) else {}
         return cls(
+            fact_id=str(payload.get("fact_id", "") or ""),
             fact_type=str(payload.get("fact_type", "") or ""),
             content=str(payload.get("content", "") or ""),
             topic=str(payload.get("topic", "") or ""),
             confidence_label=str(payload.get("confidence_label", "medium") or "medium"),
             confidence_score=float(payload.get("confidence_score", 0.0) or 0.0),
             source_scene_id=str(payload.get("source_scene_id", "") or ""),
+            source_recording_id=str(payload.get("source_recording_id", "") or ""),
+            evidence_quote=str(payload.get("evidence_quote", "") or ""),
+            valid_from=str(payload.get("valid_from", "") or ""),
+            valid_until=str(payload.get("valid_until", "") or ""),
+            current_state=str(payload.get("current_state", "active") or "active"),
+            provenance_refs=list(payload.get("provenance_refs", []) or []),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class Event:
+    event_id: str = ""
+    time: str = ""
+    project: str = ""
+    summary: str = ""
+    confidence_score: float = 0.0
+    source_scene_id: str = ""
+    source_recording_id: str = ""
+    valid_from: str = ""
+    valid_until: str = ""
+    current_state: str = "past"
+    provenance_refs: list[dict[str, Any]] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any] | None) -> "Event":
+        payload = payload if isinstance(payload, dict) else {}
+        return cls(
+            event_id=str(payload.get("event_id", "") or ""),
+            time=str(payload.get("time", "") or ""),
+            project=str(payload.get("project", "") or ""),
+            summary=str(payload.get("summary", "") or ""),
+            confidence_score=float(payload.get("confidence_score", 0.0) or 0.0),
+            source_scene_id=str(payload.get("source_scene_id", "") or ""),
+            source_recording_id=str(payload.get("source_recording_id", "") or ""),
+            valid_from=str(payload.get("valid_from", "") or ""),
+            valid_until=str(payload.get("valid_until", "") or ""),
+            current_state=str(payload.get("current_state", "past") or "past"),
+            provenance_refs=list(payload.get("provenance_refs", []) or []),
         )
 
     def to_dict(self) -> dict[str, Any]:

@@ -8,8 +8,10 @@ from openmy.services.context.active_context import (
     ChangeItem,
     CommunicationContract,
     ConstraintItem,
+    CoreMemory,
     EntityRegistryCard,
     EntityRollup,
+    EventItem,
     Identity,
     IngestionHealth,
     OpenLoop,
@@ -74,6 +76,39 @@ class TestActiveContextModel(unittest.TestCase):
                     )
                 ],
             ),
+            core_memory=CoreMemory(
+                focus_projects=[
+                    ProjectCard(
+                        id="proj_openmy",
+                        project_id="proj_openmy",
+                        title="OpenMy",
+                        current_goal="做出第一版 active context",
+                        next_actions=["补 consolidation", "接 CLI"],
+                        confidence=0.95,
+                        source_rank="aggregate",
+                        current_state="active",
+                        valid_from="2026-04-08T00:00:00+08:00",
+                        provenance_refs=[{"date": "2026-04-08", "kind": "meta.intent"}],
+                    )
+                ],
+                open_loops=[
+                    OpenLoop(
+                        id="loop_readme",
+                        loop_id="loop_readme",
+                        title="README 重写",
+                        loop_type="deliverable",
+                        close_condition="README 提交到仓库",
+                        confidence=0.89,
+                        source_rank="declared",
+                        current_state="active",
+                        valid_from="2026-04-08T00:00:00+08:00",
+                        provenance_refs=[{"date": "2026-04-08", "kind": "intent"}],
+                    )
+                ],
+                active_decisions=[],
+                key_people=[],
+                current_focus=["active_context 设计", "CLI 路线定稿"],
+            ),
             rolling_context=RollingContext(
                 recent_changes=[
                     ChangeItem(
@@ -105,6 +140,22 @@ class TestActiveContextModel(unittest.TestCase):
                         close_condition="README 提交到仓库",
                         confidence=0.89,
                         source_rank="declared",
+                        current_state="active",
+                        valid_from="2026-04-08T00:00:00+08:00",
+                        provenance_refs=[{"date": "2026-04-08", "kind": "intent"}],
+                    )
+                ],
+                recent_events=[
+                    EventItem(
+                        id="event_001",
+                        event_id="event_001",
+                        project="OpenMy",
+                        summary="决定先做 CLI 再做前端。",
+                        happened_at="2026-04-08T22:10:00+08:00",
+                        current_state="past",
+                        valid_from="2026-04-08T22:10:00+08:00",
+                        valid_until="2026-04-08T22:10:00+08:00",
+                        provenance_refs=[{"date": "2026-04-08", "kind": "meta.event"}],
                     )
                 ],
                 entity_rollups=[
@@ -176,6 +227,16 @@ class TestActiveContextModel(unittest.TestCase):
 
         self.assertEqual(restored.stable_profile.identity.canonical_name, "周瑟夫")
         self.assertFalse(hasattr(restored, "unknown_top_level"))
+
+    def test_from_dict_backfills_core_memory_for_legacy_payload(self):
+        context = self.make_context().to_dict()
+        context.pop("core_memory", None)
+        context["rolling_context"].pop("recent_events", None)
+
+        restored = ActiveContext.from_dict(context)
+
+        self.assertEqual(restored.core_memory.current_focus, [])
+        self.assertEqual(restored.rolling_context.recent_events, [])
 
 
 if __name__ == "__main__":

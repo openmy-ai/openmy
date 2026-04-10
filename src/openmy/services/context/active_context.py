@@ -56,6 +56,9 @@ class ItemBase:
     reinforcement_count: int = 0
     stale: bool = False
     provenance_refs: list[dict[str, str]] = field(default_factory=list)
+    valid_from: str = ""
+    valid_until: str = ""
+    current_state: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +126,18 @@ class StableProfile:
     durable_constraints: list[ConstraintItem] = field(default_factory=list)
     routine_signals: list[RoutineItem] = field(default_factory=list)
     key_people_registry: list[EntityRegistryCard] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# 核心层：core_memory
+# ---------------------------------------------------------------------------
+@dataclass
+class CoreMemory:
+    focus_projects: list["ProjectCard"] = field(default_factory=list)
+    open_loops: list["OpenLoop"] = field(default_factory=list)
+    active_decisions: list["DecisionItem"] = field(default_factory=list)
+    key_people: list[EntityRegistryCard] = field(default_factory=list)
+    current_focus: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -202,11 +217,21 @@ class TopicRollup:
 
 
 @dataclass
+class EventItem(ItemBase):
+    event_id: str = ""
+    project: str = ""
+    summary: str = ""
+    happened_at: str = ""
+    time_label: str = ""
+
+
+@dataclass
 class RollingContext:
     recent_changes: list[ChangeItem] = field(default_factory=list)
     active_projects: list[ProjectCard] = field(default_factory=list)
     open_loops: list[OpenLoop] = field(default_factory=list)
     recent_decisions: list[DecisionItem] = field(default_factory=list)
+    recent_events: list[EventItem] = field(default_factory=list)
     belief_shifts: list[BeliefShift] = field(default_factory=list)
     entity_rollups: list[EntityRollup] = field(default_factory=list)
     topic_rollups: list[TopicRollup] = field(default_factory=list)
@@ -278,6 +303,7 @@ class ActiveContext:
     status_line: str = ""
 
     stable_profile: StableProfile = field(default_factory=StableProfile)
+    core_memory: CoreMemory = field(default_factory=CoreMemory)
     rolling_context: RollingContext = field(default_factory=RollingContext)
     realtime_context: RealtimeContext = field(default_factory=RealtimeContext)
     quality: QualityMetrics = field(default_factory=QualityMetrics)
@@ -342,6 +368,27 @@ class ActiveContext:
             ],
         )
 
+        cm = data.get("core_memory", {})
+        ctx.core_memory = CoreMemory(
+            focus_projects=[
+                _load_dataclass(ProjectCard, p)
+                for p in cm.get("focus_projects", [])
+            ],
+            open_loops=[
+                _load_dataclass(OpenLoop, o)
+                for o in cm.get("open_loops", [])
+            ],
+            active_decisions=[
+                _load_dataclass(DecisionItem, d)
+                for d in cm.get("active_decisions", [])
+            ],
+            key_people=[
+                _load_dataclass(EntityRegistryCard, e)
+                for e in cm.get("key_people", [])
+            ],
+            current_focus=cm.get("current_focus", []),
+        )
+
         # rolling_context
         rc = data.get("rolling_context", {})
         ctx.rolling_context = RollingContext(
@@ -360,6 +407,10 @@ class ActiveContext:
             recent_decisions=[
                 _load_dataclass(DecisionItem, d)
                 for d in rc.get("recent_decisions", [])
+            ],
+            recent_events=[
+                _load_dataclass(EventItem, e)
+                for e in rc.get("recent_events", [])
             ],
             belief_shifts=[
                 _load_dataclass(BeliefShift, b)

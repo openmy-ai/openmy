@@ -11,14 +11,16 @@ from pathlib import Path
 from typing import Any
 
 from openmy.config import ROLE_RECOGNITION_ENABLED
-from openmy.domain.intent import DONE_STATUSES, Intent, intent_to_loop_type, should_generate_open_loop
+from openmy.domain.intent import DONE_STATUSES, Event, Fact, Intent, intent_to_loop_type, should_generate_open_loop
 from openmy.services.context.active_context import (
     ActiveContext,
     ChangeItem,
     CommunicationContract,
+    CoreMemory,
     DecisionItem,
     EntityRegistryCard,
     EntityRollup,
+    EventItem,
     Identity,
     IngestionHealth,
     OpenLoop,
@@ -88,6 +90,34 @@ def _slug(prefix: str, text: str) -> str:
     cleaned = re.sub(r"[^\w\u4e00-\u9fff]+", "_", text).strip("_").lower()
     cleaned = cleaned[:40] if cleaned else "item"
     return f"{prefix}_{cleaned}"
+
+
+def _iso_at(date_str: str, time_str: str = "00:00") -> str:
+    cleaned_time = time_str.strip() or "00:00"
+    if not re.match(r"^\d{2}:\d{2}$", cleaned_time):
+        cleaned_time = "00:00"
+    return f"{date_str}T{cleaned_time}:00+08:00"
+
+
+def _build_provenance(
+    *,
+    date_str: str,
+    kind: str,
+    scene_id: str = "",
+    recording_id: str = "",
+    quote: str = "",
+    source_path: str = "",
+) -> list[dict[str, str]]:
+    return [
+        {
+            "date": date_str,
+            "kind": kind,
+            "scene_id": scene_id,
+            "recording_id": recording_id,
+            "quote": quote,
+            "source_path": source_path,
+        }
+    ]
 
 
 def _extract_projects(briefing: dict[str, Any], meta: dict[str, Any]) -> dict[str, list[str]]:
@@ -164,6 +194,19 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                     source_rank="declared",
                     confidence=intent.confidence_score or 0.8,
                     last_seen_at=f"{date_str}T23:59:59+08:00",
+                    valid_from=intent.valid_from or _iso_at(date_str),
+                    valid_until=intent.valid_until or "",
+                    current_state="future"
+                    if intent.due.iso_date and intent.due.iso_date > date_str
+                    else "active",
+                    provenance_refs=_build_provenance(
+                        date_str=date_str,
+                        kind="intent",
+                        scene_id=intent.source_scene_id,
+                        recording_id=intent.source_recording_id,
+                        quote=intent.evidence_quote,
+                        source_path=f"{date_str}.meta.json",
+                    ),
                 ),
             )
         return list(loops.values())
@@ -188,6 +231,13 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                 source_rank="aggregate",
                 confidence=0.8,
                 last_seen_at=f"{date_str}T23:59:59+08:00",
+                valid_from=_iso_at(date_str),
+                current_state="active",
+                provenance_refs=_build_provenance(
+                    date_str=date_str,
+                    kind="briefing.todo",
+                    source_path="daily_briefing.json",
+                ),
             ),
         )
 
@@ -216,6 +266,13 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                 source_rank="declared",
                 confidence=0.9,
                 last_seen_at=f"{date_str}T23:59:59+08:00",
+                valid_from=_iso_at(date_str),
+                current_state="active",
+                provenance_refs=_build_provenance(
+                    date_str=date_str,
+                    kind="meta.todo",
+                    source_path=f"{date_str}.meta.json",
+                ),
             ),
         )
 
@@ -236,6 +293,7 @@ def _filter_stale_loops(loops: list[OpenLoop], stale_days: int = 3, expire_days:
                     continue  # 超过 7 天，踢出
                 if age >= stale_days:
                     loop.status = "stale"
+                    loop.current_state = "stale"
             except (ValueError, TypeError):
                 pass
         result.append(loop)
@@ -267,6 +325,8 @@ def _auto_close_loops(
             # 模糊匹配：done_what 包含在 loop title 里，或反过来
             if done_what in title_lower or title_lower in done_what:
                 loop.status = "closed"
+                loop.current_state = "closed"
+                loop.valid_until = date.today().isoformat() + "T23:59:59+08:00"
                 break
 
 
@@ -296,6 +356,17 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
                     effective_from=f"{date_str}T12:00:00+08:00",
                     source_rank="declared",
                     confidence=intent.confidence_score or 0.9,
+                    valid_from=intent.valid_from or _iso_at(date_str),
+                    valid_until=intent.valid_until or "",
+                    current_state=intent.current_state or "active",
+                    provenance_refs=_build_provenance(
+                        date_str=date_str,
+                        kind="intent.decision",
+                        scene_id=intent.source_scene_id,
+                        recording_id=intent.source_recording_id,
+                        quote=intent.evidence_quote,
+                        source_path=f"{date_str}.meta.json",
+                    ),
                 ),
             )
         return list(items.values())
@@ -315,6 +386,13 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
                 effective_from=f"{date_str}T12:00:00+08:00",
                 source_rank="aggregate",
                 confidence=0.8,
+                valid_from=_iso_at(date_str),
+                current_state="active",
+                provenance_refs=_build_provenance(
+                    date_str=date_str,
+                    kind="briefing.decision",
+                    source_path="daily_briefing.json",
+                ),
             ),
         )
 
@@ -338,10 +416,54 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
                 effective_from=f"{date_str}T12:00:00+08:00",
                 source_rank="declared",
                 confidence=0.9,
+                valid_from=_iso_at(date_str),
+                current_state="active",
+                provenance_refs=_build_provenance(
+                    date_str=date_str,
+                    kind="meta.decision",
+                    source_path=f"{date_str}.meta.json",
+                ),
             ),
         )
 
     return list(items.values())
+
+
+def _make_recent_events(meta: dict[str, Any], date_str: str) -> list[EventItem]:
+    events: list[EventItem] = []
+    for raw in meta.get("events", []):
+        if not isinstance(raw, dict):
+            continue
+        event = Event.from_dict(raw)
+        summary = event.summary.strip() or str(raw.get("summary", "")).strip()
+        if not summary:
+            continue
+        time_label = event.time.strip() or str(raw.get("time", "")).strip()
+        happened_at = event.valid_from or _iso_at(date_str, time_label or "00:00")
+        events.append(
+            EventItem(
+                id=event.event_id or _slug("event", f"{date_str}_{summary}"),
+                event_id=event.event_id or _slug("event", f"{date_str}_{summary}"),
+                project=event.project.strip() or str(raw.get("project", "")).strip(),
+                summary=summary,
+                happened_at=happened_at,
+                time_label=time_label,
+                confidence=event.confidence_score or 0.8,
+                source_rank="declared",
+                valid_from=happened_at,
+                valid_until=event.valid_until or happened_at,
+                current_state=event.current_state or "past",
+                provenance_refs=event.provenance_refs
+                or _build_provenance(
+                    date_str=date_str,
+                    kind="meta.event",
+                    scene_id=event.source_scene_id,
+                    recording_id=event.source_recording_id,
+                    source_path=f"{date_str}.meta.json",
+                ),
+            )
+        )
+    return events
 
 
 def _today_state_from_scenes(scenes: list[dict[str, Any]]) -> TodayState:
@@ -431,6 +553,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
     all_projects: dict[str, dict[str, Any]] = {}
     all_loops: dict[str, OpenLoop] = {}
     all_decisions: dict[str, DecisionItem] = {}
+    all_events: list[EventItem] = []
     all_metas_for_close: list[dict[str, Any]] = []
     recent_changes: list[ChangeItem] = []
     scene_count_7d = 0
@@ -487,6 +610,8 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
         for decision in _make_decisions(briefing_payload, meta_payload, date_str):
             all_decisions.setdefault(decision.decision, decision)
 
+        all_events.extend(_make_recent_events(meta_payload, date_str))
+
         for project_title, snippets in _extract_projects(briefing_payload, meta_payload).items():
             if not project_title:
                 continue
@@ -494,6 +619,12 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
                 "title": project_title,
                 "snippets": snippets,
                 "last_touched_at": f"{date_str}T23:59:59+08:00",
+                "valid_from": _iso_at(date_str),
+                "provenance_refs": _build_provenance(
+                    date_str=date_str,
+                    kind="project.aggregate",
+                    source_path=f"{date_str}.meta.json",
+                ),
             }
 
         if delta_days <= 2:
@@ -564,6 +695,9 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
                 last_touched_at=info["snippets"]["last_touched_at"],
                 confidence=0.85,
                 source_rank="aggregate",
+                valid_from=info["snippets"].get("valid_from", ""),
+                current_state="active",
+                provenance_refs=info["snippets"].get("provenance_refs", []),
             )
             for title, info in sorted(filtered_projects.items())
         ],
@@ -573,6 +707,11 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             key=lambda item: item.effective_from,
             reverse=True,
         )[:10],
+        recent_events=sorted(
+            all_events,
+            key=lambda item: item.happened_at,
+            reverse=True,
+        )[:15],
         belief_shifts=[],
         entity_rollups=[
             EntityRollup(
@@ -608,6 +747,30 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             for item in latest_meta.get("todos", [])
             if isinstance(item, dict) and str(item.get("task", "")).strip()
         ]
+
+    ctx.core_memory = CoreMemory(
+        focus_projects=[
+            item
+            for item in ctx.rolling_context.active_projects
+            if item.confidence >= 0.8 and item.current_state == "active"
+        ][:3],
+        open_loops=[
+            item
+            for item in ctx.rolling_context.open_loops
+            if item.confidence >= 0.75 and item.current_state in {"active", "future"}
+        ][:5],
+        active_decisions=[
+            item
+            for item in ctx.rolling_context.recent_decisions
+            if item.current_state == "active"
+        ][:5],
+        key_people=[
+            item
+            for item in ctx.stable_profile.key_people_registry
+            if item.confidence >= 0.8
+        ][:5],
+        current_focus=latest_events[:3] if latest_events else [],
+    )
 
     unresolved_ratio_1d = 0.0
     if latest_scenes and ROLE_RECOGNITION_ENABLED:
