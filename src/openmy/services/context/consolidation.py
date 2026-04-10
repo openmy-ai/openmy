@@ -10,6 +10,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from openmy.config import ROLE_RECOGNITION_ENABLED
 from openmy.domain.intent import DONE_STATUSES, Intent, intent_to_loop_type, should_generate_open_loop
 from openmy.services.context.active_context import (
     ActiveContext,
@@ -350,7 +351,10 @@ def _today_state_from_scenes(scenes: list[dict[str, Any]]) -> TodayState:
     summaries = " ".join(str(scene.get("summary", "")) for scene in scenes)
     primary_mode = "design" if any(word in summaries for word in ["OpenMy", "CLI", "设计", "代码"]) else "conversation"
     energy = "high" if len(scenes) >= 6 else "medium"
-    interaction_load = "high" if len({scene.get("role", {}).get("addressed_to", "") for scene in scenes if scene.get("role", {}).get("addressed_to", "")}) >= 2 else "medium"
+    if ROLE_RECOGNITION_ENABLED:
+        interaction_load = "high" if len({scene.get("role", {}).get("addressed_to", "") for scene in scenes if scene.get("role", {}).get("addressed_to", "")}) >= 2 else "medium"
+    else:
+        interaction_load = "medium"
 
     top_words = []
     for scene in scenes:
@@ -457,24 +461,25 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
         if delta_days <= 6:
             scene_count_7d += len(scenes)
 
-        for scene in scenes:
-            role = scene.get("role", {}) if isinstance(scene.get("role", {}), dict) else {}
-            addressed_to = str(role.get("addressed_to", "")).strip()
-            if not addressed_to:
-                continue
+        if ROLE_RECOGNITION_ENABLED:
+            for scene in scenes:
+                role = scene.get("role", {}) if isinstance(scene.get("role", {}), dict) else {}
+                addressed_to = str(role.get("addressed_to", "")).strip()
+                if not addressed_to:
+                    continue
 
-            addressed_date_hits[addressed_to].add(date_str)
-            if delta_days <= 6:
-                addressed_counts_7d[addressed_to] += 1
-            if delta_days <= 29:
-                addressed_counts_30d[addressed_to] += 1
+                addressed_date_hits[addressed_to].add(date_str)
+                if delta_days <= 6:
+                    addressed_counts_7d[addressed_to] += 1
+                if delta_days <= 29:
+                    addressed_counts_30d[addressed_to] += 1
 
-            summary = str(scene.get("summary", "")).strip()
-            if summary and summary not in addressed_topics[addressed_to]:
-                addressed_topics[addressed_to].append(summary)
+                summary = str(scene.get("summary", "")).strip()
+                if summary and summary not in addressed_topics[addressed_to]:
+                    addressed_topics[addressed_to].append(summary)
 
-            if delta_days <= 6 and bool(role.get("needs_review")):
-                uncertain_count_7d += 1
+                if delta_days <= 6 and bool(role.get("needs_review")):
+                    uncertain_count_7d += 1
 
         for loop in _make_open_loops(briefing_payload, meta_payload, date_str):
             all_loops.setdefault(loop.title, loop)
@@ -605,7 +610,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
         ]
 
     unresolved_ratio_1d = 0.0
-    if latest_scenes:
+    if latest_scenes and ROLE_RECOGNITION_ENABLED:
         unresolved_count = sum(
             1
             for scene in latest_scenes

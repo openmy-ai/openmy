@@ -392,7 +392,7 @@ class TestOpenMyCli(unittest.TestCase):
             self.cleanup_day_dir(date_str)
 
     def test_cli_roles_generates_scenes(self):
-        """openmy roles 应该从 transcript 生成 scenes.json。"""
+        """openmy roles 应该只切场景，不再自动做角色识别。"""
         date_str = "2099-01-04"
         day_dir = self.make_day_dir(date_str)
         (day_dir / "transcript.md").write_text(
@@ -410,6 +410,10 @@ class TestOpenMyCli(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue((day_dir / "scenes.json").exists())
+            payload = json.loads((day_dir / "scenes.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["stats"]["role_distribution"], {})
+            self.assertEqual(payload["stats"]["needs_review_count"], 0)
+            self.assertEqual(payload["scenes"][0]["role"]["addressed_to"], "")
         finally:
             self.cleanup_day_dir(date_str)
 
@@ -438,8 +442,8 @@ class TestOpenMyCli(unittest.TestCase):
         finally:
             self.cleanup_day_dir(date_str)
 
-    def test_cli_distill_passes_role_hint_to_summarizer(self):
-        """openmy distill 应该把 addressed_to 传进蒸馏 prompt。"""
+    def test_cli_distill_ignores_role_hint_when_roles_are_frozen(self):
+        """openmy distill 不应继续把角色标签塞进蒸馏 prompt。"""
         date_str = "2099-01-11"
         day_dir = self.make_day_dir(date_str)
         (day_dir / "scenes.json").write_text(
@@ -481,7 +485,6 @@ class TestOpenMyCli(unittest.TestCase):
                 "老婆，今天晚上吃火锅。",
                 "test-key",
                 GEMINI_MODEL,
-                role_info="老婆",
             )
             payload = json.loads((day_dir / "scenes.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["scenes"][0]["summary"], "新的摘要")
@@ -794,6 +797,7 @@ class TestOpenMyCli(unittest.TestCase):
             status_payload = json.loads((day_dir / "run_status.json").read_text(encoding="utf-8"))
             self.assertEqual(status_payload["status"], "partial")
             self.assertEqual(status_payload["current_step"], "extract_core")
+            self.assertEqual(status_payload["steps"]["roles"]["status"], "skipped")
             self.assertEqual(status_payload["steps"]["briefing"]["status"], "completed")
             self.assertEqual(status_payload["steps"]["extract_core"]["status"], "failed")
             self.assertIn("超时", status_payload["steps"]["extract_core"]["message"])
@@ -890,6 +894,7 @@ class TestOpenMyCli(unittest.TestCase):
 
             status_payload = json.loads((day_dir / "run_status.json").read_text(encoding="utf-8"))
             self.assertEqual(status_payload["status"], "completed")
+            self.assertEqual(status_payload["steps"]["roles"]["status"], "skipped")
             self.assertEqual(status_payload["steps"]["extract_core"]["status"], "completed")
             self.assertEqual(status_payload["steps"]["consolidate"]["status"], "completed")
             self.assertEqual(status_payload["steps"]["extract_enrich"]["status"], "failed")
