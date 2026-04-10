@@ -21,7 +21,7 @@ import os
 
 # 向后兼容：旧代码仍会直接 import GEMINI_MODEL
 GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
-DEFAULT_STT_PROVIDER = "gemini"
+DEFAULT_STT_PROVIDER = "faster-whisper"
 DEFAULT_LLM_PROVIDER = "gemini"
 DEFAULT_STT_MODELS = {
     "gemini": GEMINI_MODEL,

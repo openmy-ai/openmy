@@ -261,8 +261,8 @@ class TestOpenMyCli(unittest.TestCase):
         self.assertEqual(forwarded_args.stt_model, "small")
         self.assertTrue(forwarded_args.stt_vad)
 
-    def test_cli_quick_start_reports_missing_gemini_key_in_plain_chinese(self):
-        """quick-start 缺 key 时应该给中文人话提示。"""
+    def test_cli_quick_start_reports_missing_gemini_key_in_plain_chinese_when_using_gemini(self):
+        """切到 Gemini 转写时，quick-start 缺 key 应该给中文人话提示。"""
         audio_path = PROJECT_ROOT / "tests" / "fixtures" / "sample.wav"
         audio_path.parent.mkdir(parents=True, exist_ok=True)
         audio_path.write_bytes(b"wav")
@@ -276,6 +276,7 @@ class TestOpenMyCli(unittest.TestCase):
         try:
             env = os.environ.copy()
             env.pop("GEMINI_API_KEY", None)
+            env["OPENMY_STT_PROVIDER"] = "gemini"
 
             result = subprocess.run(
                 [sys.executable, "-m", "openmy", "quick-start", str(audio_path)],

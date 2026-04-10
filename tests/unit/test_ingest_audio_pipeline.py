@@ -24,7 +24,7 @@ class OffsetTimeLabelTest(unittest.TestCase):
 
 
 class PrepareAudioChunksTest(unittest.TestCase):
-    def test_returns_empty_when_stripped_audio_too_short(self):
+    def test_falls_back_to_original_audio_when_stripped_audio_too_short(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             audio_path = Path(tmp_dir) / "TX01_MIC005_20260408_131552_orig.wav"
             audio_path.write_bytes(b"wav")
@@ -32,17 +32,18 @@ class PrepareAudioChunksTest(unittest.TestCase):
             with (
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.run_ffmpeg",
-                    side_effect=[None],
+                    side_effect=[None, None],
                 ) as ffmpeg_mock,
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.probe_duration_seconds",
-                    return_value=2,
+                    side_effect=[2, 12],
                 ),
             ):
                 chunks = prepare_audio_chunks(audio_path, Path(tmp_dir), chunk_minutes=10)
 
-            self.assertEqual(chunks, [])
-            self.assertEqual(ffmpeg_mock.call_count, 1)
+            self.assertEqual(len(chunks), 1)
+            self.assertEqual(chunks[0].time_label, "13:15")
+            self.assertEqual(ffmpeg_mock.call_count, 2)
 
 
 class TranscribeAudioFilesTest(unittest.TestCase):
