@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from openmy.config import get_llm_api_key, get_stage_llm_model
-from openmy.domain.models import RoleTag, SceneBlock
+from openmy.domain.models import RoleTag, SceneBlock, ScreenContext
 from openmy.providers.registry import ProviderRegistry
 from openmy.services.segmentation.segmenter import segment
 
@@ -50,7 +50,7 @@ COMPILED_DECLARATIONS = [
 
 KEYWORD_RULES = {
     'ai': [
-        'Claude', 'GPT', 'ChatGPT', 'Gemini', 'Codex', 'Screenpipe',
+        'Claude', 'GPT', 'ChatGPT', 'Gemini', 'Codex',
         'prompt', '模型', '代码', '上下文', 'API', 'token', '总结一下',
         '改一下代码', '跑一下', 'skill', 'MCP', 'Antigravity', 'StreamDeck', 'Stream Deck',
     ],
@@ -302,17 +302,86 @@ def tag_all_scenes(scenes: list[SceneBlock]) -> list[SceneBlock]:
     return scenes
 
 
+def apply_screen_context_role_adjustments(scene: SceneBlock) -> SceneBlock:
+    context = getattr(scene, "screen_context", None)
+    if not context or not context.aligned:
+        return scene
+
+    tags = set(context.tags or [])
+    role = scene.role
+    summary = context.summary or context.primary_app or "屏幕上下文"
+
+    def _set_role(role_key: str, confidence: float, evidence: str) -> None:
+        role.category = role_key
+        role.scene_type = role_key
+        role.scene_type_label = ROLE_LABELS.get(role_key, "不确定")
+        role.confidence = confidence
+        role.source = "screen_hint"
+        role.source_label = "屏幕语境"
+        role.evidence = evidence
+        role.evidence_chain = [evidence]
+        role.needs_review = confidence < 0.6
+
+    if role.scene_type == "uncertain":
+        if "development" in tags:
+            _set_role("self", 0.55, f"屏幕语境显示开发语境：{summary}")
+        elif "communication" in tags:
+            _set_role("interpersonal", 0.55, f"屏幕语境显示人与人沟通：{summary}")
+        elif {"merchant", "shopping", "payment"} & tags:
+            _set_role("merchant", 0.55, f"屏幕语境显示交易或商家场景：{summary}")
+        return scene
+
+    if role.scene_type == "self" and "development" in tags:
+        role.confidence = min(0.9, max(role.confidence, 0.65))
+        role.evidence_chain.append(f"屏幕语境验证：{summary}")
+        return scene
+
+    if role.scene_type == "interpersonal" and "communication" in tags:
+        role.confidence = min(0.9, max(role.confidence, 0.7))
+        role.evidence_chain.append(f"屏幕语境验证：{summary}")
+        return scene
+
+    if role.scene_type == "merchant" and {"merchant", "shopping", "payment"} & tags:
+        role.confidence = min(0.9, max(role.confidence, 0.7))
+        role.evidence_chain.append(f"屏幕语境验证：{summary}")
+        return scene
+
+    conflict = False
+    if role.scene_type == "interpersonal" and {"merchant", "shopping", "payment"} & tags:
+        conflict = True
+    elif role.scene_type == "merchant" and "communication" in tags:
+        conflict = True
+    elif role.scene_type == "ai" and {"merchant", "communication"} & tags:
+        conflict = True
+
+    if conflict:
+        role.needs_review = True
+        role.evidence_chain.append(f"⚠️ 屏幕语境冲突：{summary}")
+        context.evidence_conflict = True
+    return scene
+
+
 def resolve_roles(
     scenes: list[SceneBlock],
     date_str: str | None = None,
     screen_client=None,
 ) -> list[SceneBlock]:
     scenes = tag_all_scenes(scenes)
+    for scene in scenes:
+        scene.screen_sessions = []
+        scene.screen_context = ScreenContext()
     if screen_client:
         try:
-            from openmy.services.screen_recognition.hints import enrich_with_hints
+            from openmy.services.screen_recognition.enrich import enrich_scenes_with_screen_context
+            from openmy.services.screen_recognition.provider import ScreenContextProvider
+            from openmy.services.screen_recognition.settings import load_screen_context_settings
 
-            scenes = enrich_with_hints(scenes, screen_client, date_str)
+            provider = ScreenContextProvider(
+                client=screen_client,
+                settings=load_screen_context_settings(),
+            )
+            scenes = enrich_scenes_with_screen_context(scenes, provider, date_str)
+            scenes = [apply_screen_context_role_adjustments(scene) for scene in scenes]
         except Exception:
             pass
     return scenes
