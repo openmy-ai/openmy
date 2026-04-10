@@ -46,6 +46,69 @@ class PrepareAudioChunksTest(unittest.TestCase):
 
 
 class TranscribeAudioFilesTest(unittest.TestCase):
+    def test_writes_structured_transcription_artifact_for_local_provider(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            audio_one = tmp_path / "TX01_MIC005_20260408_131552_orig.wav"
+            audio_one.write_bytes(b"wav")
+
+            chunk_one = tmp_path / "seg_1.mp3"
+            chunk_one.write_bytes(b"mp3")
+
+            fake_result = {
+                "text": "第一段",
+                "language": "zh",
+                "duration_seconds": 12.3,
+                "segments": [
+                    {
+                        "id": "seg_0001",
+                        "text": "第一段",
+                        "start": 0.0,
+                        "end": 12.3,
+                        "speaker": "",
+                        "words": [],
+                    }
+                ],
+                "provider_metadata": {"provider": "faster-whisper", "model": "small"},
+            }
+
+            with (
+                mock.patch.dict(
+                    "os.environ",
+                    {
+                        "OPENMY_STT_PROVIDER": "faster-whisper",
+                        "OPENMY_STT_MODEL": "small",
+                    },
+                    clear=True,
+                ),
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.prepare_audio_chunks",
+                    return_value=[PreparedChunk(path=chunk_one, time_label="13:15")],
+                ),
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.load_vocab_terms",
+                    return_value="OpenMy",
+                ),
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.transcribe_audio",
+                    return_value=fake_result,
+                ),
+            ):
+                output_path = transcribe_audio_files(
+                    date_str="2026-04-08",
+                    audio_files=[str(audio_one)],
+                    output_dir=tmp_path,
+                )
+
+            content = output_path.read_text(encoding="utf-8")
+            self.assertIn("第一段", content)
+
+            structured_path = tmp_path / "transcript.transcription.json"
+            self.assertTrue(structured_path.exists())
+            payload = structured_path.read_text(encoding="utf-8")
+            self.assertIn("faster-whisper", payload)
+            self.assertIn("13:15", payload)
+
     def test_uses_prepared_chunks_instead_of_raw_audio(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -81,7 +144,11 @@ class TranscribeAudioFilesTest(unittest.TestCase):
                 ),
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.transcribe_audio",
-                    side_effect=["第一段", "第二段-1", "第二段-2"],
+                    side_effect=[
+                        {"text": "第一段", "language": "zh", "duration_seconds": 1.0, "segments": [], "provider_metadata": {}},
+                        {"text": "第二段-1", "language": "zh", "duration_seconds": 1.0, "segments": [], "provider_metadata": {}},
+                        {"text": "第二段-2", "language": "zh", "duration_seconds": 1.0, "segments": [], "provider_metadata": {}},
+                    ],
                 ) as transcribe_mock,
             ):
                 output_path = transcribe_audio_files(
@@ -125,7 +192,11 @@ class TranscribeAudioFilesTest(unittest.TestCase):
                 ),
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.transcribe_audio",
-                    side_effect=[RuntimeError("Premature close"), RuntimeError("Premature close"), "第三次成功"],
+                    side_effect=[
+                        RuntimeError("Premature close"),
+                        RuntimeError("Premature close"),
+                        {"text": "第三次成功", "language": "zh", "duration_seconds": 1.0, "segments": [], "provider_metadata": {}},
+                    ],
                 ) as transcribe_mock,
                 mock.patch("openmy.services.ingest.audio_pipeline.time.sleep") as sleep_mock,
             ):

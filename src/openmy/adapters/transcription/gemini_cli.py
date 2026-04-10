@@ -40,11 +40,14 @@ def transcribe_audio(
 ) -> str:
     """向后兼容旧函数签名，内部走 provider registry。"""
     provider = ProviderRegistry.from_env().get_stt_provider(model=model, api_key=api_key)
-    return provider.transcribe(
+    result = provider.transcribe(
         audio_path,
         vocab_terms=vocab_terms,
         timeout_seconds=timeout_seconds,
     )
+    if isinstance(result, str):
+        return result
+    return result.text
 
 
 # ---- 向后兼容旧接口 ----

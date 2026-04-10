@@ -10,11 +10,13 @@ from openmy.config import (
     get_stt_provider_name,
 )
 from openmy.providers.llm.gemini import GeminiLLMProvider
+from openmy.providers.stt.faster_whisper import FasterWhisperSTTProvider
 from openmy.providers.stt.gemini import GeminiSTTProvider
 
 
 STT_PROVIDERS = {
     "gemini": GeminiSTTProvider,
+    "faster-whisper": FasterWhisperSTTProvider,
 }
 
 LLM_PROVIDERS = {
@@ -34,13 +36,20 @@ class ProviderRegistry:
             llm_provider_name=get_llm_provider_name(),
         )
 
-    def get_stt_provider(self, *, model: str | None = None, api_key: str | None = None):
-        provider_cls = STT_PROVIDERS.get(self.stt_provider_name)
+    def get_stt_provider(
+        self,
+        *,
+        provider_name: str | None = None,
+        model: str | None = None,
+        api_key: str | None = None,
+    ):
+        final_provider_name = (provider_name or self.stt_provider_name).lower()
+        provider_cls = STT_PROVIDERS.get(final_provider_name)
         if provider_cls is None:
-            raise ValueError(f"未知 STT provider: {self.stt_provider_name}")
+            raise ValueError(f"未知 STT provider: {final_provider_name}")
         return provider_cls(
-            api_key=api_key if api_key is not None else get_stt_api_key(),
-            model=model or get_stt_model(),
+            api_key=api_key if api_key is not None else get_stt_api_key(final_provider_name),
+            model=model or get_stt_model(final_provider_name),
         )
 
     def get_llm_provider(

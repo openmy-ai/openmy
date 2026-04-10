@@ -23,6 +23,11 @@ import os
 GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
 DEFAULT_STT_PROVIDER = "gemini"
 DEFAULT_LLM_PROVIDER = "gemini"
+DEFAULT_STT_MODELS = {
+    "gemini": GEMINI_MODEL,
+    "faster-whisper": "small",
+}
+LOCAL_STT_PROVIDERS = {"faster-whisper"}
 
 
 def _read_env(*names: str) -> str:
@@ -35,6 +40,13 @@ def _read_env(*names: str) -> str:
     return ""
 
 
+def _read_bool_env(*names: str, default: bool = False) -> bool:
+    value = _read_env(*names).lower()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on"}
+
+
 def get_stt_provider_name() -> str:
     return (_read_env("OPENMY_STT_PROVIDER") or DEFAULT_STT_PROVIDER).lower()
 
@@ -43,8 +55,10 @@ def get_llm_provider_name() -> str:
     return (_read_env("OPENMY_LLM_PROVIDER") or DEFAULT_LLM_PROVIDER).lower()
 
 
-def get_stt_model() -> str:
-    return _read_env("OPENMY_STT_MODEL", "GEMINI_MODEL") or GEMINI_MODEL
+def get_stt_model(provider_name: str | None = None) -> str:
+    final_provider = (provider_name or get_stt_provider_name()).lower()
+    fallback = DEFAULT_STT_MODELS.get(final_provider, GEMINI_MODEL)
+    return _read_env("OPENMY_STT_MODEL", "GEMINI_MODEL") or fallback
 
 
 def get_llm_model() -> str:
@@ -61,10 +75,16 @@ def get_stage_llm_model(stage: str | None = None) -> str:
     return _read_env(stage_env, "OPENMY_LLM_MODEL", "GEMINI_MODEL") or GEMINI_MODEL
 
 
-def get_stt_api_key() -> str:
-    if get_stt_provider_name() == "gemini":
+def get_stt_api_key(provider_name: str | None = None) -> str:
+    final_provider = (provider_name or get_stt_provider_name()).lower()
+    if final_provider == "gemini":
         return _read_env("OPENMY_STT_API_KEY", "GEMINI_API_KEY")
     return _read_env("OPENMY_STT_API_KEY")
+
+
+def stt_provider_requires_api_key(provider_name: str | None = None) -> bool:
+    final_provider = (provider_name or get_stt_provider_name()).lower()
+    return final_provider not in LOCAL_STT_PROVIDERS
 
 
 def get_llm_api_key(stage: str | None = None) -> str:
@@ -79,8 +99,10 @@ def get_llm_api_key(stage: str | None = None) -> str:
     return _read_env(stage_env, "OPENMY_LLM_API_KEY")
 
 
-def has_stt_credentials() -> bool:
-    return bool(get_stt_api_key())
+def has_stt_credentials(provider_name: str | None = None) -> bool:
+    if not stt_provider_requires_api_key(provider_name):
+        return True
+    return bool(get_stt_api_key(provider_name))
 
 
 def has_llm_credentials(stage: str | None = None) -> bool:
@@ -142,6 +164,16 @@ DISTILL_THINKING_LEVEL = "medium"
 
 # 音频管线中单文件转写超时
 AUDIO_PIPELINE_TIMEOUT = 1800
+STT_VAD_ENABLED = False
+STT_WORD_TIMESTAMPS_ENABLED = False
+
+
+def get_stt_vad_enabled() -> bool:
+    return _read_bool_env("OPENMY_STT_VAD", default=STT_VAD_ENABLED)
+
+
+def get_stt_word_timestamps_enabled() -> bool:
+    return _read_bool_env("OPENMY_STT_WORD_TIMESTAMPS", default=STT_WORD_TIMESTAMPS_ENABLED)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

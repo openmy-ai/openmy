@@ -3,7 +3,11 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from openmy.providers.base import SpeechToTextProvider
+from openmy.providers.base import (
+    SpeechToTextProvider,
+    TranscriptionResult,
+    TranscriptionSegment,
+)
 
 try:
     from google import genai
@@ -42,7 +46,9 @@ class GeminiSTTProvider(SpeechToTextProvider):
         *,
         vocab_terms: str = "",
         timeout_seconds: int,
-    ) -> str:
+        vad_filter: bool = False,
+        word_timestamps: bool = False,
+    ) -> TranscriptionResult:
         if getattr(genai, "Client", None) is None:
             raise RuntimeError("Gemini SDK 不可用：缺少 google-genai")
         if not self.api_key:
@@ -75,4 +81,20 @@ class GeminiSTTProvider(SpeechToTextProvider):
         text = response.text.strip() if response.text else ""
         if not text:
             raise RuntimeError(f"Gemini API 没有返回转写内容: {audio_path.name}")
-        return text
+        return TranscriptionResult(
+            text=text,
+            language="zh",
+            duration_seconds=0.0,
+            segments=[
+                TranscriptionSegment(
+                    id="seg_0001",
+                    text=text,
+                )
+            ],
+            provider_metadata={
+                "provider": self.name,
+                "model": self.model,
+                "vad_filter": vad_filter,
+                "word_timestamps": word_timestamps,
+            },
+        )
