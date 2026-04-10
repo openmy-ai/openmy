@@ -13,10 +13,21 @@ class TestContextQueryCli(unittest.TestCase):
             ["skill", "context.query", "--kind", "project", "--query", "OpenMy", "--json"]
         )
 
-        payload = {"kind": "project", "query": "OpenMy", "summary": "OpenMy 最近在补查询接口。"}
+        payload = {
+            "ok": True,
+            "action": "context.query",
+            "version": "v1",
+            "data": {
+                "result": {
+                    "kind": "project",
+                    "query": "OpenMy",
+                    "summary": "OpenMy 最近在补查询接口。",
+                }
+            },
+        }
 
         with (
-            patch("openmy.cli.query_context", return_value=payload),
+            patch("openmy.skill_dispatch.dispatch_skill_action", return_value=(payload, 0)),
             patch("openmy.cli._print_json") as print_json,
         ):
             result = openmy_cli.main_with_args(args)
@@ -24,7 +35,7 @@ class TestContextQueryCli(unittest.TestCase):
         self.assertEqual(result, 0)
         response = print_json.call_args.args[0]
         self.assertEqual(response["action"], "context.query")
-        self.assertEqual(response["result"]["summary"], payload["summary"])
+        self.assertEqual(response["data"]["result"]["summary"], payload["data"]["result"]["summary"])
 
     def test_agent_query_routes_to_query_command(self):
         parser = openmy_cli.build_parser()
@@ -32,11 +43,18 @@ class TestContextQueryCli(unittest.TestCase):
             ["agent", "--query", "OpenMy", "--query-kind", "project", "--limit", "3"]
         )
 
-        with patch("openmy.cli.cmd_query", return_value=0) as query_mock:
+        with (
+            patch(
+                "openmy.skill_dispatch.dispatch_skill_action",
+                return_value=({"ok": True, "action": "context.query", "version": "v1", "data": {}}, 0),
+            ) as dispatch_mock,
+            patch("openmy.cli._print_json"),
+        ):
             result = openmy_cli.main_with_args(args)
 
         self.assertEqual(result, 0)
-        forwarded_args = query_mock.call_args.args[0]
+        action, forwarded_args = dispatch_mock.call_args.args
+        self.assertEqual(action, "context.query")
         self.assertEqual(forwarded_args.kind, "project")
         self.assertEqual(forwarded_args.query, "OpenMy")
         self.assertEqual(forwarded_args.limit, 3)

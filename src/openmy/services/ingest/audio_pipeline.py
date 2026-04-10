@@ -123,6 +123,17 @@ def transcribe_audio(
     )
 
 
+def load_sidecar_transcript(audio_path: Path) -> str:
+    candidates = [
+        audio_path.with_suffix(".transcript.txt"),
+        audio_path.with_suffix(".transcript.md"),
+    ]
+    for path in candidates:
+        if path.exists():
+            return path.read_text(encoding="utf-8").strip()
+    return ""
+
+
 def prepare_audio_chunks(
     audio_path: Path,
     work_dir: Path,
@@ -303,8 +314,6 @@ def transcribe_audio_files(
         get_stt_word_timestamps_enabled() if word_timestamps is None else word_timestamps
     )
     api_key = get_stt_api_key(final_provider_name)
-    if stt_provider_requires_api_key(final_provider_name) and not api_key:
-        raise RuntimeError(f"缺少 {final_provider_name} STT 所需 API key，请检查 `OPENMY_STT_API_KEY` / `GEMINI_API_KEY`。")
 
     rendered_parts: list[str] = [
         f"# {date_str} 上下文（原始）",
@@ -335,6 +344,15 @@ def transcribe_audio_files(
             audio_path = Path(audio_name).expanduser().resolve()
             if not audio_path.is_file():
                 raise FileNotFoundError(f"音频文件不存在: {audio_path}")
+
+            if stt_provider_requires_api_key(final_provider_name) and not api_key:
+                sidecar_transcript = load_sidecar_transcript(audio_path)
+                if sidecar_transcript:
+                    rendered_parts.extend([f"## {offset_time_label(parse_audio_time(audio_path), 0)}", "", sidecar_transcript, ""])
+                    continue
+                raise RuntimeError(
+                    f"缺少 {final_provider_name} STT 所需 API key，请检查 `OPENMY_STT_API_KEY` / `GEMINI_API_KEY`。"
+                )
 
             chunks = prepare_audio_chunks(
                 audio_path=audio_path,

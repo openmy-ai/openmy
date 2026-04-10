@@ -1,147 +1,111 @@
-# OpenMy 产品架构
+# OpenMy Architecture
 
-> 本文件是产品级知识参考。Agent 需要理解产品全貌时读这里。
-> 操作指令在上级 SKILL.md。
+## 主定义
 
-## 核心定义
+OpenMy 是一个**个人上下文引擎**，不是 MCP Server，也不是笔记工具。
 
-OpenMy 是一个**自维护的个人上下文系统**。
+它的主架构固定为：
 
-- 让 Agent 少猜一点
-- 不是笔记工具，不是日报生成器
-- 是 Agent 的"用户认知层"
-
-## 第零铁律
-
-**用户永远不碰终端。**
-
-- CLI 是 Agent 的 API，不是给人用的
-- 前端页面（`app/`）是用户唯一的界面
-- 用户只通过自然语言对话和 Agent 交互
-
-## 信源（只有两个）
-
-| 信源 | 角色 | 采集方式 |
-|------|------|---------|
-| 🎙️ 录音 | "你说了什么" | DJI Mic → 去静音 → 压缩 → 切块 → 转写 |
-| 👁️ Screenpipe | "你做了什么" | 屏幕活动自动采集 → API 查询 |
-
-## 架构分层
-
-```
-┌──────────────────────────────────────┐
-│              前端页面                 │  ← 给用户看
-│   app/server.py + app/index.html     │
-└──────────────────┬───────────────────┘
-                   │ HTTP API
-┌──────────────────┴───────────────────┐
-│            CLI / Python API          │  ← 给 Agent 调
-│   src/openmy/cli.py                  │
-└──────────────────┬───────────────────┘
-                   │ 读写
-┌──────────────────┴───────────────────┐
-│    active_context.json               │  ← 状态数据库
-│    corrections.jsonl                 │
-└──────────────────┬───────────────────┘
-                   │ 输入
-         ┌─────────┴─────────┐
-     🎙️ 录音             👁️ Screenpipe
+```text
+个人上下文引擎
+  + 总 Skill 编排层
+  + 子 Skill 工作流层
+  + CLI 执行层
+  + 前端展示层
 ```
 
-## 状态核心
+## 五层分工
 
-```
-active_context.json
-├── stable_profile        ← 长期不变：身份、偏好、关键人物
-├── rolling_context       ← 滚动更新（7-14 天窗口）：项目、待办、决策
-└── realtime_context      ← 当天即时：今日焦点
+### 1. 个人上下文引擎
 
-corrections.jsonl         ← append-only 修正历史，查询时自动叠加
-```
+系统中心资产不变：
 
-## 处理管线
+- `data/active_context.json`
+- `data/corrections.jsonl`
+- 各天数据目录
+- `src/openmy/services/*` 管线
 
-```
-音频文件
-  ↓ 去静音+压缩+切块 (services/ingest/audio_pipeline.py)
-  ↓ 转写 (providers/stt/* + adapters/transcription/gemini_cli.py compat)
-  ↓ 语义清洗 (services/cleaning/cleaner.py，纯规则)
-  ↓ 场景切分 (services/segmentation/segmenter.py)
-  ↓ 蒸馏 (services/distillation/distiller.py → providers/llm/*)
-  ↓ 结构化提取: intents+facts (services/extraction/extractor.py → providers/llm/*)
-  ↓ 跨日聚合 (services/context/consolidation.py)
-  ↓ active_context.json + corrections.jsonl
-  ↓ Agent 消费 / 前端展示
-```
+这一层负责状态、证据、管线和纠错。
 
-> 角色归因（services/roles/resolver.py）已冻结，不在默认 `run` 流程中。
-> 代码保留，可手动 `openmy roles YYYY-MM-DD` 调用。等 Phase 6 声纹识别再回来。
+### 2. 总 Skill 编排层
 
-## 提取系统：intents + facts 双桶
+总 Skill 只负责：
 
-- **intents** — 未来约束（待办、提醒、计划、承诺），带 due date + confidence
-- **facts** — 已发生/已知的事实（观察、决策、偏好）
+- 判断任务类型
+- 选择子 Skill
+- 规定执行顺序和禁令
 
-## 角色归因体系
+### 3. 子 Skill 工作流层
 
-| 层级 | 方法 |
-|------|------|
-| 1 | 亲口声明（"报告老婆"） |
-| 2 | 关键词命中（AI术语→AI助手） |
-| 3 | 继承上文 |
-| 4 | Screenpipe 屏幕佐证 |
-| 5 | 不确定 |
+子 Skill 一次只做一类工作流：
 
-## 纠正系统原则
+- 启动上下文
+- 上下文读取
+- 单日处理
+- 单日查看
+- 纠错闭环
+- 状态总览
 
-1. 原始证据不改（scenes.json、meta.json 是不可变事实）
-2. 推断结果可重算（active_context 每次从原始数据重新生成）
-3. 人工修正追加记录（corrections.jsonl 是 append-only）
-4. 查询默认读纠错后视图
+### 4. CLI 执行层
 
-## 项目结构
+Agent 稳定后端入口固定为：
 
-```
-~/Desktop/周瑟夫的上下文/
-├── src/openmy/
-│   ├── cli.py
-│   ├── domain/              (intent, fact, models)
-│   ├── services/
-│   │   ├── ingest/          (音频预处理)
-│   │   ├── context/         (active_context, consolidation, corrections, renderer)
-│   │   ├── extraction/      (intents + facts)
-│   │   ├── segmentation/    (场景切分)
-│   │   ├── cleaning/        (文本清洗)
-│   │   ├── roles/           (角色归因)
-│   │   ├── distillation/    (蒸馏)
-│   │   └── briefing/        (日报)
-│   └── adapters/
-│       ├── transcription/   (Gemini CLI)
-│       └── screenpipe/      (Screenpipe API)
-├── app/                     (前端：用户唯一界面)
-├── data/                    (状态数据)
-├── skills/openmy/           (本 skill)
-└── tests/                   (131 个测试)
+```bash
+openmy skill <action> --json
 ```
 
-## 路线图
+CLI 只负责执行动作契约，不承载产品定义。
 
-- Phase 0: 处理管道 ✅
-- Phase 1: 状态快照 ✅
-- Phase 2: 纠正系统 ✅
-- Phase 2.5: Intent 系统 ✅
-- Phase 2.8: 管线质量加固 ✅（清洗修复 + 角色识别模型 fallback + 日报去重 + 提取器时态修复 + 蒸馏 prompt 重写）
-- Phase 4.1: 开源就绪 ✅（MIT 协议 + README 品牌统一 + .env.example + 依赖补齐）
-- **v0.2.0 Beta 已发布** — 2026-04-10，167 测试全绿
-- **社交媒体推广** ← 当前重中之重
-- Phase 3: Screenpipe 信号接入
-- Phase 4.2: 前端产品化 polish
-- Phase 5: 自维护闭环
-- Phase 6: 声纹识别
+### 5. 前端展示层
 
-## 愿景
+`app/` 只给用户看。  
+人类入口仍然是 `openmy quick-start`；Agent 入口是 `openmy skill ... --json`。
 
-> 如果你把阿兹海默症患者看作一个随时可能丢失上下文的 agent，
-> OpenMy 的日报就是他的"上下文恢复"机制。
+## 系统中心
 
-详见 Obsidian `项目/OpenMy/愿景.md` 和 `研究报告/OpenMy-产品路线图.md`
+```text
+active_context.json     ← 当前状态快照
+corrections.jsonl       ← append-only 纠错历史
+```
+
+所有推断都围绕这两类中心资产聚合和纠偏。
+
+## 当前处理管线
+
+```text
+音频
+  → ingest
+  → cleaning
+  → segmentation
+  → distillation
+  → extraction
+  → consolidation
+  → active_context / corrections
+  → Agent / frontend
+```
+
+角色识别代码仍保留在仓库里，但不再是这轮架构定义的中心。
+
+## 仓库落点
+
+```text
+src/openmy/
+  cli.py
+  skill_dispatch.py
+  commands/
+  services/
+  providers/
+
+skills/
+  openmy/
+  openmy-startup-context/
+  openmy-context-read/
+  openmy-day-run/
+  openmy-day-view/
+  openmy-correction-apply/
+  openmy-status-review/
+
+app/
+  server.py
+  index.html
+```

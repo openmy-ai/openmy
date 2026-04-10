@@ -68,6 +68,41 @@ class PrepareAudioChunksTest(unittest.TestCase):
 
 
 class TranscribeAudioFilesTest(unittest.TestCase):
+    def test_uses_sidecar_transcript_when_api_key_missing(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            audio_one = tmp_path / "sample.wav"
+            sidecar = tmp_path / "sample.transcript.txt"
+            audio_one.write_bytes(b"wav")
+            sidecar.write_text("老婆，今天晚上吃火锅。", encoding="utf-8")
+
+            with (
+                mock.patch.dict(
+                    "os.environ",
+                    {"OPENMY_STT_PROVIDER": "gemini"},
+                    clear=True,
+                ),
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.load_vocab_terms",
+                    return_value="OpenMy",
+                ),
+            ):
+                output_path = transcribe_audio_files(
+                    date_str="2026-04-10",
+                    audio_files=[str(audio_one)],
+                    output_dir=tmp_path,
+                )
+
+            content = output_path.read_text(encoding="utf-8")
+            self.assertIn("## 00:00", content)
+            self.assertIn("老婆，今天晚上吃火锅。", content)
+
+            structured_path = tmp_path / "transcript.transcription.json"
+            self.assertTrue(structured_path.exists())
+            payload = json.loads(structured_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["provider"], "gemini")
+            self.assertEqual(payload["chunks"], [])
+
     def test_writes_structured_transcription_artifact_for_local_provider(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)

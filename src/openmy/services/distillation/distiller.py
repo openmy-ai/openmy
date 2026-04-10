@@ -17,15 +17,31 @@ from openmy.config import (
 from openmy.providers.registry import ProviderRegistry
 
 
-def summarize_scene(text: str, api_key: str, model: str | None, role_info: str = "") -> str:
+def summarize_scene(
+    text: str,
+    api_key: str,
+    model: str | None,
+    role_info: str = "",
+    screen_summary: str = "",
+) -> str:
     provider = ProviderRegistry.from_env().get_llm_provider(
         stage="distill",
         api_key=api_key,
         model=model or get_stage_llm_model("distill") or GEMINI_MODEL,
     )
 
+    role_hint = ""
+    if role_info:
+        role_hint = f"说话人在跟{role_info}说话。用具体的称呼，不要写'大家''有人''说话人'。\n"
+
+    screen_hint = ""
+    if screen_summary:
+        screen_hint = f"屏幕上下文：{screen_summary}\n"
+
     prompt = (
         f'这是一段个人录音日记。帮我提炼要点，写给我自己看的。\n\n'
+        f'{role_hint}'
+        f'{screen_hint}'
         f'要求：\n'
         f'1. 只写干货，不写过渡句\n'
         f'2. 1-3 句话，每句话必须有具体信息\n'
@@ -54,7 +70,16 @@ def distill_scenes(scenes_path: Path, api_key: str, model: str | None) -> dict:
         if not text:
             scene['summary'] = ''
             continue
-        scene['summary'] = summarize_scene(text, api_key, model)
+        role = scene.get('role', {})
+        addressed_to = role.get('addressed_to', '')
+        screen_context = scene.get('screen_context', {}) if isinstance(scene.get('screen_context', {}), dict) else {}
+        scene['summary'] = summarize_scene(
+            text,
+            api_key,
+            model,
+            role_info=addressed_to,
+            screen_summary=str(screen_context.get('summary', '')).strip(),
+        )
     scenes_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
     return data
 
