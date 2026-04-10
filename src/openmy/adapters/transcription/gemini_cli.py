@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
-"""Gemini API 音频转写模块。
+"""Gemini STT 兼容壳。
 
-使用 google-genai SDK 的 Files API 上传音频文件并转写。
-替代原来的 Gemini CLI subprocess 方案。
+旧模块路径继续保留，内部已转调 providers 层。
 """
 from __future__ import annotations
 
 import argparse
 import os
 import sys
-import time
 from pathlib import Path
 
-from google import genai
-from google.genai import types
-
-from openmy.config import GEMINI_MODEL, TRANSCRIBE_TIMEOUT
+from openmy.config import GEMINI_MODEL, TRANSCRIBE_TIMEOUT, get_stt_api_key, get_stt_model
+from openmy.providers.registry import ProviderRegistry
+from openmy.providers.stt.gemini import build_prompt as build_gemini_stt_prompt
 
 
 def load_vocab_terms(vocab_file: Path) -> str:
@@ -31,22 +28,7 @@ def load_vocab_terms(vocab_file: Path) -> str:
 
 
 def build_prompt(vocab_terms: str) -> str:
-    return f"""请转写这段音频文件。
-
-要求：
-1. 完整逐字转写为中文文字。
-2. 不要总结、省略、润色、改写，也不要补充解释。
-3. 如果有背景音乐，只忽略音乐本身，不要转歌词；只保留人声口述。
-4. 保留原话里的称呼、关系词、语气词和代词，不要擅自把"你"替换成具体身份。
-5. 如果说话对象无法从音频里明确判断，就保留原样，不要脑补。
-6. 直接输出转写正文，不要加前缀，不要写说明。
-
-业务背景：
-这批语音会进入个人归档系统，里面会有对伴侣、家人、朋友、商家、AI、宠物说话，以及自言自语的任务记录。
-
-常见专有名词：
-{vocab_terms}
-""".strip()
+    return build_gemini_stt_prompt(vocab_terms)
 
 
 def transcribe_audio(
@@ -56,42 +38,13 @@ def transcribe_audio(
     vocab_terms: str = "",
     timeout_seconds: int = TRANSCRIBE_TIMEOUT,
 ) -> str:
-    """用 Gemini Files API 上传音频并转写。"""
-    client = genai.Client(api_key=api_key)
-
-    # 上传音频文件
-    uploaded = client.files.upload(file=audio_path)
-
-    # 等待文件处理完成
-    deadline = time.time() + timeout_seconds
-    while uploaded.state == "PROCESSING":
-        if time.time() > deadline:
-            raise TimeoutError(f"音频文件处理超时 ({timeout_seconds}s): {audio_path.name}")
-        time.sleep(2)
-        uploaded = client.files.get(name=uploaded.name)
-
-    if uploaded.state == "FAILED":
-        raise RuntimeError(f"音频文件处理失败: {audio_path.name}")
-
-    # 转写
-    prompt = build_prompt(vocab_terms)
-    response = client.models.generate_content(
-        model=model,
-        contents=[
-            types.Content(
-                parts=[
-                    types.Part.from_uri(file_uri=uploaded.uri, mime_type=uploaded.mime_type),
-                    types.Part.from_text(text=prompt),
-                ],
-            ),
-        ],
+    """向后兼容旧函数签名，内部走 provider registry。"""
+    provider = ProviderRegistry.from_env().get_stt_provider(model=model, api_key=api_key)
+    return provider.transcribe(
+        audio_path,
+        vocab_terms=vocab_terms,
+        timeout_seconds=timeout_seconds,
     )
-
-    text = response.text.strip() if response.text else ""
-    if not text:
-        raise RuntimeError(f"Gemini API 没有返回转写内容: {audio_path.name}")
-
-    return text
 
 
 # ---- 向后兼容旧接口 ----
@@ -104,7 +57,7 @@ def run_gemini_cli(
     gemini_home: Path | None = None,
 ) -> str:
     """向后兼容旧接口。内部已改用 SDK。"""
-    api_key = os.environ.get("GEMINI_API_KEY", "")
+    api_key = get_stt_api_key()
     if not api_key:
         raise RuntimeError("缺少 GEMINI_API_KEY 环境变量")
     return transcribe_audio(
@@ -117,9 +70,9 @@ def run_gemini_cli(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Use Gemini API to transcribe a local audio file.")
+    parser = argparse.ArgumentParser(description="Use the configured STT provider to transcribe a local audio file.")
     parser.add_argument("audio_path", help="Local audio file path.")
-    parser.add_argument("--model", default=GEMINI_MODEL)
+    parser.add_argument("--model", default=get_stt_model() or GEMINI_MODEL)
     parser.add_argument("--timeout-seconds", type=int, default=TRANSCRIBE_TIMEOUT)
     parser.add_argument("--vocab-file", default="")
     return parser.parse_args()
@@ -132,7 +85,7 @@ def main() -> int:
         print(f"音频文件不存在: {audio_path}", file=sys.stderr)
         return 1
 
-    api_key = os.environ.get("GEMINI_API_KEY", "")
+    api_key = get_stt_api_key()
     if not api_key:
         print("❌ 缺少 GEMINI_API_KEY 环境变量", file=sys.stderr)
         return 1

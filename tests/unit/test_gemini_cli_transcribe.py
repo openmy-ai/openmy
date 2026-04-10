@@ -25,6 +25,8 @@ class GeminiCliTranscribeTest(unittest.TestCase):
         self.assertIn('Claude、StreamDeck', prompt)
         self.assertIn('不要脑补', prompt)
         self.assertIn('逐字转写', prompt)
+        self.assertNotIn('个人归档系统', prompt)
+        self.assertNotIn('伴侣、家人、朋友、商家、AI、宠物', prompt)
 
     def test_build_prompt_no_at_prefix(self):
         """SDK 版本不需要 @文件名 前缀。"""
@@ -44,21 +46,12 @@ class GeminiCliTranscribeTest(unittest.TestCase):
             self.assertIn('GEMINI_API_KEY', str(ctx.exception))
 
     def test_transcribe_audio_calls_sdk(self):
-        """验证 transcribe_audio 调用了 genai SDK。"""
-        mock_client = MagicMock()
-        mock_uploaded = MagicMock()
-        mock_uploaded.state = "ACTIVE"
-        mock_uploaded.uri = "gs://fake"
-        mock_uploaded.mime_type = "audio/mp3"
-        mock_uploaded.name = "files/fake"
-        mock_client.files.upload.return_value = mock_uploaded
+        """验证 transcribe_audio 通过 provider registry 调用转写层。"""
+        mock_provider = MagicMock()
+        mock_provider.transcribe.return_value = "转写结果文本"
 
-        mock_response = MagicMock()
-        mock_response.text = "转写结果文本"
-        mock_client.models.generate_content.return_value = mock_response
-
-        with patch('openmy.adapters.transcription.gemini_cli.genai') as mock_genai:
-            mock_genai.Client.return_value = mock_client
+        with patch('openmy.adapters.transcription.gemini_cli.ProviderRegistry.from_env') as registry_factory:
+            registry_factory.return_value.get_stt_provider.return_value = mock_provider
 
             with tempfile.NamedTemporaryFile(suffix='.mp3') as f:
                 result = gemini_cli_transcribe.transcribe_audio(
@@ -70,8 +63,11 @@ class GeminiCliTranscribeTest(unittest.TestCase):
                 )
 
             self.assertEqual(result, "转写结果文本")
-            mock_client.files.upload.assert_called_once()
-            mock_client.models.generate_content.assert_called_once()
+            registry_factory.return_value.get_stt_provider.assert_called_once_with(
+                model='gemini-3.1-flash-lite-preview',
+                api_key='fake-key',
+            )
+            mock_provider.transcribe.assert_called_once()
 
 
 if __name__ == '__main__':

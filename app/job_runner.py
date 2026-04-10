@@ -63,7 +63,8 @@ class JobRunner:
 
     def _persist_job_locked(self, job: JobRecord) -> None:
         target = self._job_path(job.job_id)
-        temp_path = target.with_suffix(".json.tmp")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = target.with_name(f"{target.name}.{uuid4().hex}.tmp")
         temp_path.write_text(json.dumps(self._serialize(job), ensure_ascii=False, indent=2), encoding="utf-8")
         temp_path.replace(target)
 
