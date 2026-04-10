@@ -1,235 +1,181 @@
-<p align="center">
-  <h1 align="center">🎙️ DayTape</h1>
-  <p align="center"><strong>把你的一天，变成可搜索的结构化日志</strong></p>
-  <p align="center">录音 → AI 转写 → 自动清洗 → 角色归因 → 蒸馏摘要 → Web 浏览</p>
-</p>
+# OpenMy
 
-<p align="center">
-  <a href="README.md">中文</a> •
-  <a href="README.en.md">English</a>
-</p>
+把一段音频，变成可浏览的日报和结构化上下文。
 
-<p align="center">
-  <a href="#快速开始">快速开始</a> •
-  <a href="#功能特性">功能特性</a> •
-  <a href="#技术架构">技术架构</a> •
-  <a href="#配置说明">配置说明</a> •
-  <a href="#开源协议">开源协议</a>
-</p>
+![OpenMy quick start screenshot](docs/images/openmy-quick-start.png)
 
----
+[English](README.en.md)
 
-## 这是什么？
+## 30 秒快速开始
 
-你每天和很多人说话——和老婆聊天、和 AI 助手对话、和商家沟通、自言自语做计划。
-
-**DayTape 把你一整天的录音，变成一份带时间轴的结构化日志。**
-
-不是简单的语音转文字。DayTape 会自动识别你在和谁说话、提取关键事件和待办事项、把每一段对话蒸馏成一句话摘要。最后你打开浏览器，就能像翻日记一样回顾你的一天。
-
-## 功能特性
-
-### 🎯 分层混合角色归因
-
-你一天和很多人说话，但纯靠关键词猜不准，每条都手选又太烦。DayTape 用的是**分层混合方案**——把不同手段放在不同位置，该明确的明确，该继承的继承，真不确定就老实标"未确定"，不硬猜。
-
-**设计哲学：**
-- 🚫 不要求每条录音声明角色（太重，用不久）
-- 🚫 不把所有模糊项都硬分（会污染长期归档）
-- ✅ 允许"未确定"（这不是退步，是长期系统保持可信的前提）
-- ✅ 规则优先，模型靠后（能规则命中的就别上模型）
-
-**两段式分类：**
-- **粗分**（先做）：AI / 商家 / 宠物 / 自己 / 人际 / 未确定
-- **细分**（积累样本后）：伴侣 / 家人 / 朋友
-
-> "跟老婆聊 ChatGPT"不会被误判成"跟 AI 说话"——因为声明和继承优先于关键词。
-
-### 🧹 十步深度清洗
-
-原始转写文本充满噪音：重复的语气词、AI 的机械回复、背景音乐歌词、口头禅。
-
-**关键设计：** 清洗流水线会主动保护角色信号词（"老婆"、"老板"、"Claude"、"乖"等），绝不误删——这些是角色归因最值钱的线索。
-
-### 💭 蒸馏摘要
-每一段对话被蒸馏成一句话，让你不用读原文就能知道"刚才在聊什么"。
-
-### 📊 三视图浏览
-- **蒸馏时间线**：Notion 风格的竖向时间轴，一眼看完一天
-- **数据表格**：每段对话的结构化数据，支持排序筛选
-- **可视化图表**：角色分布饼图、时间段分布柱状图
-
-### 🏷️ 结构化提取
-自动从对话中提取事件、决策、待办事项和灵感洞察，打上项目标签。
-
-### 🖥️ Screenpipe 屏幕上下文增强（可选）
-
-语音是主线，屏幕是侧证。DayTape 可以对接 [Screenpipe](https://github.com/mediar-ai/screenpipe)，用你的屏幕活动为语音内容补充上下文。
-
-**核心设计：不复制 Screenpipe 的数据，只借用它的理解。**
-
-- DayTape 只通过 Screenpipe 的 HTTP API 按时间窗查询，不依赖其数据库结构
-- 只存摘要过的 screen session 和 frame_id 引用，需要看截图时懒加载
-- OCR 原文不会混进语音主文本，避免结构化提取被屏幕文字污染
-
-**三种融合模式：**
-
-| 模式 | 做什么 | 示例 |
-|------|--------|------|
-| **hints**（默认） | 只给角色归因加分 | WeChat 窗口 → "跟人聊"置信度 +；Cursor 窗口 → "跟 AI 说"置信度 + |
-| **augment** | 屏幕摘要送进提取 prompt | "当时在看淘宝退款页面"写入事件上下文 |
-| **full** | frame 引用挂到场景上 | Web UI 里点击可查看当时的屏幕截图 |
-
-**时间对齐（三段式）：**
-
-```
-1. 粗对齐：按录音开始时间估全局偏移 delta0
-2. 微调：在 ±30 分钟范围内做关键词重叠扫描，找最佳偏移 delta
-3. 区间合并：每个场景按 [start+delta-20s, end+delta+20s] 查询 Screenpipe
-```
-
-## 快速开始
+### 1. clone
 
 ```bash
-# 克隆仓库
-git clone https://github.com/sefuzhou770801-hub/daily-context.git
-cd daily-context
-
-# 安装
-pip install -e .
-
-# 启动 Web 界面（内含示例数据）
-python app/server.py
+git clone https://github.com/openmy-ai/openmy.git
+cd openmy
 ```
 
-打开浏览器访问 `http://localhost:8420`，你会看到一份真实的一日时间线。
+### 2. 安装
 
-## 技术架构
-
-```
-src/daytape/
-├── domain/          # 数据模型（Scene, FactBundle, ArtifactBundle）
-├── services/
-│   ├── cleaning/    # 十步清洗流水线
-│   ├── segmentation/# 时间段场景切分
-│   ├── roles/       # 三层角色归因引擎
-│   ├── extraction/  # 结构化信息提取
-│   └── distillation/# AI 蒸馏摘要
-├── adapters/
-│   └── transcription/# 转写引擎适配器（Gemini CLI）
-└── resources/       # 词表、纠错词典
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install .
 ```
 
-### 数据流
+### 3. 只配一个 API key
 
-```
-录音文件
-  ↓
-音频预处理（降噪、分块）
-  ↓
-AI 转写（Gemini Flash）
-  ↓
-十步清洗（去噪音、去重复、保信号词）
-  ↓
-场景切分（按时间段拆块）
-  ↓
-角色归因（声明 → 关键词 → 继承）
-  ↓
-蒸馏摘要 + 结构化提取
-  ↓
-Web 时间线浏览
+```bash
+cp .env.example .env
 ```
 
-## 处理流水线详解
+把 `.env` 里的 `your-gemini-api-key` 换成你自己的 Gemini key。
 
-### 角色归因：分层判定链
+如果你已经有 key，也可以一条命令：
 
-| 优先级 | 层级 | 做什么 | 示例 |
-|--------|------|--------|------|
-| 1 | **亲口声明** | 文本中有显式称呼 | "报告老婆"、"小小得主家你好" |
-| 2 | **强继承** | 高置信度角色向后延续 | 前面确认了和老婆聊，后面弱关键词不能打断 |
-| 3 | **规则命中** | 按关键词粗分类 | 3+ 个 AI 相关词 → AI；"下单/退款" → 商家 |
-| 4 | **弱继承** | 中置信度角色延续 | 前一段是商家，紧接着的段落也标商家 |
-| 5 | **标未确定** | 证据不够就不硬猜 | 低于阈值 → uncertain |
-
-每个场景块输出：
-
-```
-role:         角色类别（6 类粗分）
-addressed_to: 具体对象（老婆 / AI助手 / 小虎）
-confidence:   置信度（0-1）
-evidence:     判定依据
+```bash
+echo "GEMINI_API_KEY=你的key" > .env
 ```
 
-#### 为什么不用其他方案？
+### 4. 一条命令处理音频并打开日报
 
-| 方案 | 为什么不单独用 |
-|------|---------------|
-| 纯自动关键词 | "伴侣/家人/朋友"之间正确率只有 45-70% |
-| 每条手动声明 | 使用摩擦太高，坚持不了一周 |
-| 全靠大模型 | 慢、贵，大部分场景规则就能搞定 |
-| 不允许"未确定" | 被迫硬猜 → 长期归档被污染 |
+```bash
+openmy quick-start path/to/your-audio.wav
+```
 
-**DayTape 的选择：** 混合方案——能规则解决的就规则，能继承的就继承，模型只处理真正模糊的人际类，不确定就老实标未确定。
+这个命令会自动：
 
-### 清洗步骤
+1. 检查 Python 和 FFmpeg
+2. 读取项目根目录 `.env`
+3. 转写音频
+4. 清洗文本、切场景、角色归因、蒸馏摘要
+5. 生成日报和结构化提取
+6. 启动本地 Web 页面
+7. 自动打开浏览器到 `http://127.0.0.1:8420`
 
-1. 系统前缀去除
-2. 角色信号词保护
-3. 自定义词典纠错
-4. AI 机械回复清除
-5. 语气词精简
-6. 重复行去重
-7. 长段落切分
-8. 背景音乐过滤
-9. 敏感词过滤
-10. 关键词加粗
+你不需要先读代码，不需要手动 export 环境变量，也不需要自己记日期格式。
 
-## 路线图
+## 这是什么
 
-- [x] 语音转写 + 清洗流水线
-- [x] 角色归因引擎
-- [x] 蒸馏摘要
-- [x] Web 时间线浏览器
-- [x] Python 包架构（v0.1）
-- [x] Screenpipe 屏幕上下文增强（hints 模式）
-- [x] Daily Briefing 每日交接文档
-- [ ] `config.yaml` 配置外化
-- [ ] 多转写引擎支持（OpenAI / Whisper / 豆包）
-- [ ] 双信源角色判定（语音+屏幕同时参与）
-- [ ] 对话式查询（"今天和老婆聊了什么？"）
-- [ ] 手机录音一键上传（iOS 快捷指令）
-- [ ] Obsidian / Notion 输出
+OpenMy 是一个“个人上下文引擎”：
+
+- 输入：一段音频
+- 输出：日报、时间线、结构化事件、活跃上下文
+- 适合：复盘一天在说什么、做什么、和谁互动、有哪些待办和事实
+
+它不是纯转写工具。OpenMy 会在转写之后继续做清洗、场景切分、角色识别、摘要和提取，让结果变成可浏览、可消费的数据。
+
+## 你会看到什么
+
+跑完 `openmy quick-start` 后，浏览器会打开一份本地日报页面，里面包括：
+
+- 当天摘要
+- 时间线
+- 事件 / 事实 / 洞察卡片
+- 日报视图
+- 角色和场景统计
+
+## 依赖自检
+
+OpenMy 会在命令启动时尽量用人话告诉你缺什么。
+
+### Python 版本
+
+- 要求：`Python 3.10+`
+- 如果版本不对，CLI 会直接提示怎么装
+- macOS 常用命令：
+
+```bash
+brew install python@3.11
+```
+
+### FFmpeg
+
+音频导入依赖 `ffmpeg` 和 `ffprobe`。
+
+- macOS：
+
+```bash
+brew install ffmpeg
+```
+
+- Ubuntu / Debian：
+
+```bash
+sudo apt install ffmpeg
+```
+
+如果没装，`openmy quick-start` 会直接告诉你怎么补，不会给一串难懂的 subprocess 报错。
+
+## 常用命令
+
+```bash
+openmy --help
+openmy status
+openmy view 2026-04-10
+openmy run 2026-04-10 --audio path/to/audio.wav
+openmy quick-start path/to/audio.wav
+```
+
+说明：
+
+- `quick-start` 面向第一次使用的人
+- `run` 适合你已经知道日期和输入参数时单独控制
+- `view` 适合在终端快速看某天结果
+
+## 流程长什么样
+
+```mermaid
+flowchart LR
+    A["Audio"] --> B["Transcribe"]
+    B --> C["Clean"]
+    C --> D["Scene Split"]
+    D --> E["Role Resolve"]
+    E --> F["Distill"]
+    F --> G["Briefing"]
+    G --> H["Extract"]
+    H --> I["Active Context"]
+    I --> J["Web Report"]
+```
 
 ## 配置说明
 
-当前版本的配置硬编码在代码中。下一版本将支持 `config.yaml` 配置文件，届时可以：
+默认配置在 [`src/openmy/config.py`](src/openmy/config.py)。
 
-- 切换转写引擎
-- 自定义角色和关键词
-- 调整清洗参数
-- 选择输出格式
+大多数人第一次使用时不用改它。先配 `.env`，然后直接跑 `openmy quick-start` 就够了。
 
-## 技术栈
+如果你之后想调参数，常见会改的是：
 
-- **后端**：Python 3.10+
-- **转写**：Gemini 2.5 Flash
-- **前端**：原生 HTML + CSS + JavaScript
-- **数据格式**：JSON（场景、元数据）+ Markdown（转写文本）
-- **包管理**：Hatch / pip
+- Gemini 模型
+- 转写 / 音频管线超时
+- 提取 / 蒸馏温度
 
-## 开源协议
+## 可选：Screenpipe 屏幕上下文
 
-本项目采用 [AGPL-3.0](LICENSE) 协议开源。
+OpenMy 可以接 Screenpipe，为语音结果补充“当时在看什么 App / 页面”的上下文。
 
-**简单说：**
-- ✅ 你可以免费使用、学习、修改
-- ✅ 你可以分享给别人
-- 🔒 如果你基于本项目做了产品或服务，必须同样开源
-- 💼 需要商业闭源授权？请联系作者
+- 不装也能正常跑日报
+- 装了之后，会在角色归因和摘要上提供额外线索
+- 默认通过本地 HTTP 接口读取，不要求你改业务代码
 
----
+## 开发与测试
 
-<p align="center">
-  <sub>Built with 🎙️ by <a href="https://github.com/sefuzhou770801-hub">周瑟夫</a></sub>
-</p>
+```bash
+python3 -m pytest tests
+```
+
+当前测试默认不依赖真实 API key；在没有 `GEMINI_API_KEY` 的环境里也应该能全绿。
+
+## 仓库结构
+
+```text
+src/openmy/        核心 Python 包
+app/               本地日报 Web 页面
+tests/             自动化测试
+docs/images/       README 截图
+skills/            项目技能与补充说明
+```
+
+## License
+
+[MIT](LICENSE)
