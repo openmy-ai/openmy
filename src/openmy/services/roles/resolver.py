@@ -10,9 +10,10 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 
+from openmy.config import get_llm_api_key, get_stage_llm_model
 from openmy.domain.models import RoleTag, SceneBlock
+from openmy.providers.registry import ProviderRegistry
 from openmy.services.segmentation.segmenter import segment
-from openmy.config import GEMINI_MODEL
 
 
 ROLE_LABELS = {
@@ -211,7 +212,7 @@ def tag_scene_role(scene: SceneBlock, prev_role: Optional[RoleTag] = None) -> Sc
         return scene
 
     # ── 模型 fallback：规则都搞不定时，交给大模型判断 ──
-    api_key = os.environ.get('GEMINI_API_KEY', '')
+    api_key = get_llm_api_key("roles")
     if api_key:
         model_result = infer_role_with_model(text, api_key)
         if model_result:
@@ -249,13 +250,8 @@ def tag_scene_role(scene: SceneBlock, prev_role: Optional[RoleTag] = None) -> Sc
     return scene
 
 
-def infer_role_with_model(text: str, api_key: str, model: str = GEMINI_MODEL) -> dict | None:
-    """调 Gemini API 判断这段话在跟谁说。只在规则层全部失败时调用。"""
-    try:
-        from google import genai
-    except ImportError:
-        return None
-
+def infer_role_with_model(text: str, api_key: str, model: str | None = None) -> dict | None:
+    """调当前默认 LLM provider 判断这段话在跟谁说。只在规则层全部失败时调用。"""
     prompt = f"""分析下面这段语音转写文本，判断说话人在跟谁说话。
 
 返回一个 JSON 对象，格式：
@@ -279,9 +275,16 @@ confidence 表示你多确定，0.0 完全不确定，1.0 非常确定。
 {text[:2000]}"""
 
     try:
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(model=model, contents=[prompt])
-        raw = response.text.strip() if response.text else ''
+        provider = ProviderRegistry.from_env().get_llm_provider(
+            stage="roles",
+            api_key=api_key,
+            model=model or get_stage_llm_model("roles"),
+        )
+        raw = provider.generate_text(
+            task="role inference",
+            prompt=prompt,
+            model=model,
+        ).strip()
         # 清理 markdown 代码块包裹
         if raw.startswith('```'):
             raw = re.sub(r'^```\w*\n?', '', raw)

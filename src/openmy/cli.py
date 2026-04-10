@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import re
@@ -13,6 +14,8 @@ import subprocess
 import sys
 import time
 import webbrowser
+from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -23,6 +26,14 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
+
+from openmy.config import (
+    GEMINI_MODEL,
+    get_llm_api_key,
+    get_stage_llm_model,
+    get_stt_api_key,
+    has_llm_credentials,
+)
 
 
 console = Console()
@@ -229,11 +240,18 @@ def ensure_runtime_dependencies() -> None:
         raise FriendlyCliError(f"缺少 {missing}。macOS 可先运行 `brew install ffmpeg`。")
 
     has_env_file = load_project_env()
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
+    stt_api_key = get_stt_api_key()
+    llm_api_key = get_llm_api_key("extract")
+    if not stt_api_key or not llm_api_key:
         if has_env_file:
-            raise FriendlyCliError("已读取项目根目录 `.env`，但里面没有 `GEMINI_API_KEY`。请把你的 Gemini key 填进去。")
-        raise FriendlyCliError("没找到项目根目录 `.env`，也没有检测到 `GEMINI_API_KEY`。先 `cp .env.example .env`，再把 key 填进去。")
+            raise FriendlyCliError(
+                "已读取项目根目录 `.env`，但里面缺少可用的 provider key。默认推荐 Gemini；可直接填 `GEMINI_API_KEY`，"
+                "或分别设置 `OPENMY_STT_API_KEY` / `OPENMY_LLM_API_KEY`。"
+            )
+        raise FriendlyCliError(
+            "没找到项目根目录 `.env`，也没有检测到可用的 provider key。先 `cp .env.example .env`，"
+            "再填 `GEMINI_API_KEY`，或分别设置 `OPENMY_STT_API_KEY` / `OPENMY_LLM_API_KEY`。"
+        )
 
 
 def is_local_report_running(host: str = "127.0.0.1", port: int = 8420) -> bool:
@@ -681,9 +699,9 @@ def cmd_roles(args: argparse.Namespace) -> int:
 def cmd_distill(args: argparse.Namespace) -> int:
     """蒸馏摘要。"""
     date_str = args.date
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    api_key = get_llm_api_key("distill")
     if not api_key:
-        console.print("[red]❌ 缺少 GEMINI_API_KEY 环境变量[/red]")
+        console.print("[red]❌ 缺少可用的 LLM provider key（兼容 GEMINI_API_KEY）[/red]")
         return 1
 
     scenes_path, data = read_scenes_payload(date_str)
@@ -691,8 +709,8 @@ def cmd_distill(args: argparse.Namespace) -> int:
         console.print(f"[red]❌ 找不到 {date_str}/scenes.json，先运行 openmy roles {date_str}[/red]")
         return 1
 
-    from openmy.config import GEMINI_MODEL
     from openmy.services.distillation.distiller import summarize_scene
+    model = get_stage_llm_model("distill") or GEMINI_MODEL
 
     pending = [scene for scene in data.get("scenes", []) if not scene.get("summary")]
     if not pending:
@@ -716,7 +734,7 @@ def cmd_distill(args: argparse.Namespace) -> int:
             role = scene.get("role", {}) if isinstance(scene.get("role", {}), dict) else {}
             addressed_to = str(role.get("addressed_to", "")).strip()
             scene["summary"] = (
-                summarize_scene(text, api_key, GEMINI_MODEL, role_info=addressed_to)
+                summarize_scene(text, api_key, model, role_info=addressed_to)
                 if text
                 else ""
             )
@@ -810,6 +828,112 @@ def cmd_agent(args: argparse.Namespace) -> int:
     return 1
 
 
+def _print_json(payload: Any) -> None:
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+
+
+def _run_with_silent_console(func, *args, **kwargs):
+    global console
+
+    original_console = console
+    console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
+    try:
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            return func(*args, **kwargs)
+    finally:
+        console = original_console
+
+
+def cmd_skill(args: argparse.Namespace) -> int:
+    """稳定 JSON 动作入口。"""
+    action = args.action
+
+    if action == "status.get":
+        items = []
+        for date_str in find_all_dates():
+            item = get_date_status(date_str)
+            item["date"] = date_str
+            items.append(item)
+        _print_json({"action": action, "items": items})
+        return 0
+
+    if action == "day.get":
+        if not args.date:
+            _print_json({"action": action, "error": "缺少 --date", "ok": False})
+            return 1
+        paths = resolve_day_paths(args.date)
+        payload = {
+            "action": action,
+            "date": args.date,
+            "status": get_date_status(args.date),
+            "artifacts": {key: str(path) for key, path in paths.items()},
+            "briefing": read_json(paths["briefing"], {}) if paths["briefing"].exists() else None,
+            "scenes": read_json(paths["scenes"], {}) if paths["scenes"].exists() else None,
+            "meta": read_json(paths["dir"] / f"{args.date}.meta.json", {}) if (paths["dir"] / f"{args.date}.meta.json").exists() else None,
+        }
+        _print_json(payload)
+        return 0
+
+    if action == "context.get":
+        from openmy.services.context.active_context import ActiveContext
+        from openmy.services.context.consolidation import consolidate
+        from openmy.services.context.renderer import render_compact_md
+
+        ctx_path = DATA_ROOT / "active_context.json"
+        existing = ActiveContext.load(ctx_path) if ctx_path.exists() else None
+        ctx = consolidate(DATA_ROOT, existing_context=existing)
+        ctx.save(ctx_path)
+        payload = {
+            "action": action,
+            "snapshot": asdict(ctx),
+        }
+        if args.compact:
+            payload["compact_markdown"] = render_compact_md(ctx)
+        _print_json(payload)
+        return 0
+
+    if action == "day.run":
+        if not args.date:
+            _print_json({"action": action, "error": "缺少 --date", "ok": False})
+            return 1
+        result = _run_with_silent_console(
+            cmd_run,
+            argparse.Namespace(
+                date=args.date,
+                audio=args.audio,
+                skip_transcribe=args.skip_transcribe,
+            ),
+        )
+        status_path = ensure_day_dir(args.date) / "run_status.json"
+        _print_json(
+            {
+                "action": action,
+                "date": args.date,
+                "exit_code": result,
+                "run_status": read_json(status_path, {}) if status_path.exists() else None,
+            }
+        )
+        return int(result)
+
+    if action == "correction.apply":
+        result = _run_with_silent_console(
+            cmd_correct,
+            argparse.Namespace(correct_args=args.correct_args or [], status=args.status),
+        )
+        _print_json(
+            {
+                "action": action,
+                "exit_code": result,
+                "correct_args": args.correct_args or [],
+                "status": args.status,
+            }
+        )
+        return int(result)
+
+    _print_json({"action": action, "error": "不支持的 skill 动作", "ok": False})
+    return 1
+
+
 def transcribe_audio_files(date_str: str, audio_files: list[str]) -> int:
     from openmy.commands.run import transcribe_audio_files as _transcribe_audio_files
 
@@ -855,9 +979,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_extract = sub.add_parser("extract", help="从转写中提取 intents / facts")
     p_extract.add_argument("input_file", help="清洗后的 Markdown 文件路径")
     p_extract.add_argument("--date", help="日期 YYYY-MM-DD，默认从文件名推断")
-    p_extract.add_argument("--model", default="gemini-3.1-flash-lite-preview", help="Gemini 模型")
+    p_extract.add_argument("--model", default=get_stage_llm_model("extract") or GEMINI_MODEL, help="LLM 模型")
     p_extract.add_argument("--vault-path", help="Obsidian Vault 路径")
-    p_extract.add_argument("--api-key", help="Gemini API key")
+    p_extract.add_argument("--api-key", help="LLM API key")
     p_extract.add_argument("--dry-run", action="store_true", help="只打印提取结果，不写入文件")
 
     p_run = sub.add_parser("run", help="全流程处理")
@@ -890,6 +1014,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_agent.add_argument("--audio", nargs="+", help="给 --ingest 使用的音频文件路径")
     p_agent.add_argument("--skip-transcribe", action="store_true", help="给 --ingest 使用：复用已有数据")
 
+    p_skill = sub.add_parser("skill", help="稳定 JSON 动作入口")
+    p_skill.add_argument(
+        "action",
+        choices=["context.get", "day.get", "day.run", "correction.apply", "status.get"],
+        help="稳定动作名",
+    )
+    p_skill.add_argument("--date", help="给 day.get / day.run 使用的日期 YYYY-MM-DD")
+    p_skill.add_argument("--audio", nargs="+", help="给 day.run 使用的音频文件路径")
+    p_skill.add_argument("--skip-transcribe", action="store_true", help="给 day.run 使用：复用已有数据")
+    p_skill.add_argument("--correct-args", nargs="*", help="给 correction.apply 透传的参数")
+    p_skill.add_argument(
+        "--status",
+        default="done",
+        choices=["done", "abandoned"],
+        help="给 correction.apply 使用的 close-loop 状态",
+    )
+    p_skill.add_argument("--level", type=int, default=1, choices=[0, 1], help="给 context.get 使用的层级")
+    p_skill.add_argument("--compact", action="store_true", help="给 context.get 输出压缩 Markdown")
+    p_skill.add_argument("--json", action="store_true", help="兼容参数；skill 默认输出 JSON")
+
     return parser
 
 
@@ -910,6 +1054,7 @@ def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | N
         "quick-start": cmd_quick_start,
         "roles": cmd_roles,
         "run": cmd_run,
+        "skill": cmd_skill,
         "status": cmd_status,
         "view": cmd_view,
     }

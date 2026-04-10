@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import io
 import json
 import os
 import shutil
@@ -190,6 +191,18 @@ class TestOpenMyCli(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("quick-start", result.stdout)
 
+    def test_cli_help_lists_skill(self):
+        """openmy --help 应该显式列出 skill。"""
+        result = subprocess.run(
+            [sys.executable, "-m", "openmy", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=PROJECT_ROOT,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("skill", result.stdout)
+
     def test_cli_quick_start_infers_date_and_reuses_run(self):
         """quick-start 应该自动推断日期并复用 run 主链。"""
         import openmy.cli as cli
@@ -246,6 +259,37 @@ class TestOpenMyCli(unittest.TestCase):
         finally:
             if backup_path.exists():
                 backup_path.rename(env_path)
+
+    def test_skill_status_get_outputs_json(self):
+        import openmy.cli as cli
+
+        parser = cli.build_parser()
+        args = parser.parse_args(["skill", "status.get", "--json"])
+        stdout = io.StringIO()
+
+        with (
+            patch("openmy.cli.find_all_dates", return_value=["2026-04-08"]),
+            patch(
+                "openmy.cli.get_date_status",
+                return_value={
+                    "date": "2026-04-08",
+                    "has_transcript": True,
+                    "has_raw": True,
+                    "has_scenes": True,
+                    "has_briefing": True,
+                    "word_count": 120,
+                    "scene_count": 3,
+                    "role_distribution": {"AI助手": 2, "自己": 1},
+                },
+            ),
+            patch("sys.stdout", stdout),
+        ):
+            result = cli.main_with_args(args)
+
+        self.assertEqual(result, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["action"], "status.get")
+        self.assertEqual(payload["items"][0]["date"], "2026-04-08")
 
     def test_cli_quick_start_launches_report_on_partial_run(self):
         """quick-start 部分完成时也应该拉起本地网页。"""

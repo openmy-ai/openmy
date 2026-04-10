@@ -6,12 +6,23 @@ import json
 import os
 import sys
 from pathlib import Path
-from google import genai
 
-from openmy.config import GEMINI_MODEL, DISTILL_TEMPERATURE, DISTILL_THINKING_LEVEL
+from openmy.config import (
+    DISTILL_TEMPERATURE,
+    DISTILL_THINKING_LEVEL,
+    GEMINI_MODEL,
+    get_llm_api_key,
+    get_stage_llm_model,
+)
+from openmy.providers.registry import ProviderRegistry
 
-def summarize_scene(text: str, api_key: str, model: str, role_info: str = "") -> str:
-    client = genai.Client(api_key=api_key)
+
+def summarize_scene(text: str, api_key: str, model: str | None, role_info: str = "") -> str:
+    provider = ProviderRegistry.from_env().get_llm_provider(
+        stage="distill",
+        api_key=api_key,
+        model=model or get_stage_llm_model("distill") or GEMINI_MODEL,
+    )
 
     role_hint = ""
     if role_info:
@@ -29,17 +40,17 @@ def summarize_scene(text: str, api_key: str, model: str, role_info: str = "") ->
         f'6. 总字数控制在 30-80 字\n\n'
         f'录音原文：\n{text}'
     )
-    response = client.models.generate_content(
+    response_text = provider.generate_text(
+        task="scene distillation",
+        prompt=prompt,
         model=model,
-        contents=prompt,
-        config={
-            "temperature": DISTILL_TEMPERATURE,
-            "thinking_config": {"thinking_level": DISTILL_THINKING_LEVEL},
-        },
+        temperature=DISTILL_TEMPERATURE,
+        thinking_level=DISTILL_THINKING_LEVEL,
     )
-    return response.text.strip().replace('**', '').replace('\n', ' ')
+    return response_text.strip().replace('**', '').replace('\n', ' ')
 
-def distill_scenes(scenes_path: Path, api_key: str, model: str) -> dict:
+
+def distill_scenes(scenes_path: Path, api_key: str, model: str | None) -> dict:
     data = json.loads(scenes_path.read_text(encoding='utf-8'))
     for scene in data.get('scenes', []):
         if scene.get('summary'):
@@ -55,15 +66,15 @@ def distill_scenes(scenes_path: Path, api_key: str, model: str) -> dict:
     return data
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description='Distill scene summaries with Gemini API.')
+    parser = argparse.ArgumentParser(description='Distill scene summaries with the configured LLM provider.')
     parser.add_argument('scenes_json', help='Path to scenes.json')
-    parser.add_argument('--model', default=GEMINI_MODEL)
-    parser.add_argument('--api-key-env', default='GEMINI_API_KEY')
+    parser.add_argument('--model', default=get_stage_llm_model("distill") or GEMINI_MODEL)
+    parser.add_argument('--api-key-env', default='OPENMY_LLM_API_KEY')
     args = parser.parse_args()
 
-    api_key = os.getenv(args.api_key_env, '').strip()
+    api_key = os.getenv(args.api_key_env, "").strip() or get_llm_api_key("distill")
     if not api_key:
-        print(f'缺少环境变量: {args.api_key_env}', file=sys.stderr)
+        print(f'缺少环境变量: {args.api_key_env} / OPENMY_LLM_API_KEY / GEMINI_API_KEY', file=sys.stderr)
         return 1
 
     scenes_path = Path(args.scenes_json)

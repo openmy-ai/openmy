@@ -2,21 +2,89 @@
 OpenMy 全局配置
 ================
 
-所有大模型相关的参数集中在这里。
-开源用户只需要改这一个文件，不用深入具体模块代码。
+所有模型 provider 相关的默认值集中在这里。
+开源用户只需要改环境变量或这一个文件，不用深入具体模块代码。
 
 修改步骤：
-1. 设置 GEMINI_API_KEY 环境变量
+1. 设置默认 provider 所需的 API key
 2. 按需调整下面的参数
 3. 运行 openmy run <日期>
 """
+
+from __future__ import annotations
+
+import os
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  通用
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Gemini 模型（所有环节统一使用）
+# 向后兼容：旧代码仍会直接 import GEMINI_MODEL
 GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
+DEFAULT_STT_PROVIDER = "gemini"
+DEFAULT_LLM_PROVIDER = "gemini"
+
+
+def _read_env(*names: str) -> str:
+    for name in names:
+        if not name:
+            continue
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def get_stt_provider_name() -> str:
+    return (_read_env("OPENMY_STT_PROVIDER") or DEFAULT_STT_PROVIDER).lower()
+
+
+def get_llm_provider_name() -> str:
+    return (_read_env("OPENMY_LLM_PROVIDER") or DEFAULT_LLM_PROVIDER).lower()
+
+
+def get_stt_model() -> str:
+    return _read_env("OPENMY_STT_MODEL", "GEMINI_MODEL") or GEMINI_MODEL
+
+
+def get_llm_model() -> str:
+    return _read_env("OPENMY_LLM_MODEL", "GEMINI_MODEL") or GEMINI_MODEL
+
+
+def get_stage_llm_model(stage: str | None = None) -> str:
+    stage_env_map = {
+        "distill": "OPENMY_DISTILL_MODEL",
+        "extract": "OPENMY_EXTRACT_MODEL",
+        "roles": "OPENMY_ROLES_MODEL",
+    }
+    stage_env = stage_env_map.get((stage or "").lower(), "")
+    return _read_env(stage_env, "OPENMY_LLM_MODEL", "GEMINI_MODEL") or GEMINI_MODEL
+
+
+def get_stt_api_key() -> str:
+    if get_stt_provider_name() == "gemini":
+        return _read_env("OPENMY_STT_API_KEY", "GEMINI_API_KEY")
+    return _read_env("OPENMY_STT_API_KEY")
+
+
+def get_llm_api_key(stage: str | None = None) -> str:
+    stage_env_map = {
+        "distill": "OPENMY_DISTILL_API_KEY",
+        "extract": "OPENMY_EXTRACT_API_KEY",
+        "roles": "OPENMY_ROLES_API_KEY",
+    }
+    stage_env = stage_env_map.get((stage or "").lower(), "")
+    if get_llm_provider_name() == "gemini":
+        return _read_env(stage_env, "OPENMY_LLM_API_KEY", "GEMINI_API_KEY")
+    return _read_env(stage_env, "OPENMY_LLM_API_KEY")
+
+
+def has_stt_credentials() -> bool:
+    return bool(get_stt_api_key())
+
+
+def has_llm_credentials(stage: str | None = None) -> bool:
+    return bool(get_llm_api_key(stage))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

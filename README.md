@@ -2,9 +2,9 @@
 
 <img src="docs/images/openmy-banner.png" alt="OpenMy" width="800" />
 
-**一段音频 → 一整天的结构化上下文**
+**面向多 Agent 的个人上下文引擎**
 
-开源个人上下文引擎。录一段音频，自动完成转写、清洗、场景切分、角色识别、摘要蒸馏、结构化提取，生成可浏览的每日报告。
+把录音、屏幕等个人原始信号处理成可被 Agent 调用、可纠正、可跨天积累的上下文状态。默认推荐 Gemini provider，但系统本体不绑定单一模型供应商。
 
 [![Release](https://img.shields.io/github/v/release/openmy-ai/openmy?style=flat-square&color=blue)](https://github.com/openmy-ai/openmy/releases)
 [![MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
@@ -27,7 +27,21 @@ echo "GEMINI_API_KEY=你的key" > .env
 openmy quick-start path/to/your-audio.wav
 ```
 
-> 依赖：Python 3.10+、FFmpeg、一个 Gemini API Key。
+> 依赖：Python 3.10+、FFmpeg、一个可用的 provider key。默认推荐 Gemini，直接填 `GEMINI_API_KEY` 即可。
+
+### Provider 配置
+
+- 默认推荐：`GEMINI_API_KEY`
+- 更通用的配置名：
+  - `OPENMY_STT_PROVIDER`
+  - `OPENMY_STT_MODEL`
+  - `OPENMY_STT_API_KEY`
+  - `OPENMY_LLM_PROVIDER`
+  - `OPENMY_LLM_MODEL`
+  - `OPENMY_LLM_API_KEY`
+- 阶段级模型覆盖：
+  - `OPENMY_EXTRACT_MODEL`
+  - `OPENMY_DISTILL_MODEL`
 
 ---
 
@@ -72,6 +86,23 @@ graph TD
 
 ---
 
+## 🤖 接给 Agent
+
+OpenMy 的核心资产不是某个 CLI 壳子，而是稳定的上下文状态和动作契约。
+
+当前推荐的稳定入口：
+
+```bash
+openmy skill status.get --json
+openmy skill day.get --date 2026-04-08 --json
+openmy skill context.get --json
+openmy skill day.run --date 2026-04-08 --audio path/to/audio.wav --json
+```
+
+兼容入口 `openmy agent` 仍然保留，但后续会逐步退到兼容别名。
+
+---
+
 ## 🖼️ 输出效果
 
 <div align="center">
@@ -112,6 +143,8 @@ python3 -m pytest tests/ -v   # 167 tests，不需要 API key
 
 ```
 src/openmy/
+  commands/          CLI / skill 入口
+  providers/         STT / LLM provider 边界
   services/
     ingest/            音频导入与预处理
     cleaning/          文本清洗（规则引擎）
@@ -122,6 +155,8 @@ src/openmy/
     briefing/          日报生成
     context/           活跃上下文
     screen_recognition/  屏幕上下文
+  adapters/
+    transcription/    旧转写兼容壳
 app/                  报告页面
 tests/                自动化测试
 ```
