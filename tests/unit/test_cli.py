@@ -953,6 +953,103 @@ class TestOpenMyCli(unittest.TestCase):
         finally:
             self.cleanup_day_dir(date_str)
 
+    def test_cmd_run_keeps_main_chain_complete_when_transcription_enrich_fails(self):
+        from openmy.commands import run as run_command
+
+        date_str = "2099-01-23"
+        day_dir = self.make_day_dir(date_str)
+        transcript_path = day_dir / "transcript.md"
+        scenes_path = day_dir / "scenes.json"
+        briefing_path = day_dir / "daily_briefing.json"
+        transcription_path = day_dir / "transcript.transcription.json"
+
+        transcript_path.write_text("# 2099-01-23\n\n---\n\n## 10:00\n\n今天上午我在修 OpenMy。", encoding="utf-8")
+        scenes_payload = {
+            "scenes": [
+                {
+                    "scene_id": "s01",
+                    "time_start": "10:00",
+                    "time_end": "10:05",
+                    "text": "今天上午我在修 OpenMy。",
+                    "summary": "在口述 OpenMy 进展。",
+                    "preview": "今天上午我在修 OpenMy。",
+                    "role": {"addressed_to": "", "scene_type_label": "自言自语", "needs_review": False},
+                }
+            ],
+            "stats": {"total_scenes": 1, "role_distribution": {}, "needs_review_count": 0},
+        }
+        scenes_path.write_text(json.dumps(scenes_payload, ensure_ascii=False), encoding="utf-8")
+        briefing_path.write_text(json.dumps({"summary": "今天继续推进 OpenMy。"}, ensure_ascii=False), encoding="utf-8")
+        transcription_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "openmy.transcription.v1",
+                    "date": date_str,
+                    "provider": "faster-whisper",
+                    "model": "small",
+                    "chunks": [
+                        {
+                            "chunk_id": "chunk_0001",
+                            "chunk_path": str(day_dir / "stt_chunks" / "chunk_0001.mp3"),
+                            "time_label": "10:00",
+                            "text": "今天上午我在修 OpenMy。",
+                            "segments": [],
+                            "provider_metadata": {},
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        def fake_transcribe(*args, **kwargs):
+            (day_dir / "transcript.raw.md").write_text(
+                "# 2099-01-23 上下文（原始）\n\n---\n\n## 10:00\n\n今天上午我在修 OpenMy。\n",
+                encoding="utf-8",
+            )
+            return 0
+
+        def fake_briefing(args):
+            briefing_path.write_text(json.dumps({"summary": "今天继续推进 OpenMy。"}, ensure_ascii=False), encoding="utf-8")
+            return 0
+
+        try:
+            with (
+                patch.object(run_command, "transcribe_audio_files", side_effect=fake_transcribe),
+                patch.object(run_command, "run_transcription_enrichment", side_effect=RuntimeError("whisperx 缺少依赖"), create=True),
+                patch("openmy.cli.cmd_briefing", side_effect=fake_briefing),
+                patch("openmy.services.context.consolidation.consolidate") as consolidate_mock,
+            ):
+                result = run_command.cmd_run(
+                    argparse.Namespace(
+                        date=date_str,
+                        audio=["/tmp/fake.wav"],
+                        skip_transcribe=False,
+                        stt_align=True,
+                        stt_diarize=False,
+                        stt_provider="faster-whisper",
+                        stt_model="small",
+                        stt_vad=False,
+                        stt_word_timestamps=False,
+                    )
+                )
+
+            self.assertEqual(result, 0)
+            consolidate_mock.assert_called_once()
+
+            status_payload = json.loads((day_dir / "run_status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status_payload["status"], "completed")
+            self.assertEqual(status_payload["steps"]["transcribe"]["status"], "completed")
+            self.assertEqual(status_payload["steps"]["transcribe_enrich"]["status"], "failed")
+            self.assertEqual(status_payload["steps"]["consolidate"]["status"], "completed")
+
+            meta_payload = json.loads((day_dir / f"{date_str}.meta.json").read_text(encoding="utf-8"))
+            self.assertEqual(meta_payload["transcription_enrich_status"], "failed")
+            self.assertIn("缺少依赖", meta_payload["transcription_enrich_message"])
+        finally:
+            self.cleanup_day_dir(date_str)
+
     def test_cli_context_generates_outputs(self):
         """openmy context 应该生成 active_context 产物。"""
         context_path = PROJECT_ROOT / "data" / "active_context.json"

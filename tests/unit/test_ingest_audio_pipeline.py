@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -106,9 +107,10 @@ class TranscribeAudioFilesTest(unittest.TestCase):
 
             structured_path = tmp_path / "transcript.transcription.json"
             self.assertTrue(structured_path.exists())
-            payload = structured_path.read_text(encoding="utf-8")
-            self.assertIn("faster-whisper", payload)
-            self.assertIn("13:15", payload)
+            payload = json.loads(structured_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["provider"], "faster-whisper")
+            self.assertEqual(payload["chunks"][0]["time_label"], "13:15")
+            self.assertTrue(Path(payload["chunks"][0]["chunk_path"]).exists())
 
     def test_uses_prepared_chunks_instead_of_raw_audio(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -170,7 +172,14 @@ class TranscribeAudioFilesTest(unittest.TestCase):
             self.assertEqual(prepare_calls, [audio_one.resolve(), audio_two.resolve()])
 
             used_chunk_paths = [call.kwargs["audio_path"] for call in transcribe_mock.call_args_list]
-            self.assertEqual(used_chunk_paths, [chunk_one, chunk_two, chunk_three])
+            self.assertEqual(
+                used_chunk_paths,
+                [
+                    tmp_path / "stt_chunks" / "audio_001_seg_1.mp3",
+                    tmp_path / "stt_chunks" / "audio_002_sub_0001.mp3",
+                    tmp_path / "stt_chunks" / "audio_002_sub_0002.mp3",
+                ],
+            )
 
     def test_retries_gemini_chunk_before_failing(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

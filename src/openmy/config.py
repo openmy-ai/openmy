@@ -166,6 +166,8 @@ DISTILL_THINKING_LEVEL = "medium"
 AUDIO_PIPELINE_TIMEOUT = 1800
 STT_VAD_ENABLED = False
 STT_WORD_TIMESTAMPS_ENABLED = False
+STT_ALIGN_ENABLED = False
+STT_DIARIZATION_ENABLED = False
 
 
 def get_stt_vad_enabled() -> bool:
@@ -174,6 +176,14 @@ def get_stt_vad_enabled() -> bool:
 
 def get_stt_word_timestamps_enabled() -> bool:
     return _read_bool_env("OPENMY_STT_WORD_TIMESTAMPS", default=STT_WORD_TIMESTAMPS_ENABLED)
+
+
+def get_stt_align_enabled() -> bool:
+    return _read_bool_env("OPENMY_STT_ALIGN", default=STT_ALIGN_ENABLED)
+
+
+def get_stt_diarization_enabled() -> bool:
+    return _read_bool_env("OPENMY_STT_DIARIZE", default=STT_DIARIZATION_ENABLED)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

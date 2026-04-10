@@ -10,6 +10,7 @@ from openmy.config import GEMINI_MODEL, get_llm_api_key, get_stage_llm_model, ha
 PARTIAL_SUCCESS = 2
 RUN_STEPS = (
     "transcribe",
+    "transcribe_enrich",
     "clean",
     "segment",
     "roles",
@@ -88,6 +89,20 @@ def _finish_run(date_str: str, payload: dict, final_status: str, current_step: s
     _save_run_status(date_str, payload)
 
 
+def run_transcription_enrichment(day_dir: Path, *, diarize: bool = False) -> dict:
+    from openmy.services.ingest.transcription_enrichment import run_transcription_enrichment as _run
+
+    return _run(day_dir, diarize=diarize)
+
+
+def apply_transcription_enrichment_to_scenes(day_dir: Path) -> None:
+    from openmy.services.ingest.transcription_enrichment import (
+        apply_transcription_enrichment_to_scenes as _apply,
+    )
+
+    _apply(day_dir)
+
+
 def transcribe_audio_files(
     date_str: str,
     audio_files: list[str],
@@ -152,6 +167,46 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     else:
         _mark_step(date_str, run_status, "transcribe", "skipped", message="未执行新的音频转写")
 
+    from openmy.services.ingest.transcription_enrichment import update_pipeline_meta
+
+    update_pipeline_meta(
+        cli.ensure_day_dir(date_str),
+        transcription_provider=getattr(args, "stt_provider", None) or "faster-whisper",
+        transcription_model=getattr(args, "stt_model", None) or "",
+        transcription_vad=bool(getattr(args, "stt_vad", False)),
+        transcription_word_timestamps=bool(getattr(args, "stt_word_timestamps", False)),
+    )
+
+    if bool(getattr(args, "stt_align", False)):
+        _mark_step(date_str, run_status, "transcribe_enrich", "running", message="正在执行 WhisperX 精标")
+        try:
+            enrichment = run_transcription_enrichment(
+                cli.ensure_day_dir(date_str),
+                diarize=bool(getattr(args, "stt_diarize", False)),
+            )
+            update_pipeline_meta(
+                cli.ensure_day_dir(date_str),
+                transcription_enrich_status="completed",
+                transcription_enrich_message="",
+                transcription_diarization_status=enrichment.get("diarization_enabled", False),
+            )
+            _mark_step(date_str, run_status, "transcribe_enrich", "completed", message="WhisperX 精标完成")
+        except Exception as exc:
+            update_pipeline_meta(
+                cli.ensure_day_dir(date_str),
+                transcription_enrich_status="failed",
+                transcription_enrich_message=str(exc),
+            )
+            cli.console.print(f"[yellow]⚠️ 精标失败，继续主链[/yellow]: {exc}")
+            _mark_step(date_str, run_status, "transcribe_enrich", "failed", message=str(exc))
+    else:
+        update_pipeline_meta(
+            cli.ensure_day_dir(date_str),
+            transcription_enrich_status="skipped",
+            transcription_enrich_message="未启用 WhisperX 精标层",
+        )
+        _mark_step(date_str, run_status, "transcribe_enrich", "skipped", message="未启用 WhisperX 精标层")
+
     if args.skip_transcribe and not paths["raw"].exists() and not paths["transcript"].exists() and not paths["scenes"].exists():
         cli.console.print(f"[red]❌ {date_str} 没有可复用的数据，至少需要 transcript/raw/scenes 之一[/red]")
         _finish_run(date_str, run_status, "failed", "transcribe")
@@ -199,11 +254,23 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         cli.console.print(f"[dim]ℹ️ 自动角色识别已冻结；如需重建场景可运行 openmy roles {date_str}[/dim]")
         paths = cli.resolve_day_paths(date_str)
         scenes_data = cli.read_json(paths["scenes"], {})
+        if bool(getattr(args, "stt_align", False)):
+            try:
+                apply_transcription_enrichment_to_scenes(cli.ensure_day_dir(date_str))
+                scenes_data = cli.read_json(paths["scenes"], {})
+            except Exception as exc:
+                cli.console.print(f"[yellow]⚠️ 场景未附加精标证据[/yellow]: {exc}")
         _mark_step(date_str, run_status, "segment", "completed", message=f"生成 {scene_count} 个场景", artifact=output_path)
     else:
         cli.console.print("\n[dim]⏭️ 跳过场景切分：已存在 scenes.json[/dim]")
         scenes_data = cli.freeze_scene_roles(scenes_data)
         cli.write_json(paths["scenes"], scenes_data)
+        if bool(getattr(args, "stt_align", False)):
+            try:
+                apply_transcription_enrichment_to_scenes(cli.ensure_day_dir(date_str))
+                scenes_data = cli.read_json(paths["scenes"], {})
+            except Exception as exc:
+                cli.console.print(f"[yellow]⚠️ 场景未附加精标证据[/yellow]: {exc}")
         _mark_step(date_str, run_status, "segment", "skipped", message="复用已有 scenes.json", artifact=paths["scenes"])
 
     cli.console.print("\n[dim]⏭️ 跳过角色识别：功能已冻结[/dim]")
@@ -394,6 +461,8 @@ def cmd_quick_start(args: argparse.Namespace) -> int:
         stt_model=getattr(args, "stt_model", None),
         stt_vad=bool(getattr(args, "stt_vad", False)),
         stt_word_timestamps=bool(getattr(args, "stt_word_timestamps", False)),
+        stt_align=bool(getattr(args, "stt_align", False)),
+        stt_diarize=bool(getattr(args, "stt_diarize", False)),
     )
     result = cli.cmd_run(run_args, entrypoint="quick-start")
     if result not in (0, PARTIAL_SUCCESS):

@@ -32,6 +32,8 @@ from openmy.config import (
     get_llm_api_key,
     get_stage_llm_model,
     get_stt_api_key,
+    get_stt_align_enabled,
+    get_stt_diarization_enabled,
     get_stt_model,
     get_stt_provider_name,
     has_llm_credentials,
@@ -278,6 +280,18 @@ def add_stt_runtime_args(parser: argparse.ArgumentParser) -> None:
         "--stt-word-timestamps",
         action="store_true",
         help="保留更细的词级时间信息（如果后端支持）",
+    )
+    parser.add_argument(
+        "--stt-align",
+        action="store_true",
+        default=get_stt_align_enabled(),
+        help="在转写后启用 WhisperX 精标层",
+    )
+    parser.add_argument(
+        "--stt-diarize",
+        action="store_true",
+        default=get_stt_diarization_enabled(),
+        help="在精标层尝试附加说话人分离（如果环境支持）",
     )
 
 
@@ -876,6 +890,8 @@ def cmd_agent(args: argparse.Namespace) -> int:
                 stt_model=args.stt_model,
                 stt_vad=args.stt_vad,
                 stt_word_timestamps=args.stt_word_timestamps,
+                stt_align=args.stt_align,
+                stt_diarize=args.stt_diarize,
             )
         )
 
@@ -961,6 +977,8 @@ def cmd_skill(args: argparse.Namespace) -> int:
                 stt_model=args.stt_model,
                 stt_vad=args.stt_vad,
                 stt_word_timestamps=args.stt_word_timestamps,
+                stt_align=args.stt_align,
+                stt_diarize=args.stt_diarize,
             ),
         )
         status_path = ensure_day_dir(args.date) / "run_status.json"
