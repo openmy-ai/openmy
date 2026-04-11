@@ -860,6 +860,87 @@ class TestOpenMyCli(unittest.TestCase):
         finally:
             self.cleanup_day_dir(date_str)
 
+    def test_cmd_run_with_new_audio_rebuilds_stale_downstream_artifacts(self):
+        from openmy.commands import run as run_command
+
+        date_str = "2099-01-24"
+        day_dir = self.make_day_dir(date_str)
+        transcript_path = day_dir / "transcript.md"
+        scenes_path = day_dir / "scenes.json"
+        briefing_path = day_dir / "daily_briefing.json"
+        meta_path = day_dir / f"{date_str}.meta.json"
+
+        transcript_path.write_text("旧 transcript", encoding="utf-8")
+        scenes_path.write_text(json.dumps({"scenes": [{"scene_id": "old"}], "stats": {}}, ensure_ascii=False), encoding="utf-8")
+        briefing_path.write_text(json.dumps({"summary": "旧 briefing"}, ensure_ascii=False), encoding="utf-8")
+        meta_path.write_text(json.dumps({"daily_summary": "旧 meta"}, ensure_ascii=False), encoding="utf-8")
+
+        def fake_transcribe(*args, **kwargs):
+            (day_dir / "transcript.raw.md").write_text("# raw", encoding="utf-8")
+            return 0
+
+        def fake_clean(args):
+            transcript_path.write_text("新 transcript", encoding="utf-8")
+            return 0
+
+        segmented_payload = {
+            "scenes": [
+                {
+                    "scene_id": "new",
+                    "time_start": "10:00",
+                    "time_end": "10:05",
+                    "text": "新文本",
+                    "summary": "新摘要",
+                    "preview": "新文本",
+                    "role": {"addressed_to": "", "scene_type_label": "自言自语", "needs_review": False},
+                }
+            ],
+            "stats": {"total_scenes": 1, "role_distribution": {}, "needs_review_count": 0},
+        }
+
+        def fake_distill(args):
+            return 0
+
+        def fake_briefing(args):
+            briefing_path.write_text(json.dumps({"summary": "新 briefing"}, ensure_ascii=False), encoding="utf-8")
+            return 0
+
+        try:
+            with (
+                patch.object(run_command, "transcribe_audio_files", side_effect=fake_transcribe),
+                patch("openmy.cli.cmd_clean", side_effect=fake_clean) as clean_mock,
+                patch("openmy.cli.build_segmented_scenes_payload", return_value=segmented_payload) as segment_mock,
+                patch("openmy.cli.cmd_distill", side_effect=fake_distill) as distill_mock,
+                patch("openmy.cli.cmd_briefing", side_effect=fake_briefing) as briefing_mock,
+                patch("openmy.commands.run.has_llm_credentials", return_value=False),
+                patch("openmy.services.context.consolidation.consolidate"),
+            ):
+                result = run_command.cmd_run(
+                    argparse.Namespace(
+                        date=date_str,
+                        audio=["/tmp/fake.wav"],
+                        skip_transcribe=False,
+                        stt_provider="gemini",
+                        stt_model="gemini-3.1-flash-lite-preview",
+                        stt_vad=False,
+                        stt_word_timestamps=False,
+                        stt_enrich_mode="off",
+                        stt_align=False,
+                        stt_diarize=False,
+                    )
+                )
+
+            self.assertEqual(result, 0)
+            clean_mock.assert_called_once()
+            segment_mock.assert_called_once()
+            distill_mock.assert_not_called()
+            briefing_mock.assert_called_once()
+            self.assertEqual(transcript_path.read_text(encoding="utf-8"), "新 transcript")
+            self.assertEqual(json.loads(scenes_path.read_text(encoding="utf-8"))["scenes"][0]["scene_id"], "new")
+            self.assertEqual(json.loads(briefing_path.read_text(encoding="utf-8"))["summary"], "新 briefing")
+        finally:
+            self.cleanup_day_dir(date_str)
+
     def test_cmd_run_writes_partial_status_when_extract_times_out(self):
         """run 在提取超时时应该写出完整运行状态并返回部分成功。"""
         from openmy.commands import run as run_command

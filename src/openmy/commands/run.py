@@ -62,6 +62,18 @@ def _save_run_status(date_str: str, payload: dict) -> None:
     cli.write_json(cli.ensure_day_dir(date_str) / "run_status.json", payload)
 
 
+def _clear_downstream_artifacts(date_str: str) -> None:
+    cli = _cli()
+    day_dir = cli.ensure_day_dir(date_str)
+    for path in [
+        day_dir / "transcript.md",
+        day_dir / "scenes.json",
+        day_dir / "daily_briefing.json",
+        day_dir / f"{date_str}.meta.json",
+    ]:
+        path.unlink(missing_ok=True)
+
+
 def _mark_step(
     date_str: str,
     payload: dict,
@@ -174,6 +186,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             _mark_step(date_str, run_status, "transcribe", "failed", message="转写失败")
             _finish_run(date_str, run_status, "failed", "transcribe")
             return result
+        _clear_downstream_artifacts(date_str)
         paths = cli.resolve_day_paths(date_str)
         _mark_step(date_str, run_status, "transcribe", "completed", message="转写完成", artifact=paths["raw"])
     else:
