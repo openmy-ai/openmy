@@ -987,7 +987,7 @@ function renderDayLayout() {
   html += renderMetaPanels(meta);
 
   html += `<div class="view-tabs">
-    <button class="view-tab" id="tab-overview" onclick="switchView('overview')">🌍 全局记忆库</button>
+    <button class="view-tab" id="tab-overview" onclick="switchView('overview')">🌍 概览 / 全局记忆库</button>
     <button class="view-tab" id="tab-briefing" onclick="switchView('briefing')">📋 今日日报</button>
     <button class="view-tab" id="tab-timeline" onclick="switchView('timeline')">🕒 摘要时间线</button>
     <button class="view-tab" id="tab-table" onclick="switchView('table')">🗒️ 完整逐字稿</button>
@@ -1020,10 +1020,9 @@ function renderMetaPanels(meta) {
 
   const cards = groups.map((group) => {
     const items = meta?.[group.key] || [];
-    if (!items.length) return '';
     return `<div class="prop-card">
       <div class="prop-card-title"><span class="dot" style="background:${group.dot}"></span>${group.title} <span class="prop-count">${items.length}</span></div>
-      ${items.map((item) => {
+      ${items.length ? items.map((item) => {
         const time = escapeHtml(item.time || '');
         const project = escapeHtml(item.project || item.topic || '');
         const summary = escapeHtml(plainText(item.summary || item.what || item.task || item.content || item.decision || item.fact || item.intent || ''));
@@ -1032,7 +1031,7 @@ function renderMetaPanels(meta) {
           ${project ? `<span class="project-tag">${project}</span>` : ''}
           ${summary}
         </div>`;
-      }).join('')}
+      }).join('') : '<div class="empty-state">暂无</div>'}
     </div>`;
   }).filter(Boolean);
 

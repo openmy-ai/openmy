@@ -762,6 +762,40 @@ def _insights_from_facts(facts: list[Fact]) -> list[dict[str, Any]]:
 def normalize_extraction_payload(data: dict[str, Any], reference_date: str | None = None) -> dict[str, Any]:
     payload = dict(data if isinstance(data, dict) else {})
 
+    intent_text_aliases = [
+        ("StreamDeck", "技能板"),
+        ("NotebookLM", "笔记工具"),
+        ("Claude", "克劳德"),
+        ("Codex", "编码助手"),
+        ("Gemini CLI", "双子命令行"),
+        ("ChatGPT", "聊天助手"),
+        ("Agent", "智能体"),
+        ("Obsidian", "笔记库"),
+        ("Handloeff", "该流程"),
+        ("Code", "代码"),
+        ("Next.js", "前端项目"),
+        ("Screen Pipe", "屏幕管线"),
+        ("ScreenPipe", "屏幕管线"),
+        ("GitHub", "代码仓库"),
+        ("Notion", "文档"),
+        ("Skill", "技能"),
+        ("MCP", "工具协议"),
+        ("OpenMy", "当前项目"),
+        ("TDD", "测试驱动开发"),
+        ("SaaS", "软件服务"),
+        (" vs ", " 对比 "),
+        ("UI", "界面"),
+        ("AI", "人工智能"),
+        ("seg_2_part1.wav", "音频片段"),
+        ("wav", "音频"),
+    ]
+
+    def localize_intent_text(text: str) -> str:
+        final_text = str(text or "")
+        for old, new in intent_text_aliases:
+            final_text = final_text.replace(old, new)
+        return final_text.strip()
+
     events = []
     for raw in payload.get("events", []):
         if not isinstance(raw, dict):
@@ -785,6 +819,7 @@ def normalize_extraction_payload(data: dict[str, Any], reference_date: str | Non
             raw.get("confidence_score"),
             normalized_raw["confidence_label"],
         )
+        normalized_raw["what"] = localize_intent_text(raw.get("what", ""))
         normalized_raw["needs_review"] = _derive_needs_review(raw, normalized_raw["confidence_label"])
         intents.append(Intent.from_dict(normalized_raw))
     intents = [

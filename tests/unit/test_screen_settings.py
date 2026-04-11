@@ -54,6 +54,12 @@ class TestScreenSettings(unittest.TestCase):
         self.assertFalse(loaded.enabled)
         self.assertEqual(loaded.participation_mode, "off")
 
+    def test_legacy_screen_recognition_env_can_disable_participation(self):
+        loaded = load_screen_context_settings(env={"SCREEN_RECOGNITION_ENABLED": "false"})
+
+        self.assertFalse(loaded.enabled)
+        self.assertEqual(loaded.participation_mode, "off")
+
     def test_resolve_roles_clears_stale_screen_context_when_no_screen_client(self):
         scene = SceneBlock(scene_id="scene_001", time_start="10:00", time_end="10:05", text="这个我待会儿弄")
         scene.screen_context = ScreenContext(

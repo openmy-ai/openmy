@@ -109,6 +109,27 @@ def _minutes_between(time_start: str, time_end: str) -> int:
     return max(0, minutes)
 
 
+def _sanitize_briefing_text(text: str) -> str:
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return ""
+
+    replacements = [
+        ("今天大家", "今天我和其他人"),
+        ("大家都", "我们都"),
+        ("大家对", "我们对"),
+        ("大家聊", "我和其他人聊"),
+        ("大家", "我们"),
+        ("有人说", "对方说"),
+        ("有人提到", "对方提到"),
+        ("有人在", "对方在"),
+        ("有人", "对方"),
+    ]
+    for old, new in replacements:
+        cleaned = cleaned.replace(old, new)
+    return cleaned
+
+
 def _get_screen_context_apps(client, date_str: str, time_start: str, time_end: str) -> list[str]:
     """查询屏幕上下文服务，获取指定时间段使用的 App 列表。"""
     if not client:
@@ -181,7 +202,7 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
         for scene in scenes
     )
 
-    if scene_has_screen_context:
+    if scene_has_screen_context and screen_participation_enabled:
         briefing.screen_recognition_available = True
 
     if screen_participation_enabled and screen_client:
@@ -214,28 +235,29 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
                 if addressed_to not in people:
                     people[addressed_to] = PersonInteraction(name=addressed_to)
                 people[addressed_to].scene_count += 1
-                summary = scene.get("summary", "")
+                summary = _sanitize_briefing_text(scene.get("summary", ""))
                 if summary and len(people[addressed_to].topics) < 5:
                     people[addressed_to].topics.append(summary)
 
-            summary = scene.get("summary", "")
+            summary = _sanitize_briefing_text(scene.get("summary", ""))
             if summary:
                 summaries.append(summary)
 
-            screen_summary = str(screen_context.get("summary", "")).strip()
-            if screen_summary and screen_summary not in briefing.screen_highlights:
-                briefing.screen_highlights.append(screen_summary)
+            if screen_participation_enabled:
+                screen_summary = str(screen_context.get("summary", "")).strip()
+                if screen_summary and screen_summary not in briefing.screen_highlights:
+                    briefing.screen_highlights.append(screen_summary)
 
-            for candidate in screen_context.get("completion_candidates", []):
-                if not isinstance(candidate, dict):
-                    continue
-                label = str(candidate.get("label", "") or candidate.get("kind", "")).strip()
-                if label and label not in briefing.completion_candidates:
-                    briefing.completion_candidates.append(label)
+                for candidate in screen_context.get("completion_candidates", []):
+                    if not isinstance(candidate, dict):
+                        continue
+                    label = str(candidate.get("label", "") or candidate.get("kind", "")).strip()
+                    if label and label not in briefing.completion_candidates:
+                        briefing.completion_candidates.append(label)
 
         apps: list[str] = []
         mode = "voice_only"
-        if scene_has_screen_context:
+        if screen_participation_enabled and scene_has_screen_context:
             apps = sorted(
                 {
                     str(scene.get("screen_context", {}).get("primary_app", "")).strip()
@@ -282,7 +304,7 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
     time_block_texts = {block.summary for block in briefing.time_blocks}
     seen_events: set[str] = set()
     for scene in scenes:
-        summary = scene.get("summary", "")
+        summary = _sanitize_briefing_text(scene.get("summary", ""))
         if not summary or summary in seen_events:
             continue
         seen_events.add(summary)
@@ -307,7 +329,7 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
             else:
                 briefing.work_sessions[app] = "<1分钟"
 
-    if not briefing.work_sessions and briefing.screen_highlights:
+    if screen_participation_enabled and not briefing.work_sessions and briefing.screen_highlights:
         app_counts: Counter[str] = Counter()
         for scene in scenes:
             screen_context = scene.get("screen_context", {}) if isinstance(scene.get("screen_context", {}), dict) else {}

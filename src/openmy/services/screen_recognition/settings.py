@@ -76,10 +76,18 @@ def load_screen_context_settings(
     env_map = env or os.environ
     if "OPENMY_SCREEN_CONTEXT_ENABLED" in env_map:
         loaded["enabled"] = env_map["OPENMY_SCREEN_CONTEXT_ENABLED"].strip().lower() in {"1", "true", "yes", "on"}
+    elif "SCREEN_RECOGNITION_ENABLED" in env_map:
+        loaded["enabled"] = env_map["SCREEN_RECOGNITION_ENABLED"].strip().lower() in {"1", "true", "yes", "on"}
+
     if "OPENMY_SCREEN_CONTEXT_MODE" in env_map:
         loaded["participation_mode"] = env_map["OPENMY_SCREEN_CONTEXT_MODE"]
+    elif "SCREEN_RECOGNITION_ENABLED" in env_map and env_map["SCREEN_RECOGNITION_ENABLED"].strip().lower() in {"0", "false", "no", "off"}:
+        loaded["participation_mode"] = "off"
+
     if "OPENMY_SCREEN_CONTEXT_API" in env_map:
         loaded["provider_base_url"] = env_map["OPENMY_SCREEN_CONTEXT_API"]
+    elif "SCREEN_RECOGNITION_API" in env_map:
+        loaded["provider_base_url"] = env_map["SCREEN_RECOGNITION_API"]
     return ScreenContextSettings.from_dict(loaded)
 
 

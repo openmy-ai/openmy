@@ -92,6 +92,31 @@ class TestGenerateBriefing(unittest.TestCase):
         finally:
             os.unlink(tmp_path)
 
+    def test_briefing_sanitizes_generic_people_phrasing(self):
+        scenes = {
+            "scenes": [
+                {
+                    "time_start": "12:00",
+                    "time_end": "12:10",
+                    "text": "今天大家讨论了一会儿。",
+                    "summary": "今天大家聊了不少事。有人说先别急。",
+                    "role": {"addressed_to": "老婆", "scene_type": "interpersonal"},
+                }
+            ],
+            "stats": {},
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as fh:
+            json.dump(scenes, fh, ensure_ascii=False)
+            tmp_path = Path(fh.name)
+
+        try:
+            briefing = generate_briefing(tmp_path, "2026-04-07")
+            payload = json.dumps(asdict(briefing), ensure_ascii=False)
+            self.assertNotIn("大家", payload)
+            self.assertNotIn("有人说", payload)
+        finally:
+            os.unlink(tmp_path)
+
 
 class TestSaveBriefing(unittest.TestCase):
     def test_save_briefing_writes_json(self):

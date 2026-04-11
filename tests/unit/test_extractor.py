@@ -356,6 +356,27 @@ class TestExtractorCallGemini(unittest.TestCase):
         self.assertEqual(payload["intents"][0]["temporal_state"], "future")
         self.assertEqual(payload["facts"], [])
 
+    def test_normalize_extraction_payload_localizes_known_ascii_brands_in_intent_text(self):
+        payload = extractor.normalize_extraction_payload(
+            {
+                "daily_summary": "整理命名与技能。",
+                "intents": [
+                    {
+                        "intent_id": "intent_001",
+                        "kind": "action_item",
+                        "what": "在所有文档里把 OpenMy 的 StreamDeck UI 改好，并同步到 GitHub",
+                        "status": "open",
+                    }
+                ],
+                "facts": [],
+            }
+        )
+
+        self.assertEqual(
+            payload["intents"][0]["what"],
+            "在所有文档里把 当前项目 的 技能板 界面 改好，并同步到 代码仓库",
+        )
+
     def test_normalize_extraction_payload_marks_ongoing_work_as_active(self):
         payload = extractor.normalize_extraction_payload(
             {
