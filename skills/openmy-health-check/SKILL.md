@@ -36,3 +36,5 @@ Use it when:
 3. If vocab is missing, suggest `vocab.init` next.
 4. If the active engine needs a key, explain which key name is missing.
 5. When the user asks which engine to choose, compare local engines and API engines in plain language.
+6. **Always highlight that local engines work without any key.** If the user has no API keys configured, say: "You can already process audio with the built-in local engine. API keys are optional — they unlock cloud-based engines with better accuracy."
+7. When recommending an engine, start with the one that is already `ready: true`.

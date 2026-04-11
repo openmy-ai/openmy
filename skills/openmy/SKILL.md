@@ -49,17 +49,41 @@ Use this skill when:
 - Do not treat the frontend as the execution surface.
 - Do not describe OpenMy as an MCP-first product.
 
+## Critical: API Keys Are Optional
+
+OpenMy works out of the box with local speech-to-text engines.
+No API key is needed to process audio.
+- `faster-whisper` and `funasr` run locally and are always ready.
+- API-based engines (`gemini`, `groq`, `dashscope`, `deepgram`) need keys, but they are optional upgrades.
+- LLM keys (`GEMINI_API_KEY`) are only needed for distillation and extraction. The core pipeline (`transcribe -> clean -> segment -> briefing`) works without them.
+**Never tell the user they must configure an API key before processing audio.**
+Run `health.check` first. It shows which engines are already ready.
+
+## Communication Style
+
+When presenting results to users:
+- Talk like a human assistant, not a developer tool.
+- Never show raw file paths. Say "your profile is saved" instead of a full path.
+- Never dump JSON. Read it and summarize it in plain language.
+- Never ask users to type terminal commands. Run the commands yourself.
+- Use short paragraphs, not long bullet lists.
+- Lead with what matters first.
+- Use emoji sparingly for visual hierarchy.
+- When listing items, prefer one compact sentence over a long list.
+- End with a question or suggestion, not a status dump.
+
 ## First-Time Setup Flow
 
 If this looks like a first-time setup:
 
-1. route to `openmy-profile-init`
-2. route to `openmy-vocab-init`
-3. help the user locate the first audio file
-4. route to `openmy-day-run`
-5. review the result with the user
-6. suggest corrections if the transcript clearly has errors
-7. route back to `openmy-vocab-init` if you discover more names or terms
+1. **Always start with `openmy-health-check`** — this tells you what is ready and what is missing.
+2. Route to `openmy-profile-init` if profile is missing.
+3. Route to `openmy-vocab-init` if vocab is missing.
+4. Help the user locate the first audio file.
+5. Route to `openmy-day-run`.
+6. Review the result with the user.
+7. Suggest corrections if the transcript clearly has errors.
+8. Route back to `openmy-vocab-init` if you discover more names or terms.
 
 ## Typical Daily Workflow
 

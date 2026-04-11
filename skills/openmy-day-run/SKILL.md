@@ -42,6 +42,10 @@ It is not tied to one device.
 
 If the file date is unclear, ask the user before choosing a date.
 
+The default STT engine (`faster-whisper`) runs locally and needs no API key.
+If the user has not configured any keys, proceed with the local engine.
+Do not block audio processing because an API key is missing.
+
 ## Agent Behavior After Successful Run
 
 1. Call `day.get` for the same date.

@@ -39,3 +39,4 @@ Turn the snapshot into a next move.
 2. If recent days have no data, ask whether recordings exist.
 3. Mention the last obvious focus area.
 4. If profile or vocab is missing, start onboarding.
+5. If this is the first conversation ever, run `health.check` before anything else.
