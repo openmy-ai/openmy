@@ -36,7 +36,7 @@ class TestOpenMyCli(unittest.TestCase):
     def seed_view_day(self, date_str: str) -> Path:
         day_dir = self.make_day_dir(date_str)
         (day_dir / "transcript.md").write_text(
-            "# sample\n\n---\n\n## 12:42\n\n老婆，今天晚上吃火锅。",
+            "# sample\n\n---\n\n## 12:42\n\n伴侣，今天晚上吃火锅。",
             encoding="utf-8",
         )
         (day_dir / "daily_briefing.json").write_text(
@@ -51,11 +51,11 @@ class TestOpenMyCli(unittest.TestCase):
                             "scene_id": "scene_001",
                             "time_start": "12:42",
                             "time_end": "12:50",
-                            "text": "老婆，今天晚上吃火锅。",
+                            "text": "伴侣，今天晚上吃火锅。",
                             "summary": "在约晚饭。",
-                            "preview": "老婆，今天晚上吃火锅。",
+                            "preview": "伴侣，今天晚上吃火锅。",
                             "role": {
-                                "addressed_to": "老婆",
+                                "addressed_to": "伴侣",
                                 "scene_type_label": "跟人聊",
                                 "needs_review": False,
                             },
@@ -63,7 +63,7 @@ class TestOpenMyCli(unittest.TestCase):
                     ],
                     "stats": {
                         "total_scenes": 1,
-                        "role_distribution": {"老婆": 1},
+                        "role_distribution": {"伴侣": 1},
                         "needs_review_count": 0,
                     },
                 },
@@ -76,12 +76,12 @@ class TestOpenMyCli(unittest.TestCase):
     def make_context_snapshot(self) -> dict:
         return {
             "schema_version": "active_context.v1",
-            "user_id": "user_zhousefu",
+            "user_id": "user_default",
             "generated_at": "2026-04-08T23:58:10+08:00",
             "context_seq": 1,
             "materialized_from_event_seq": 1,
             "default_delta_window_days": 3,
-            "status_line": "最近主要推进 OpenMy；当前有 1 个待办未闭环；高频互动对象是 老婆。",
+            "status_line": "最近主要推进 OpenMy；当前有 1 个待办未闭环；高频互动对象是 伴侣。",
             "stable_profile": {
                 "identity": {},
                 "communication_contract": {},
@@ -143,7 +143,7 @@ class TestOpenMyCli(unittest.TestCase):
                         "id": "decision_lunch",
                         "decision_id": "decision_lunch",
                         "topic": "生活",
-                        "decision": "中午改吃河南蒸菜",
+                        "decision": "中午改吃家常菜",
                         "scope": "project",
                         "effective_from": "2026-04-08T12:00:00+08:00",
                         "supersedes": [],
@@ -495,7 +495,7 @@ class TestOpenMyCli(unittest.TestCase):
 
         date_str = "2099-01-03"
         day_dir = self.make_day_dir(date_str)
-        raw_text = "# 2099-01-03 原始\n\n---\n\n## 10:00\n\n嗯\n老婆，今天去散步。"
+        raw_text = "# 2099-01-03 原始\n\n---\n\n## 10:00\n\n嗯\n伴侣，今天去散步。"
         (day_dir / "transcript.raw.md").write_text(raw_text, encoding="utf-8")
 
         try:
@@ -505,7 +505,7 @@ class TestOpenMyCli(unittest.TestCase):
             self.assertEqual(result, 0)
 
             transcript = (day_dir / "transcript.md").read_text(encoding="utf-8")
-            self.assertIn("老婆", transcript)
+            self.assertIn("伴侣", transcript)
             # 规则引擎应该删掉独立的"嗯"行
             self.assertNotIn("\n嗯\n", transcript)
         finally:
@@ -516,7 +516,7 @@ class TestOpenMyCli(unittest.TestCase):
         date_str = "2099-01-04"
         day_dir = self.make_day_dir(date_str)
         (day_dir / "transcript.md").write_text(
-            "# 2099-01-04\n\n---\n\n## 10:00\n\n老婆，晚上一起吃饭。\n\n## 11:00\n\nClaude 帮我看一下代码。",
+            "# 2099-01-04\n\n---\n\n## 10:00\n\n伴侣，晚上一起吃饭。\n\n## 11:00\n\nClaude 帮我看一下代码。",
             encoding="utf-8",
         )
 
@@ -574,17 +574,17 @@ class TestOpenMyCli(unittest.TestCase):
                             "scene_id": "s01",
                             "time_start": "10:00",
                             "time_end": "10:10",
-                            "text": "老婆，今天晚上吃火锅。",
+                            "text": "伴侣，今天晚上吃火锅。",
                             "summary": "",
-                            "preview": "老婆，今天晚上吃火锅。",
+                            "preview": "伴侣，今天晚上吃火锅。",
                             "role": {
-                                "addressed_to": "老婆",
+                                "addressed_to": "伴侣",
                                 "scene_type": "interpersonal",
                                 "scene_type_label": "跟人聊",
                             },
                         }
                     ],
-                    "stats": {"total_scenes": 1, "role_distribution": {"老婆": 1}, "needs_review_count": 0},
+                    "stats": {"total_scenes": 1, "role_distribution": {"伴侣": 1}, "needs_review_count": 0},
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -602,7 +602,7 @@ class TestOpenMyCli(unittest.TestCase):
 
             self.assertEqual(result, 0)
             mock_summarize.assert_called_once_with(
-                "老婆，今天晚上吃火锅。",
+                "伴侣，今天晚上吃火锅。",
                 "test-key",
                 GEMINI_MODEL,
             )
@@ -847,15 +847,15 @@ class TestOpenMyCli(unittest.TestCase):
         date_str = "2099-01-07"
         day_dir = self.make_day_dir(date_str)
         (day_dir / "transcript.md").write_text(
-            "# 2099-01-07\n\n---\n\n## 10:00\n\n老婆，今天晚上吃火锅。",
+            "# 2099-01-07\n\n---\n\n## 10:00\n\n伴侣，今天晚上吃火锅。",
             encoding="utf-8",
         )
         (day_dir / "scenes.json").write_text(
             (
                 '{"scenes":[{"scene_id":"s01","time_start":"10:00","time_end":"10:30",'
-                '"text":"老婆，今天晚上吃火锅。","summary":"在约晚饭。","preview":"老婆，今天晚上吃火锅。",'
-                '"role":{"addressed_to":"老婆","scene_type_label":"跟人聊","needs_review":false}}],'
-                '"stats":{"total_scenes":1,"role_distribution":{"老婆":1},"needs_review_count":0}}'
+                '"text":"伴侣，今天晚上吃火锅。","summary":"在约晚饭。","preview":"伴侣，今天晚上吃火锅。",'
+                '"role":{"addressed_to":"伴侣","scene_type_label":"跟人聊","needs_review":false}}],'
+                '"stats":{"total_scenes":1,"role_distribution":{"伴侣":1},"needs_review_count":0}}'
             ),
             encoding="utf-8",
         )
@@ -1325,7 +1325,7 @@ class TestOpenMyCli(unittest.TestCase):
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "openmy", "agent", "--reject-decision", "中午改吃河南蒸菜"],
+                [sys.executable, "-m", "openmy", "agent", "--reject-decision", "中午改吃家常菜"],
                 capture_output=True,
                 text=True,
                 timeout=60,
@@ -1354,15 +1354,15 @@ class TestOpenMyCli(unittest.TestCase):
         date_str = "2099-01-09"
         day_dir = self.make_day_dir(date_str)
         (day_dir / "transcript.md").write_text(
-            "# 2099-01-09\n\n---\n\n## 10:00\n\n老婆，今天晚上吃火锅。",
+            "# 2099-01-09\n\n---\n\n## 10:00\n\n伴侣，今天晚上吃火锅。",
             encoding="utf-8",
         )
         (day_dir / "scenes.json").write_text(
             (
                 '{"scenes":[{"scene_id":"s01","time_start":"10:00","time_end":"10:30",'
-                '"text":"老婆，今天晚上吃火锅。","summary":"在约晚饭。","preview":"老婆，今天晚上吃火锅。",'
-                '"role":{"addressed_to":"老婆","scene_type_label":"跟人聊","needs_review":false}}],'
-                '"stats":{"total_scenes":1,"role_distribution":{"老婆":1},"needs_review_count":0}}'
+                '"text":"伴侣，今天晚上吃火锅。","summary":"在约晚饭。","preview":"伴侣，今天晚上吃火锅。",'
+                '"role":{"addressed_to":"伴侣","scene_type_label":"跟人聊","needs_review":false}}],'
+                '"stats":{"total_scenes":1,"role_distribution":{"伴侣":1},"needs_review_count":0}}'
             ),
             encoding="utf-8",
         )

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import argparse
+import tempfile
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -147,6 +150,53 @@ class TestSkillDispatch(unittest.TestCase):
                 path.unlink(missing_ok=True)
             else:
                 path.write_text(original, encoding="utf-8")
+
+    def test_health_check_masks_export_api_key(self):
+        from openmy import skill_dispatch
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            profile_file = data_root / "profile.json"
+            profile_file.write_text("{}", encoding="utf-8")
+            corrections = data_root / "corrections.json"
+            corrections.write_text("{}", encoding="utf-8")
+            vocab = data_root / "vocab.txt"
+            vocab.write_text("词汇", encoding="utf-8")
+
+            fake_cli = SimpleNamespace(DATA_ROOT=data_root, find_all_dates=lambda: ["2026-04-10"])
+            fake_screen_settings = SimpleNamespace(
+                enabled=False,
+                participation_mode="off",
+                provider_base_url="http://127.0.0.1:0",
+            )
+
+            with (
+                patch("openmy.skill_dispatch._cli", return_value=fake_cli),
+                patch("openmy.config.get_export_provider_name", return_value="notion"),
+                patch(
+                    "openmy.config.get_export_config",
+                    return_value={"api_key": "secret-token", "database_id": "db_123"},
+                ),
+                patch("openmy.config.get_llm_provider_name", return_value="gemini"),
+                patch("openmy.config.has_llm_credentials", return_value=True),
+                patch("openmy.config.get_stt_provider_name", return_value="faster-whisper"),
+                patch("openmy.config.has_stt_credentials", return_value=True),
+                patch("openmy.services.cleaning.cleaner.CORRECTIONS_FILE", corrections),
+                patch("openmy.services.cleaning.cleaner.VOCAB_FILE", vocab),
+                patch("openmy.services.context.consolidation.profile_path", return_value=profile_file),
+                patch(
+                    "openmy.services.screen_recognition.settings.load_screen_context_settings",
+                    return_value=fake_screen_settings,
+                ),
+                patch("shutil.which", return_value="/usr/bin/fake"),
+            ):
+                payload, exit_code = skill_dispatch.handle_health_check(self.make_args(action="health.check"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["data"]["export"]["config"]["api_key"], "***")
+        self.assertEqual(payload["data"]["export"]["config"]["database_id"], "db_123")
 
 
 if __name__ == "__main__":

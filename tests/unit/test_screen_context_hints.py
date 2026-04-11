@@ -124,7 +124,7 @@ class TestSessionize(unittest.TestCase):
             ),
             ScreenEvent(
                 app_name="WeChat",
-                window_name="和老婆聊天",
+                window_name="和伴侣聊天",
                 timestamp="2026-04-07T12:01:00+08:00",
                 frame_id=3,
             ),

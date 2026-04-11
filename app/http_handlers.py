@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from http.server import SimpleHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
@@ -35,6 +36,15 @@ from app.pipeline_api import (
     get_pipeline_jobs_payload,
     handle_create_pipeline_job,
 )
+
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _valid_date_or_400(handler: SimpleHTTPRequestHandler, date_str: str) -> bool:
+    if DATE_RE.match(date_str):
+        return True
+    send_json(handler, {"error": "invalid date", "date": date_str}, status=400)
+    return False
 
 
 class BrainHandler(SimpleHTTPRequestHandler):
@@ -76,6 +86,8 @@ class BrainHandler(SimpleHTTPRequestHandler):
             send_json(self, get_stats())
         elif path.startswith("/api/briefing/"):
             date = path.split("/api/briefing/")[-1]
+            if not _valid_date_or_400(self, date):
+                return
             briefing = get_briefing(date)
             if briefing:
                 send_json(self, briefing)
@@ -83,6 +95,8 @@ class BrainHandler(SimpleHTTPRequestHandler):
                 send_json(self, {"error": "no briefing", "date": date}, status=404)
         elif path.startswith("/api/date/") and path.endswith("/meta"):
             date = path.removeprefix("/api/date/").removesuffix("/meta")
+            if not _valid_date_or_400(self, date):
+                return
             payload = get_date_meta_payload(date)
             if payload:
                 send_json(self, payload)
@@ -90,6 +104,8 @@ class BrainHandler(SimpleHTTPRequestHandler):
                 send_json(self, {"error": "no meta", "date": date}, status=404)
         elif path.startswith("/api/date/") and path.endswith("/briefing"):
             date = path.removeprefix("/api/date/").removesuffix("/briefing")
+            if not _valid_date_or_400(self, date):
+                return
             payload = get_date_briefing_payload(date)
             if payload:
                 send_json(self, payload)
@@ -106,6 +122,8 @@ class BrainHandler(SimpleHTTPRequestHandler):
                 send_json(self, {"error": "job not found", "job_id": job_id}, status=404)
         elif path.startswith("/api/date/"):
             date = path.split("/api/date/")[-1]
+            if not _valid_date_or_400(self, date):
+                return
             detail = get_date_detail(date)
             if detail:
                 send_json(self, detail)
@@ -123,6 +141,9 @@ class BrainHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        if self.headers.get("Content-Type", "").strip().lower() != "application/json":
+            send_json(self, {"error": "unsupported media type", "expected": "application/json"}, status=415)
+            return
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length).decode("utf-8") if content_length else "{}"
 

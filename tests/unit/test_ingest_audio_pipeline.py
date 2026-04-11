@@ -74,7 +74,7 @@ class TranscribeAudioFilesTest(unittest.TestCase):
             audio_one = tmp_path / "sample.wav"
             sidecar = tmp_path / "sample.transcript.txt"
             audio_one.write_bytes(b"wav")
-            sidecar.write_text("老婆，今天晚上吃火锅。", encoding="utf-8")
+            sidecar.write_text("伴侣，今天晚上吃火锅。", encoding="utf-8")
             vocab_example = tmp_path / "vocab.example.txt"
             vocab_example.write_text("Claude | Anthropic 的 AI 模型", encoding="utf-8")
 
@@ -111,7 +111,7 @@ class TranscribeAudioFilesTest(unittest.TestCase):
             audio_one = tmp_path / "sample.wav"
             sidecar = tmp_path / "sample.transcript.txt"
             audio_one.write_bytes(b"wav")
-            sidecar.write_text("老婆，今天晚上吃火锅。", encoding="utf-8")
+            sidecar.write_text("伴侣，今天晚上吃火锅。", encoding="utf-8")
 
             with (
                 mock.patch.dict(
@@ -132,7 +132,7 @@ class TranscribeAudioFilesTest(unittest.TestCase):
 
             content = output_path.read_text(encoding="utf-8")
             self.assertIn("## 00:00", content)
-            self.assertIn("老婆，今天晚上吃火锅。", content)
+            self.assertIn("伴侣，今天晚上吃火锅。", content)
 
             structured_path = tmp_path / "transcript.transcription.json"
             self.assertTrue(structured_path.exists())

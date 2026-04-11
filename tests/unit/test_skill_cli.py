@@ -44,7 +44,7 @@ class TestSkillCliContract(unittest.TestCase):
     def make_context_snapshot(self) -> dict:
         return {
             "schema_version": "active_context.v1",
-            "user_id": "user_zhousefu",
+            "user_id": "user_default",
             "generated_at": "2026-04-10T21:00:00+08:00",
             "context_seq": 1,
             "materialized_from_event_seq": 1,

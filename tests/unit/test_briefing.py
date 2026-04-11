@@ -45,7 +45,7 @@ class TestGenerateBriefing(unittest.TestCase):
                     "time_end": "12:10",
                     "text": "今天中午吃什么",
                     "summary": "讨论午饭",
-                    "role": {"addressed_to": "老婆", "scene_type": "interpersonal"},
+                    "role": {"addressed_to": "伴侣", "scene_type": "interpersonal"},
                 },
                 {
                     "time_start": "14:00",
@@ -100,7 +100,7 @@ class TestGenerateBriefing(unittest.TestCase):
                     "time_end": "12:10",
                     "text": "今天大家讨论了一会儿。",
                     "summary": "今天大家聊了不少事。有人说先别急。",
-                    "role": {"addressed_to": "老婆", "scene_type": "interpersonal"},
+                    "role": {"addressed_to": "伴侣", "scene_type": "interpersonal"},
                 }
             ],
             "stats": {},

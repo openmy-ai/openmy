@@ -25,7 +25,7 @@ class TestAppServer(unittest.TestCase):
         return {
             "schema_version": "active_context.v1",
             "generated_at": "2026-04-09T10:00:00+08:00",
-            "status_line": "最近主要推进 OpenMy；当前有 2 个待办未闭环；高频互动对象是 老婆。",
+            "status_line": "最近主要推进 OpenMy；当前有 2 个待办未闭环；高频互动对象是 伴侣。",
             "rolling_context": {
                 "active_projects": [
                     {

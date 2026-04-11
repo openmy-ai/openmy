@@ -316,7 +316,7 @@ class ActiveContext:
     """完整的 active_context 快照."""
 
     schema_version: str = SCHEMA_VERSION
-    user_id: str = "user_zhousefu"
+    user_id: str = "user_default"
     generated_at: str = ""
     context_seq: int = 0
     materialized_from_event_seq: int = 0
@@ -353,7 +353,7 @@ class ActiveContext:
         """从 dict 反序列化。只解析已知字段，忽略未知。"""
         ctx = cls()
         ctx.schema_version = data.get("schema_version", SCHEMA_VERSION)
-        ctx.user_id = data.get("user_id", "user_zhousefu")
+        ctx.user_id = data.get("user_id", "user_default")
         ctx.generated_at = data.get("generated_at", "")
         ctx.context_seq = data.get("context_seq", 0)
         ctx.materialized_from_event_seq = data.get(

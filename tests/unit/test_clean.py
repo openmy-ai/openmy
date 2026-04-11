@@ -244,8 +244,8 @@ class RoleSignalWordProtectionTest(unittest.TestCase):
     """角色信号词保护：关键称呼不被清洗掉"""
 
     def test_wife_preserved(self):
-        result = clean.clean_text("老婆，我回来了")
-        self.assertIn("老婆", result)
+        result = clean.clean_text("伴侣，我回来了")
+        self.assertIn("伴侣", result)
 
     def test_erge_preserved(self):
         result = clean.clean_text("二哥，干活呢")

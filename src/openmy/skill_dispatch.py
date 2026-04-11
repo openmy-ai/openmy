@@ -575,6 +575,13 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
     export_provider = get_export_provider_name()
     export_config = get_export_config()
+    safe_export_config = {
+        key: ("***" if "api_key" in key and value else "")
+        for key, value in export_config.items()
+    }
+    for key, value in export_config.items():
+        if "api_key" not in key:
+            safe_export_config[key] = value
     export_configured = any(bool(value) for value in export_config.values())
     export_ready = False
     if not export_provider:
@@ -654,7 +661,7 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 "provider": export_provider,
                 "configured": export_configured,
                 "ready": export_ready,
-                "config": export_config,
+                "config": safe_export_config,
             },
             "screen_recognition": {
                 "enabled": bool(screen_settings.enabled),

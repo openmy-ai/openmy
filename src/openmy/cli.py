@@ -51,7 +51,7 @@ PROJECT_ENV_PATH = ROOT_DIR / ".env"
 ROLE_COLORS = {
     "AI助手": "cyan",
     "商家": "yellow",
-    "老婆": "magenta",
+    "伴侣": "magenta",
     "宠物": "green",
     "自己": "blue",
     "朋友": "bright_blue",

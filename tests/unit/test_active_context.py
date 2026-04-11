@@ -71,7 +71,7 @@ class TestActiveContextModel(unittest.TestCase):
                         entity_id="ent_partner",
                         display_name="伴侣",
                         relation_type="partner",
-                        aliases=["老婆", "宝贝"],
+                        aliases=["伴侣", "宝贝"],
                         confidence=0.97,
                         source_rank="human_confirmed",
                     )

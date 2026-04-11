@@ -26,7 +26,7 @@ class TestCorrections(unittest.TestCase):
         ctx = ActiveContext(
             generated_at="2026-04-08T23:58:10+08:00",
             context_seq=9,
-            status_line="最近3天主要推进 AI思维、OpenMy；当前有 3 个待办未闭环；高频互动对象是 老婆。"
+            status_line="最近3天主要推进 AI思维、OpenMy；当前有 3 个待办未闭环；高频互动对象是 伴侣。"
         )
         ctx.rolling_context.active_projects = [
             ProjectCard(
@@ -103,7 +103,7 @@ class TestCorrections(unittest.TestCase):
                 id="decision_lunch",
                 decision_id="decision_lunch",
                 topic="生活",
-                decision="中午改吃河南蒸菜",
+                decision="中午改吃家常菜",
                 effective_from="2026-04-08T12:00:00+08:00",
                 confidence=0.5,
                 source_rank="aggregate",
@@ -112,17 +112,17 @@ class TestCorrections(unittest.TestCase):
         ctx.stable_profile.key_people_registry = [
             EntityRegistryCard(
                 id="entity_partner",
-                entity_id="老婆",
-                display_name="老婆",
+                entity_id="伴侣",
+                display_name="伴侣",
                 relation_type="person",
-                aliases=["老婆"],
+                aliases=["伴侣"],
                 source_rank="aggregate",
                 confidence=0.7,
             )
         ]
         ctx.rolling_context.entity_rollups = [
             EntityRollup(
-                entity_id="老婆",
+                entity_id="伴侣",
                 interaction_7d_count=5,
                 interaction_30d_count=12,
                 last_interaction_at="2026-04-08T19:40:00+08:00",
@@ -145,7 +145,7 @@ class TestCorrections(unittest.TestCase):
                 "date": "2026-04-08",
                 "summary": "主要推进 OpenMy 和 AI思维。",
                 "key_events": ["继续设计第四层"],
-                "decisions": ["中午改吃河南蒸菜"],
+                "decisions": ["中午改吃家常菜"],
                 "todos_open": ["聊某位朋友婚姻，感慨择偶比结婚本身更重要"],
             },
         )
@@ -158,7 +158,7 @@ class TestCorrections(unittest.TestCase):
                     {"time": "16:00", "project": "代理配置", "summary": "调代理"},
                 ],
                 "decisions": [
-                    {"project": "OpenMy", "what": "中午改吃河南蒸菜", "why": "临时改主意"}
+                    {"project": "OpenMy", "what": "中午改吃家常菜", "why": "临时改主意"}
                 ],
                 "todos": [
                     {"task": "聊某位朋友婚姻，感慨择偶比结婚本身更重要", "priority": "medium", "project": "OpenMy"}
@@ -313,7 +313,7 @@ class TestCorrections(unittest.TestCase):
         )
 
         decisions = {item.decision for item in corrected.rolling_context.recent_decisions}
-        self.assertNotIn("中午改吃河南蒸菜", decisions)
+        self.assertNotIn("中午改吃家常菜", decisions)
 
     def test_confirm_entity(self):
         ctx = self.make_context()
@@ -326,7 +326,7 @@ class TestCorrections(unittest.TestCase):
                     actor="user",
                     op="confirm_entity",
                     target_type="entity",
-                    target_id="老婆",
+                    target_id="伴侣",
                     payload={"relation_type": "partner", "display_name": "伴侣"},
                 )
             ],
@@ -409,7 +409,7 @@ class TestCorrections(unittest.TestCase):
                     actor="user",
                     op="reject_decision",
                     target_type="decision",
-                    target_id="中午改吃河南蒸菜",
+                    target_id="中午改吃家常菜",
                     payload={},
                 ),
             )
@@ -423,7 +423,7 @@ class TestCorrections(unittest.TestCase):
         self.assertNotIn("聊某位朋友婚姻，感慨择偶比结婚本身更重要", loop_titles)
         self.assertIn("OpenMy", project_titles)
         self.assertNotIn("AI思维", project_titles)
-        self.assertNotIn("中午改吃河南蒸菜", decision_texts)
+        self.assertNotIn("中午改吃家常菜", decision_texts)
 
 
 if __name__ == "__main__":

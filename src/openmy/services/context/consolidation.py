@@ -146,7 +146,7 @@ def _resolve_paths(project_root: Path, data_root: Path, date_str: str) -> dict[s
 def _known_relation_type(name: str) -> str:
     if name in {"AI助手", "Claude", "ChatGPT", "GPT", "Gemini"}:
         return "ai"
-    if name in {"老婆", "伴侣", "宝贝"}:
+    if name in {"伴侣", "宝贝"}:
         return "partner"
     if name in {"宠物", "狗", "猫"}:
         return "pet"

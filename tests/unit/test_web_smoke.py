@@ -7,7 +7,7 @@ import unittest
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from unittest.mock import patch
 
 import app.server as app_server
@@ -54,7 +54,7 @@ class TestWebSmoke(unittest.TestCase):
             json.dumps(
                 {
                     "generated_at": "2026-04-09T10:00:00+08:00",
-                    "status_line": "最近主要推进 OpenMy；当前有 2 个待办未闭环；高频互动对象是 老婆。",
+                    "status_line": "最近主要推进 OpenMy；当前有 2 个待办未闭环；高频互动对象是 伴侣。",
                     "rolling_context": {
                         "active_projects": [{"title": "OpenMy", "project_id": "project_openmy"}],
                         "open_loops": [{"title": "补前端工作台", "loop_id": "loop_frontend"}],
@@ -126,7 +126,7 @@ class TestWebSmoke(unittest.TestCase):
             finally:
                 self.stop_server(server, patches)
 
-            self.assertEqual(context_payload["status_line"], "最近主要推进 OpenMy；当前有 2 个待办未闭环；高频互动对象是 老婆。")
+            self.assertEqual(context_payload["status_line"], "最近主要推进 OpenMy；当前有 2 个待办未闭环；高频互动对象是 伴侣。")
             self.assertEqual(context_payload["today_focus"], ["前端补齐", "pipeline"])
             self.assertEqual(jobs_payload[0]["job_id"], created["job_id"])
             self.assertEqual(detail_payload["status"], "succeeded")
@@ -167,6 +167,44 @@ class TestWebSmoke(unittest.TestCase):
                 self.stop_server(server, patches)
 
             self.assertEqual(ctx.exception.code, 404)
+
+    def test_invalid_date_path_returns_400(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner(job_dir=project_root / "jobs")
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                with self.assertRaises(HTTPError) as ctx:
+                    urlopen(f"{base_url}/api/date/../../etc", timeout=2)
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertEqual(ctx.exception.code, 400)
+
+    def test_post_requires_application_json(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner(job_dir=project_root / "jobs")
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                request = Request(
+                    f"{base_url}/api/correct",
+                    data=b"{}",
+                    method="POST",
+                    headers={"Content-Type": "text/plain"},
+                )
+                with self.assertRaises(HTTPError) as ctx:
+                    urlopen(request, timeout=2)
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertEqual(ctx.exception.code, 415)
 
 
 if __name__ == "__main__":

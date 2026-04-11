@@ -26,7 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 class TestParseTimeSegments(unittest.TestCase):
     def test_basic(self):
-        md = "## 12:12\n\n你好老婆\n\n## 13:00\n\n去买菜"
+        md = "## 12:12\n\n你好伴侣\n\n## 13:00\n\n去买菜"
         segs = parse_time_segments(md)
         self.assertEqual(len(segs), 2)
         self.assertEqual(segs[0]["time"], "12:12")
@@ -50,7 +50,7 @@ class TestSegmenterCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             input_path = Path(tmpdir) / "cleaned.md"
             output_path = Path(tmpdir) / "scenes.json"
-            input_path.write_text("## 12:12\n\n你好老婆", encoding="utf-8")
+            input_path.write_text("## 12:12\n\n你好伴侣", encoding="utf-8")
 
             result = subprocess.run(
                 [
@@ -78,7 +78,7 @@ class TestSegmenterCli(unittest.TestCase):
 
 class TestDeclarations(unittest.TestCase):
     def test_wife_declaration(self):
-        result = check_declarations("报告老婆，我到了")
+        result = check_declarations("报告伴侣，我到了")
         self.assertIsNotNone(result)
         self.assertEqual(result[0], "interpersonal")
         self.assertGreater(result[1], 0.9)
@@ -175,7 +175,7 @@ class TestFullPipeline(unittest.TestCase):
 
 ## 12:30
 
-报告老婆，我到了，你在哪
+报告伴侣，我到了，你在哪
 
 ## 13:00
 
@@ -203,7 +203,7 @@ class TestRoleSignalWords(unittest.TestCase):
         self.assertGreater(len(ROLE_SIGNAL_WORDS), 20)
 
     def test_key_words_included(self):
-        for word in ["老婆", "老公", "客服", "乖", "小狗", "记一下"]:
+        for word in ["伴侣", "老公", "客服", "乖", "小狗", "记一下"]:
             self.assertIn(word, ROLE_SIGNAL_WORDS, f"缺少关键信号词: {word}")
 
 

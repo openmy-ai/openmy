@@ -32,7 +32,7 @@ class TestConsolidation(unittest.TestCase):
                         "time_end": "12:10",
                         "summary": "讨论 OpenMy 的 CLI 路线",
                         "role": {
-                            "addressed_to": "老婆",
+                            "addressed_to": "伴侣",
                             "needs_review": False,
                         },
                     },
@@ -71,7 +71,7 @@ class TestConsolidation(unittest.TestCase):
                         "time_end": "11:50",
                         "summary": "继续讨论 OpenMy 和开源方向",
                         "role": {
-                            "addressed_to": "老婆",
+                            "addressed_to": "伴侣",
                             "needs_review": False,
                         },
                     }
@@ -485,7 +485,7 @@ class TestRenderer(unittest.TestCase):
         ctx = ActiveContext(
             generated_at="2026-04-08T23:58:10+08:00",
             context_seq=9,
-            status_line="最近主要推进 OpenMy 第四层；当前有 2 个待办未闭环；高频互动对象是 老婆。",
+            status_line="最近主要推进 OpenMy 第四层；当前有 2 个待办未闭环；高频互动对象是 伴侣。",
         )
         ctx.rolling_context.open_loops = []
         ctx.rolling_context.recent_changes = []
