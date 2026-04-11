@@ -11,6 +11,7 @@ from openmy.services.screen_recognition.summary import (
     infer_activity_tags,
     summarize_screen_session,
 )
+from openmy.utils.time import iso_at
 
 
 def enrich_scene_with_screen_context(
@@ -51,9 +52,9 @@ def enrich_scenes_with_screen_context(
     for scene in scenes:
         if not scene.time_start:
             continue
-        start_iso = f"{date_str}T{scene.time_start}:00+08:00"
+        start_iso = iso_at(date_str, scene.time_start)
         end_clock = scene.time_end or scene.time_start
-        end_iso = f"{date_str}T{end_clock}:59+08:00"
+        end_iso = iso_at(date_str, end_clock, seconds=59)
         events = provider.fetch_ocr(start_iso, end_iso)
         sessions = align_scene_sessions(scene, sessionize_screen_events(events), date_str)
         enrich_scene_with_screen_context(scene, sessions, current_settings)

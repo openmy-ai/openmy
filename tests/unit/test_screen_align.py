@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import unittest
+from unittest.mock import patch
 
 from openmy.domain.models import SceneBlock, ScreenSession
 from openmy.services.screen_recognition.align import align_scene_sessions
@@ -23,7 +24,8 @@ class TestScreenAlign(unittest.TestCase):
             ),
         ]
 
-        aligned = align_scene_sessions(scene, sessions, "2026-04-10")
+        with patch("openmy.utils.time.get_user_timezone", return_value="Asia/Shanghai"):
+            aligned = align_scene_sessions(scene, sessions, "2026-04-10")
 
         self.assertEqual(len(aligned), 1)
         self.assertEqual(aligned[0].app_name, "Cursor")
@@ -39,7 +41,8 @@ class TestScreenAlign(unittest.TestCase):
             )
         ]
 
-        self.assertEqual(align_scene_sessions(scene, sessions, "2026-04-10"), [])
+        with patch("openmy.utils.time.get_user_timezone", return_value="Asia/Shanghai"):
+            self.assertEqual(align_scene_sessions(scene, sessions, "2026-04-10"), [])
 
 
 if __name__ == "__main__":

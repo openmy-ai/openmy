@@ -39,6 +39,7 @@ from openmy.config import (
 from openmy.domain.intent import DONE_STATUSES, DueDate, Fact, Intent
 from openmy.providers.registry import ProviderRegistry
 from openmy.services.screen_recognition.summary import infer_project_hint_from_text
+from openmy.utils.time import iso_at
 
 CONFIDENCE_SCORE_BY_LABEL = {
     "high": 0.9,
@@ -1232,7 +1233,7 @@ def distribute_to_vault(data: dict, date: str, vault_path: str):
     with open(event_file, "a", encoding="utf-8") as fh:
         for event in events:
             entry = {
-                "time": f"{date}T{event.get('time', '00:00')}:00+08:00",
+                "time": iso_at(date, str(event.get("time", "00:00") or "00:00")),
                 "actor": "context",
                 "project": event.get("project", ""),
                 "type": "口述记录",

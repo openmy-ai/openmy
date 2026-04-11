@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections import Counter
+from datetime import datetime
 from urllib.parse import urlparse
 
 from openmy.domain.models import SceneBlock, ScreenSession
+from openmy.utils.time import iso_at
 
 
 APP_ROLE_HINTS: dict[str, list[str]] = {
@@ -77,15 +79,7 @@ def sessionize(events, gap_seconds: int = 15) -> list[ScreenSession]:
     def _parse_ts(ts_str: str) -> float:
         """尽力解析 ISO 时间戳为 epoch 秒，失败返回 0。"""
         try:
-            from datetime import datetime, timezone
-            # 处理带时区偏移的 ISO 格式
-            clean = ts_str.replace("+08:00", "+0800").replace("+00:00", "+0000")
-            for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f%z"):
-                try:
-                    return datetime.strptime(clean, fmt).timestamp()
-                except ValueError:
-                    continue
-            return 0.0
+            return datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
         except Exception:
             return 0.0
 
@@ -198,9 +192,9 @@ def enrich_with_hints(scenes: list[SceneBlock], client, date_str: str | None = N
             continue
 
         try:
-            start_iso = f"{date_str}T{scene.time_start}:00+08:00"
+            start_iso = iso_at(date_str, scene.time_start)
             end_time = scene.time_end or scene.time_start
-            end_iso = f"{date_str}T{end_time}:59+08:00"
+            end_iso = iso_at(date_str, end_time, seconds=59)
         except Exception:
             continue
 

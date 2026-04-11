@@ -235,7 +235,8 @@ class TestEnrichWithHints(unittest.TestCase):
             ],
         )
 
-        enrich_with_hints([scene], client, "2026-04-07")
+        with patch("openmy.utils.time.get_user_timezone", return_value="Asia/Shanghai"):
+            enrich_with_hints([scene], client, "2026-04-07")
 
         self.assertEqual(scene.role.scene_type, "ai")
         self.assertEqual(client.calls[0]["start_time"], "2026-04-07T12:00:00+08:00")
@@ -258,7 +259,8 @@ class TestResolveRolesWithScreenContext(unittest.TestCase):
             ],
         )
 
-        result = resolve_roles(scenes, date_str="2026-04-07", screen_client=client)
+        with patch("openmy.utils.time.get_user_timezone", return_value="Asia/Shanghai"):
+            result = resolve_roles(scenes, date_str="2026-04-07", screen_client=client)
 
         self.assertEqual(result[0].role.scene_type, "interpersonal")
         self.assertEqual(result[0].role.source, "screen_hint")

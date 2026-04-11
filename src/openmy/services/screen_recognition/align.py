@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from openmy.domain.models import SceneBlock, ScreenSession
+from openmy.utils.time import iso_at
 
 
 def _parse_dt(value: str) -> datetime | None:
@@ -16,9 +17,9 @@ def _parse_dt(value: str) -> datetime | None:
 
 def _scene_range(scene: SceneBlock, date_str: str) -> tuple[datetime | None, datetime | None]:
     try:
-        start = datetime.fromisoformat(f"{date_str}T{scene.time_start}:00+08:00")
+        start = datetime.fromisoformat(iso_at(date_str, scene.time_start))
         end_clock = scene.time_end or scene.time_start
-        end = datetime.fromisoformat(f"{date_str}T{end_clock}:59+08:00")
+        end = datetime.fromisoformat(iso_at(date_str, end_clock, seconds=59))
         return start, end
     except ValueError:
         return None, None
