@@ -17,6 +17,7 @@ SUBSKILLS = [
     "openmy-status-review",
     "openmy-vocab-init",
     "openmy-profile-init",
+    "openmy-health-check",
 ]
 REQUIRED_SECTIONS = ["## Purpose", "## Trigger", "## Action", "## Restrictions", "## Output"]
 

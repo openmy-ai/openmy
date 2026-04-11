@@ -27,6 +27,9 @@ DEFAULT_STT_MODELS = {
     "gemini": GEMINI_MODEL,
     "faster-whisper": "small",
     "funasr": "paraformer-zh",
+    "groq": "whisper-large-v3-turbo",
+    "dashscope": "qwen3-asr-1.7b",
+    "deepgram": "nova-3",
 }
 LOCAL_STT_PROVIDERS = {"faster-whisper", "funasr"}
 
@@ -88,6 +91,12 @@ def get_stt_api_key(provider_name: str | None = None) -> str:
     final_provider = (provider_name or get_stt_provider_name()).lower()
     if final_provider == "gemini":
         return _read_env("OPENMY_STT_API_KEY", "GEMINI_API_KEY")
+    if final_provider == "groq":
+        return _read_env("OPENMY_STT_API_KEY", "GROQ_API_KEY")
+    if final_provider == "dashscope":
+        return _read_env("OPENMY_STT_API_KEY", "DASHSCOPE_API_KEY")
+    if final_provider == "deepgram":
+        return _read_env("OPENMY_STT_API_KEY", "DEEPGRAM_API_KEY")
     return _read_env("OPENMY_STT_API_KEY")
 
 

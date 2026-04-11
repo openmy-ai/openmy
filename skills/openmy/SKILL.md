@@ -39,6 +39,7 @@ Use this skill when:
 - overall status review → `openmy-status-review`
 - vocabulary initialization → `openmy-vocab-init`
 - profile onboarding → `openmy-profile-init`
+- environment and engine check → `openmy-health-check`
 
 ## Global rules
 
@@ -78,3 +79,4 @@ Always apply these checks:
 - if open loops keep piling up, ask which ones should be closed
 - if several recent days have no data, ask whether recordings exist
 - if a new proper noun appears, suggest adding it to vocab
+- if setup looks broken, route to `openmy-health-check`

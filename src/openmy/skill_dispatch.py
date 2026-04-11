@@ -516,9 +516,119 @@ def handle_correction_apply(args: argparse.Namespace) -> tuple[dict[str, Any], i
     return (payload, 0)
 
 
+def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    del args
+    import shutil
+    import sys
+
+    from openmy.config import (
+        DEFAULT_STT_MODELS,
+        LOCAL_STT_PROVIDERS,
+        get_llm_provider_name,
+        get_stt_api_key,
+        get_stt_provider_name,
+        has_llm_credentials,
+        has_stt_credentials,
+        stt_provider_requires_api_key,
+    )
+    from openmy.services.cleaning.cleaner import CORRECTIONS_FILE, VOCAB_FILE
+    from openmy.services.context.consolidation import profile_path
+
+    cli = _cli()
+
+    # Python
+    py_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    py_ok = sys.version_info >= (3, 10)
+
+    # ffmpeg / ffprobe
+    ffmpeg_ok = shutil.which("ffmpeg") is not None
+    ffprobe_ok = shutil.which("ffprobe") is not None
+
+    # STT providers
+    current_stt = get_stt_provider_name()
+    stt_providers: list[dict[str, Any]] = []
+    for name, default_model in DEFAULT_STT_MODELS.items():
+        is_local = name in LOCAL_STT_PROVIDERS
+        needs_key = stt_provider_requires_api_key(name)
+        has_key = bool(get_stt_api_key(name)) if needs_key else True
+        stt_providers.append({
+            "name": name,
+            "type": "local" if is_local else "api",
+            "default_model": default_model,
+            "needs_api_key": needs_key,
+            "api_key_configured": has_key,
+            "is_active": name == current_stt,
+            "ready": has_key if needs_key else True,
+        })
+
+    # LLM
+    llm_provider = get_llm_provider_name()
+    llm_key_ok = has_llm_credentials()
+
+    # Data state
+    profile_exists = profile_path(cli.DATA_ROOT).exists()
+    vocab_exists = CORRECTIONS_FILE.exists() and VOCAB_FILE.exists()
+    data_days = len(cli.find_all_dates()) if hasattr(cli, "find_all_dates") else 0
+
+    # Build issues list
+    issues: list[str] = []
+    if not py_ok:
+        issues.append(f"Python {py_version} is below minimum 3.10.")
+    if not ffmpeg_ok:
+        issues.append("ffmpeg not found. Install it: brew install ffmpeg (macOS) or apt install ffmpeg (Linux).")
+    if not ffprobe_ok:
+        issues.append("ffprobe not found. Usually installed together with ffmpeg.")
+    if not has_stt_credentials():
+        issues.append(f"Active STT provider '{current_stt}' needs an API key but none is configured.")
+    if not llm_key_ok:
+        issues.append("No LLM API key configured. Distillation and extraction will be skipped.")
+    if not profile_exists:
+        issues.append("User profile not initialized. Run: openmy skill profile.set --name 'Your Name' --json")
+    if not vocab_exists:
+        issues.append("Vocabulary not initialized. Run: openmy skill vocab.init --json")
+
+    all_ok = len(issues) == 0
+    summary_parts = []
+    if all_ok:
+        summary_parts.append("Environment healthy.")
+    else:
+        summary_parts.append(f"{len(issues)} issue(s) found.")
+    summary_parts.append(f"STT: {current_stt}; LLM: {llm_provider}; {data_days} days of data.")
+
+    next_actions: list[str] = []
+    if not profile_exists:
+        next_actions.append("Run: openmy skill profile.set --name 'Your Name' --language en --timezone UTC --json")
+    if not vocab_exists:
+        next_actions.append("Run: openmy skill vocab.init --json")
+    if not has_stt_credentials() and current_stt not in LOCAL_STT_PROVIDERS:
+        next_actions.append(f"Add API key for '{current_stt}' to .env, or switch to a local provider: OPENMY_STT_PROVIDER=faster-whisper")
+
+    payload = build_success_payload(
+        action="health.check",
+        data={
+            "python": {"version": py_version, "ok": py_ok},
+            "ffmpeg": {"available": ffmpeg_ok, "ffprobe_available": ffprobe_ok},
+            "stt_providers": stt_providers,
+            "stt_active": current_stt,
+            "llm": {"provider": llm_provider, "api_key_configured": llm_key_ok},
+            "profile_exists": profile_exists,
+            "vocab_exists": vocab_exists,
+            "data_days": data_days,
+            "data_root": str(cli.DATA_ROOT),
+            "issues": issues,
+            "healthy": all_ok,
+        },
+        human_summary=" ".join(summary_parts),
+        artifacts={"data_root": str(cli.DATA_ROOT)},
+        next_actions=next_actions,
+    )
+    return (payload, 0)
+
+
 ACTION_HANDLERS: dict[str, Callable[[argparse.Namespace], tuple[dict[str, Any], int]]] = {
     "context.get": handle_context_get,
     "context.query": handle_context_query,
+    "health.check": handle_health_check,
     "profile.get": handle_profile_get,
     "profile.set": handle_profile_set,
     "day.get": handle_day_get,

@@ -27,7 +27,7 @@ class TestSkillDispatch(unittest.TestCase):
 
         self.assertEqual(
             set(skill_dispatch.ACTION_HANDLERS.keys()),
-            {"context.get", "context.query", "correction.apply", "day.get", "day.run", "profile.get", "profile.set", "status.get", "vocab.init"},
+            {"context.get", "context.query", "correction.apply", "day.get", "day.run", "health.check", "profile.get", "profile.set", "status.get", "vocab.init"},
         )
 
     def test_dispatch_unknown_action_returns_contract_error(self):

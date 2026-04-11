@@ -14,6 +14,7 @@ It does not execute details itself.
 | review the overall state before deciding | openmy-status-review |
 | initialize vocab files | openmy-vocab-init |
 | initialize or update user profile | openmy-profile-init |
+| verify environment and engine readiness | openmy-health-check |
 
 Rules:
 - keep the router skill thin

@@ -10,15 +10,21 @@ from openmy.config import (
     get_stt_provider_name,
 )
 from openmy.providers.llm.gemini import GeminiLLMProvider
+from openmy.providers.stt.deepgram import DeepgramSTTProvider
+from openmy.providers.stt.dashscope_asr import DashScopeASRProvider
 from openmy.providers.stt.faster_whisper import FasterWhisperSTTProvider
 from openmy.providers.stt.funasr import FunASRSTTProvider
 from openmy.providers.stt.gemini import GeminiSTTProvider
+from openmy.providers.stt.groq_whisper import GroqWhisperSTTProvider
 
 
 STT_PROVIDERS = {
     "gemini": GeminiSTTProvider,
     "faster-whisper": FasterWhisperSTTProvider,
     "funasr": FunASRSTTProvider,
+    "groq": GroqWhisperSTTProvider,
+    "dashscope": DashScopeASRProvider,
+    "deepgram": DeepgramSTTProvider,
 }
 
 LLM_PROVIDERS = {

@@ -40,6 +40,21 @@ cp src/openmy/resources/vocab.example.txt src/openmy/resources/vocab.txt
 ### Provider 配置
 
 - 默认推荐：`GEMINI_API_KEY`
+- 也支持这些额外转写引擎：
+
+| Provider | 类型 | 更适合谁 | 需要什么 |
+|---|---|---|---|
+| `faster-whisper` | 本地 | 想省钱、想本地跑 | 直接可用 |
+| `funasr` | 本地 | 中文场景 | 安装 `funasr` |
+| `gemini` | 接口 | 想少折腾 | `GEMINI_API_KEY` |
+| `groq` | 接口 | 想要便宜又快 | `GROQ_API_KEY` |
+| `dashscope` | 接口 | 中文和方言优先 | `DASHSCOPE_API_KEY` |
+| `deepgram` | 接口 | 英文优先 | `DEEPGRAM_API_KEY` |
+
+如果你要试更强的中文本地模型，可以继续用 `funasr`，再把 `.env` 里的 `OPENMY_STT_MODEL=SenseVoiceSmall` 加上。
+
+切换方式很简单，在 `.env` 里写：`OPENMY_STT_PROVIDER=groq`
+
 - 更通用的配置名：
   - `OPENMY_STT_PROVIDER`
   - `OPENMY_STT_MODEL`
