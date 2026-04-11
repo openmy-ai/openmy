@@ -111,8 +111,8 @@ def plan_transcription_enrichment(
             "align": False,
             "diarize": False,
             "status": status,
-            "diarization_status": "skipped_missing_dependency",
-            "message": "WhisperX 精标层不可用：缺少 `whisperx` 依赖。",
+            "diarization_status": "degraded_missing_token" if diarize_requested else "skipped_missing_dependency",
+            "message": "WhisperX 精标层不可用：缺少依赖 whisperx。",
         }
     if not local_provider and final_mode == "recommended":
         return {
@@ -138,7 +138,7 @@ def plan_transcription_enrichment(
 
 def run_transcription_enrichment(day_dir: Path, *, diarize: bool = False) -> dict[str, Any]:
     if whisperx is None:
-        raise RuntimeError("WhisperX 精标层不可用：缺少 `whisperx` 依赖。可先运行 `uv pip install whisperx`。")
+        raise RuntimeError("WhisperX 精标层不可用：缺少依赖 whisperx。可先运行 `uv pip install whisperx`。")
 
     transcription_path = _transcription_path(day_dir)
     payload = _load_json(transcription_path)

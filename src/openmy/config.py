@@ -14,6 +14,7 @@ OpenMy 全局配置
 from __future__ import annotations
 
 import os
+from typing import Any
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  通用
@@ -32,6 +33,9 @@ DEFAULT_STT_MODELS = {
     "deepgram": "nova-3",
 }
 LOCAL_STT_PROVIDERS = {"faster-whisper", "funasr"}
+
+DEFAULT_EXPORT_PROVIDER = ""
+EXPORT_PROVIDERS = {"obsidian", "notion"}
 
 
 def _read_env(*names: str) -> str:
@@ -125,6 +129,23 @@ def has_stt_credentials(provider_name: str | None = None) -> bool:
 
 def has_llm_credentials(stage: str | None = None) -> bool:
     return bool(get_llm_api_key(stage))
+
+
+def get_export_provider_name() -> str:
+    value = (_read_env("OPENMY_EXPORT_PROVIDER") or DEFAULT_EXPORT_PROVIDER).strip().lower()
+    return value if value in EXPORT_PROVIDERS else ""
+
+
+def get_export_config() -> dict[str, Any]:
+    provider = get_export_provider_name()
+    if provider == "obsidian":
+        return {"vault_path": _read_env("OPENMY_OBSIDIAN_VAULT_PATH")}
+    if provider == "notion":
+        return {
+            "api_key": _read_env("NOTION_API_KEY"),
+            "database_id": _read_env("NOTION_DATABASE_ID"),
+        }
+    return {}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

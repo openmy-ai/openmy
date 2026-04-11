@@ -15,6 +15,8 @@ It does not execute details itself.
 | initialize vocab files | openmy-vocab-init |
 | initialize or update user profile | openmy-profile-init |
 | verify environment and engine readiness | openmy-health-check |
+| set up daily briefing export | openmy-export |
+| explain or configure screen recognition | openmy-screen-recognition |
 
 Rules:
 - keep the router skill thin

@@ -524,6 +524,8 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     from openmy.config import (
         DEFAULT_STT_MODELS,
         LOCAL_STT_PROVIDERS,
+        get_export_config,
+        get_export_provider_name,
         get_llm_provider_name,
         get_stt_api_key,
         get_stt_provider_name,
@@ -533,6 +535,7 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     )
     from openmy.services.cleaning.cleaner import CORRECTIONS_FILE, VOCAB_FILE
     from openmy.services.context.consolidation import profile_path
+    from openmy.services.screen_recognition.settings import load_screen_context_settings
 
     cli = _cli()
 
@@ -570,6 +573,28 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     vocab_exists = CORRECTIONS_FILE.exists() and VOCAB_FILE.exists()
     data_days = len(cli.find_all_dates()) if hasattr(cli, "find_all_dates") else 0
 
+    export_provider = get_export_provider_name()
+    export_config = get_export_config()
+    export_configured = any(bool(value) for value in export_config.values())
+    export_ready = False
+    if not export_provider:
+        export_ready = False
+    elif export_provider == "obsidian":
+        vault_path = str(export_config.get("vault_path", "") or "").strip()
+        export_ready = bool(vault_path) and Path(vault_path).expanduser().exists()
+    elif export_provider == "notion":
+        export_ready = bool(export_config.get("api_key")) and bool(export_config.get("database_id"))
+
+    screen_settings = load_screen_context_settings(data_root=cli.DATA_ROOT)
+    screen_service_available = False
+    if screen_settings.enabled:
+        try:
+            from openmy.adapters.screen_recognition.client import ScreenRecognitionClient
+
+            screen_service_available = ScreenRecognitionClient(base_url=screen_settings.provider_base_url).is_available()
+        except Exception:
+            screen_service_available = False
+
     # Build issues list
     issues: list[str] = []
     if not py_ok:
@@ -586,6 +611,10 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         issues.append("User profile not initialized. Run: openmy skill profile.set --name 'Your Name' --json")
     if not vocab_exists:
         issues.append("Vocabulary not initialized. Run: openmy skill vocab.init --json")
+    if export_provider and not export_ready:
+        issues.append(f"Export provider '{export_provider}' is configured but not ready.")
+    if screen_settings.enabled and not screen_service_available:
+        issues.append("Screen recognition is enabled, but the local screen service is not reachable.")
 
     all_ok = len(issues) == 0
     summary_parts = []
@@ -602,6 +631,13 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         next_actions.append("Run: openmy skill vocab.init --json")
     if not has_stt_credentials() and current_stt not in LOCAL_STT_PROVIDERS:
         next_actions.append(f"Add API key for '{current_stt}' to .env, or switch to a local provider: OPENMY_STT_PROVIDER=faster-whisper")
+    if export_provider and not export_ready:
+        if export_provider == "obsidian":
+            next_actions.append("Set OPENMY_OBSIDIAN_VAULT_PATH to your vault folder, then run health.check again.")
+        elif export_provider == "notion":
+            next_actions.append("Add NOTION_API_KEY and NOTION_DATABASE_ID, then run health.check again.")
+    if screen_settings.enabled and not screen_service_available:
+        next_actions.append("Start your local screen recognition service, or set SCREEN_RECOGNITION_ENABLED=false if you do not want it.")
 
     payload = build_success_payload(
         action="health.check",
@@ -614,6 +650,18 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "profile_exists": profile_exists,
             "vocab_exists": vocab_exists,
             "data_days": data_days,
+            "export": {
+                "provider": export_provider,
+                "configured": export_configured,
+                "ready": export_ready,
+                "config": export_config,
+            },
+            "screen_recognition": {
+                "enabled": bool(screen_settings.enabled),
+                "mode": screen_settings.participation_mode,
+                "provider_base_url": screen_settings.provider_base_url,
+                "service_available": screen_service_available,
+            },
             "data_root": str(cli.DATA_ROOT),
             "issues": issues,
             "healthy": all_ok,

@@ -774,8 +774,6 @@ def normalize_extraction_payload(data: dict[str, Any], reference_date: str | Non
         ("Handloeff", "该流程"),
         ("Code", "代码"),
         ("Next.js", "前端项目"),
-        ("Screen Pipe", "屏幕管线"),
-        ("ScreenPipe", "屏幕管线"),
         ("GitHub", "代码仓库"),
         ("Notion", "文档"),
         ("Skill", "技能"),

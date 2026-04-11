@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from openmy.config import (
+    get_export_config,
+    get_export_provider_name,
     get_llm_api_key,
     get_llm_model,
     get_llm_provider_name,
@@ -9,6 +11,8 @@ from openmy.config import (
     get_stt_model,
     get_stt_provider_name,
 )
+from openmy.providers.export.notion import NotionExportProvider
+from openmy.providers.export.obsidian import ObsidianExportProvider
 from openmy.providers.llm.gemini import GeminiLLMProvider
 from openmy.providers.stt.deepgram import DeepgramSTTProvider
 from openmy.providers.stt.dashscope_asr import DashScopeASRProvider
@@ -31,17 +35,24 @@ LLM_PROVIDERS = {
     "gemini": GeminiLLMProvider,
 }
 
+EXPORT_PROVIDER_CLASSES = {
+    "obsidian": ObsidianExportProvider,
+    "notion": NotionExportProvider,
+}
+
 
 class ProviderRegistry:
-    def __init__(self, *, stt_provider_name: str, llm_provider_name: str):
+    def __init__(self, *, stt_provider_name: str, llm_provider_name: str, export_provider_name: str = ""):
         self.stt_provider_name = stt_provider_name
         self.llm_provider_name = llm_provider_name
+        self.export_provider_name = export_provider_name
 
     @classmethod
     def from_env(cls) -> "ProviderRegistry":
         return cls(
             stt_provider_name=get_stt_provider_name(),
             llm_provider_name=get_llm_provider_name(),
+            export_provider_name=get_export_provider_name(),
         )
 
     def get_stt_provider(
@@ -74,3 +85,16 @@ class ProviderRegistry:
             api_key=api_key if api_key is not None else get_llm_api_key(stage),
             model=model or (get_stage_llm_model(stage) if stage else get_llm_model()),
         )
+
+
+    def get_export_provider(
+        self,
+        *,
+        provider_name: str | None = None,
+        config: dict | None = None,
+    ):
+        final_provider_name = (provider_name or self.export_provider_name).lower()
+        provider_cls = EXPORT_PROVIDER_CLASSES.get(final_provider_name)
+        if provider_cls is None:
+            raise ValueError(f"Unknown export provider: {final_provider_name}")
+        return provider_cls(config=config if config is not None else get_export_config())

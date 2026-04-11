@@ -18,6 +18,8 @@ SUBSKILLS = [
     "openmy-vocab-init",
     "openmy-profile-init",
     "openmy-health-check",
+    "openmy-export",
+    "openmy-screen-recognition",
 ]
 REQUIRED_SECTIONS = ["## Purpose", "## Trigger", "## Action", "## Restrictions", "## Output"]
 

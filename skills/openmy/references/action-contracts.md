@@ -53,3 +53,10 @@ Rules:
 - `action` and `version` must stay stable
 - every success payload must include `human_summary`
 - sub-skills must call only stable actions, never internal modules
+
+
+Automatic export contract:
+
+- `openmy skill day.run --json` may export the generated daily briefing automatically when `OPENMY_EXPORT_PROVIDER` is configured.
+- `openmy skill health.check --json` reports whether export is configured and ready.
+- No separate export action is required for the automatic daily-briefing path.

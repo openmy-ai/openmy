@@ -40,6 +40,8 @@ Use this skill when:
 - vocabulary initialization → `openmy-vocab-init`
 - profile onboarding → `openmy-profile-init`
 - environment and engine check → `openmy-health-check`
+- export setup → `openmy-export`
+- screen recognition setup → `openmy-screen-recognition`
 
 ## Global rules
 
@@ -104,3 +106,27 @@ Always apply these checks:
 - if several recent days have no data, ask whether recordings exist
 - if a new proper noun appears, suggest adding it to vocab
 - if setup looks broken, route to `openmy-health-check`
+
+## Feature Discovery
+
+After basic setup is done, proactively ask about optional features.
+
+### Export Integration
+
+Ask: "Would you like your daily summaries automatically saved to a note-taking app?"
+- If yes, ask which one: Obsidian or Notion.
+- For Obsidian, ask for the vault folder path.
+- For Notion, guide the user to get an API key and database ID.
+- Run `health.check` afterward to confirm the setup.
+
+### Screen Recognition
+
+Ask: "OpenMy can also capture what is on your screen to give richer context. This needs a local screen recognition service running in the background. Would you like to enable it?"
+- Explain clearly: "Screen data stays on your machine. It helps match what you said with what you were doing on screen."
+- If yes, check whether the local service is reachable at `localhost:3030`.
+- If no, set `SCREEN_RECOGNITION_ENABLED=false` and move on quietly.
+
+### STT Engine Upgrade
+
+If the user processed audio with `faster-whisper`, ask:
+"The built-in engine works fine. If you want higher Chinese accuracy, you can switch to Qwen with a free Alibaba API key. Want me to help set that up?"

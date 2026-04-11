@@ -242,9 +242,9 @@ class TestEnrichWithHints(unittest.TestCase):
         self.assertEqual(client.calls[0]["end_time"], "2026-04-07T12:01:59+08:00")
 
 
-class TestResolveRolesWithScreenpipe(unittest.TestCase):
+class TestResolveRolesWithScreenContext(unittest.TestCase):
     @unittest.mock.patch("openmy.services.roles.resolver.infer_role_with_model", return_value=None)
-    def test_screenpipe_hint_can_fill_uncertain_role(self, _mock_infer):
+    def test_screen_hint_can_fill_uncertain_role(self, _mock_infer):
         scenes = [SceneBlock(time_start="12:00", time_end="12:01", text="天气不错")]
         client = StubScreenRecognitionClient(
             available=True,

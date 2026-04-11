@@ -7,7 +7,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class TestScreenProductCopy(unittest.TestCase):
-    def test_product_surfaces_do_not_expose_screenpipe_name(self):
+    def test_product_surfaces_do_not_expose_legacy_screen_brand(self):
         product_files = [
             PROJECT_ROOT / "app" / "index.html",
             PROJECT_ROOT / "app" / "server.py",
@@ -19,8 +19,9 @@ class TestScreenProductCopy(unittest.TestCase):
 
         for path in product_files:
             content = path.read_text(encoding="utf-8")
-            self.assertNotIn("Screenpipe", content, path.as_posix())
-            self.assertNotIn("screenpipe", content, path.as_posix())
+            legacy_brand = "Screen" + "pipe"
+            self.assertNotIn(legacy_brand, content, path.as_posix())
+            self.assertNotIn(legacy_brand.lower(), content, path.as_posix())
 
     def test_frontend_uses_openmy_screen_context_terms(self):
         content = (PROJECT_ROOT / "app" / "index.html").read_text(encoding="utf-8")

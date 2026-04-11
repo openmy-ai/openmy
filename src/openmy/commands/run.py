@@ -4,8 +4,9 @@ import argparse
 import os
 from datetime import datetime
 from pathlib import Path
+from dataclasses import asdict, is_dataclass
 
-from openmy.config import GEMINI_MODEL, get_llm_api_key, get_stage_llm_model, has_llm_credentials
+from openmy.config import GEMINI_MODEL, get_export_provider_name, get_llm_api_key, get_stage_llm_model, has_llm_credentials
 
 
 PARTIAL_SUCCESS = 2
@@ -73,6 +74,26 @@ def _clear_downstream_artifacts(date_str: str) -> None:
         day_dir / f"{date_str}.meta.json",
     ]:
         path.unlink(missing_ok=True)
+
+
+def _export_outputs(date_str: str, *, briefing_path: Path, context_snapshot: dict | None = None) -> None:
+    export_provider_name = get_export_provider_name()
+    if not export_provider_name:
+        return
+
+    cli = _cli()
+    try:
+        from openmy.providers.registry import ProviderRegistry
+
+        provider = ProviderRegistry.from_env().get_export_provider()
+        briefing_payload = cli.read_json(briefing_path, {})
+        result = provider.export_daily_briefing(date_str, briefing_payload)
+        destination = result.get("url") or result.get("path") or export_provider_name
+        cli.console.print(f"[green]✅ 已导出日报[/green]: {destination}")
+        if context_snapshot:
+            provider.export_context_snapshot(context_snapshot)
+    except Exception as exc:
+        cli.console.print(f"[yellow]⚠️ 导出失败，继续主链[/yellow]: {exc}")
 
 
 def _mark_step(
@@ -207,10 +228,11 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     )
 
     final_provider_name = (getattr(args, "stt_provider", None) or "faster-whisper").lower()
-    enrich_mode = str(getattr(args, "stt_enrich_mode", "recommended") or "recommended").lower()
-    if bool(getattr(args, "stt_align", False)) and enrich_mode == "off":
+    requested_enrich_mode = str(getattr(args, "stt_enrich_mode", "recommended") or "recommended").lower()
+    enrich_mode = requested_enrich_mode
+    if bool(getattr(args, "stt_align", False)):
         enrich_mode = "force"
-    diarize_requested = bool(getattr(args, "stt_diarize", False) or enrich_mode == "recommended")
+    diarize_requested = bool(getattr(args, "stt_diarize", False) or requested_enrich_mode == "recommended")
     enrichment_plan = plan_transcription_enrichment(
         provider_name=final_provider_name,
         enrich_mode=enrich_mode,
@@ -410,7 +432,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         from openmy.services.context.consolidation import consolidate
 
         data_root = cli.ensure_day_dir(date_str).parent
-        consolidate(data_root)
+        consolidated = consolidate(data_root)
         cli.console.print("[green]✅ active_context 已更新[/green]")
         _mark_step(date_str, run_status, "consolidate", "completed", message="active_context 已更新")
     except Exception as exc:
@@ -468,6 +490,12 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             _mark_step(date_str, run_status, "extract_enrich", "failed", message=str(exc))
     elif run_status["steps"]["extract_enrich"]["status"] == "pending":
         _mark_step(date_str, run_status, "extract_enrich", "skipped", message="缺少核心提取结果，未执行补全", skip_reason="missing_core_extraction_output")
+
+    _export_outputs(
+        date_str,
+        briefing_path=paths["briefing"],
+        context_snapshot=asdict(consolidated) if is_dataclass(consolidated) else None,
+    )
 
     cli.console.print(
         cli.Panel(

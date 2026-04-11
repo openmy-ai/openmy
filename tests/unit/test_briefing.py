@@ -77,7 +77,7 @@ class TestGenerateBriefing(unittest.TestCase):
         json_str = json.dumps(data, ensure_ascii=False)
         self.assertIn("2026-04-07", json_str)
 
-    def test_screenpipe_unavailable_still_works(self):
+    def test_screen_recognition_unavailable_still_works(self):
         scenes = {"scenes": [{"time_start": "10:00", "text": "test", "role": {}}], "stats": {}}
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as fh:
             json.dump(scenes, fh)
