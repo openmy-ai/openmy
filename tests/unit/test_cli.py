@@ -895,6 +895,10 @@ class TestOpenMyCli(unittest.TestCase):
             ),
             encoding="utf-8",
         )
+        (day_dir / f"{date_str}.meta.json").write_text(
+            json.dumps({"daily_summary": "今天约了晚饭。", "intents": [], "facts": []}, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
         try:
             env = os.environ.copy()
@@ -982,18 +986,19 @@ class TestOpenMyCli(unittest.TestCase):
                     )
                 )
 
-            self.assertEqual(result, 0)
+            self.assertEqual(result, 2)
             clean_mock.assert_called_once()
             segment_mock.assert_called_once()
             distill_mock.assert_not_called()
-            briefing_mock.assert_called_once()
+            briefing_mock.assert_not_called()
             self.assertEqual(transcript_path.read_text(encoding="utf-8"), "新 transcript")
             self.assertEqual(json.loads(scenes_path.read_text(encoding="utf-8"))["scenes"][0]["scene_id"], "new")
-            self.assertEqual(json.loads(briefing_path.read_text(encoding="utf-8"))["summary"], "新 briefing")
-            self.assertFalse((transcript_path.with_name("transcript.md.bak")).exists())
-            self.assertFalse((scenes_path.with_name("scenes.json.bak")).exists())
-            self.assertFalse((briefing_path.with_name("daily_briefing.json.bak")).exists())
-            self.assertFalse((meta_path.with_name(f"{date_str}.meta.json.bak")).exists())
+            status_payload = json.loads((day_dir / "run_status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status_payload["current_step"], "extract_core")
+            self.assertTrue((transcript_path.with_name("transcript.md.bak")).exists())
+            self.assertTrue((scenes_path.with_name("scenes.json.bak")).exists())
+            self.assertTrue((briefing_path.with_name("daily_briefing.json.bak")).exists())
+            self.assertTrue((meta_path.with_name(f"{date_str}.meta.json.bak")).exists())
         finally:
             self.cleanup_day_dir(date_str)
 
@@ -1298,11 +1303,28 @@ class TestOpenMyCli(unittest.TestCase):
             briefing_path.write_text(json.dumps({"summary": "今天继续推进 OpenMy。"}, ensure_ascii=False), encoding="utf-8")
             return 0
 
+        rebuilt_scenes_payload = {
+            "scenes": [
+                {
+                    "scene_id": "s01",
+                    "time_start": "10:00",
+                    "time_end": "10:05",
+                    "text": "今天上午我在修 OpenMy。",
+                    "summary": "在口述 OpenMy 进展。",
+                    "preview": "今天上午我在修 OpenMy。",
+                    "role": {"addressed_to": "", "scene_type_label": "自言自语", "needs_review": False},
+                }
+            ],
+            "stats": {"total_scenes": 1, "role_distribution": {}, "needs_review_count": 0},
+        }
+
         try:
             with (
                 patch.object(run_command, "transcribe_audio_files", side_effect=fake_transcribe),
                 patch.object(run_command, "run_transcription_enrichment", side_effect=RuntimeError("whisperx 缺少依赖"), create=True),
+                patch("openmy.cli.build_segmented_scenes_payload", return_value=rebuilt_scenes_payload),
                 patch("openmy.cli.cmd_briefing", side_effect=fake_briefing),
+                patch("openmy.commands.run._load_existing_core_payload", return_value={"daily_summary": "已有结构化结果", "intents": [], "facts": []}),
                 patch("openmy.services.context.consolidation.consolidate") as consolidate_mock,
             ):
                 result = run_command.cmd_run(
@@ -1487,6 +1509,10 @@ class TestOpenMyCli(unittest.TestCase):
                 '"role":{"addressed_to":"伴侣","scene_type_label":"跟人聊","needs_review":false}}],'
                 '"stats":{"total_scenes":1,"role_distribution":{"伴侣":1},"needs_review_count":0}}'
             ),
+            encoding="utf-8",
+        )
+        (day_dir / f"{date_str}.meta.json").write_text(
+            json.dumps({"daily_summary": "今天约了晚饭。", "intents": [], "facts": []}, ensure_ascii=False),
             encoding="utf-8",
         )
 

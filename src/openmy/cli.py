@@ -1039,6 +1039,11 @@ def cmd_agent(args: argparse.Namespace) -> int:
             stt_enrich_mode=args.stt_enrich_mode,
             stt_align=args.stt_align,
             stt_diarize=args.stt_diarize,
+            payload_json=None,
+            payload_file=None,
+            name=None,
+            language=None,
+            timezone=None,
         )
     else:
         _print_json(
@@ -1206,6 +1211,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_skill.add_argument("--name", help="给 profile.set 使用的名字")
     p_skill.add_argument("--language", help="给 profile.set 使用的语言")
     p_skill.add_argument("--timezone", help="给 profile.set 使用的时区")
+    p_skill.add_argument("--payload-json", help="给 submit 类动作使用的 JSON 字符串")
+    p_skill.add_argument("--payload-file", help="给 submit 类动作使用的 JSON 文件路径")
     p_skill.add_argument("--json", action="store_true", help="兼容参数；skill 默认输出 JSON")
 
     return parser

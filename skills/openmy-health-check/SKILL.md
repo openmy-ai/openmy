@@ -27,6 +27,7 @@ Use it when:
 - lead with `human_summary`
 - list setup problems in priority order
 - explain which speech-to-text engine is active and which ones are ready
+- explain whether `llm_available` is true or false
 - end with one concrete next fix
 
 ## Agent Behavior
@@ -38,3 +39,4 @@ Use it when:
 5. When the user asks which engine to choose, compare local engines and API engines in plain language.
 6. **Always highlight that local engines work without any key.** If the user has no API keys configured, say: "You can already process audio with the built-in local engine. API keys are optional — they unlock cloud-based engines with better accuracy."
 7. When recommending an engine, start with the one that is already `ready: true`.
+8. If `llm_available` is false, explain that an agent can still finish distillation and extraction through `distill.pending -> distill.submit` and `extract.core.pending -> extract.core.submit`.

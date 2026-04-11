@@ -13,6 +13,10 @@ openmy skill context.get --level 0 --json
 openmy skill context.query --kind project --query OpenMy --json
 openmy skill day.get --date YYYY-MM-DD --json
 openmy skill day.run --date YYYY-MM-DD --audio a.wav --json
+openmy skill distill.pending --date YYYY-MM-DD --json
+openmy skill distill.submit --date YYYY-MM-DD --payload-file payload.json --json
+openmy skill extract.core.pending --date YYYY-MM-DD --json
+openmy skill extract.core.submit --date YYYY-MM-DD --payload-file payload.json --json
 openmy skill correction.apply --op close-loop --arg "Task Title" --json
 openmy skill status.get --json
 openmy skill vocab.init --json
@@ -53,6 +57,25 @@ Rules:
 - `action` and `version` must stay stable
 - every success payload must include `human_summary`
 - sub-skills must call only stable actions, never internal modules
+
+
+Agent handoff contracts:
+
+- `distill.pending` returns scenes that still need `summary`.
+- `distill.submit` accepts:
+
+```json
+{
+  "date": "2026-04-11",
+  "summaries": [
+    {"scene_id": "s01", "summary": "我把关键决定记下来了。"}
+  ]
+}
+```
+
+- `extract.core.pending` returns transcript text, reference date, scene catalog, and output schema.
+- `extract.core.submit` accepts one normalized core extraction payload and writes `{date}.meta.json`.
+- If `health.check` shows `llm_available: false`, agents may finish distillation and extraction with their own model, then call `day.run` again to finish briefing and consolidation.
 
 
 Automatic export contract:

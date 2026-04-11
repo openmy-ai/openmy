@@ -21,6 +21,11 @@ class TestSkillDispatch(unittest.TestCase):
             "level": 1,
             "compact": False,
             "json": True,
+            "payload_json": None,
+            "payload_file": None,
+            "name": None,
+            "language": None,
+            "timezone": None,
         }
         base.update(overrides)
         return argparse.Namespace(**base)
@@ -30,7 +35,22 @@ class TestSkillDispatch(unittest.TestCase):
 
         self.assertEqual(
             set(skill_dispatch.ACTION_HANDLERS.keys()),
-            {"context.get", "context.query", "correction.apply", "day.get", "day.run", "health.check", "profile.get", "profile.set", "status.get", "vocab.init"},
+            {
+                "context.get",
+                "context.query",
+                "correction.apply",
+                "day.get",
+                "day.run",
+                "distill.pending",
+                "distill.submit",
+                "extract.core.pending",
+                "extract.core.submit",
+                "health.check",
+                "profile.get",
+                "profile.set",
+                "status.get",
+                "vocab.init",
+            },
         )
 
     def test_dispatch_unknown_action_returns_contract_error(self):
@@ -209,6 +229,121 @@ class TestSkillDispatch(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["data"]["export"]["config"]["api_key"], "***")
         self.assertEqual(payload["data"]["export"]["config"]["database_id"], "db_123")
+        self.assertTrue(payload["data"]["llm_available"])
+
+    def test_distill_pending_and_submit_round_trip(self):
+        from openmy import skill_dispatch
+
+        date_str = "2099-03-01"
+        day_dir = skill_dispatch._cli().ensure_day_dir(date_str)
+        scenes_path = day_dir / "scenes.json"
+        original = scenes_path.read_text(encoding="utf-8") if scenes_path.exists() else None
+        scenes_path.write_text(
+            """{
+  "scenes": [
+    {
+      "scene_id": "s01",
+      "time_start": "10:00",
+      "text": "我今天把代理接手方案理顺了。",
+      "summary": "",
+      "role": {"addressed_to": "自己"},
+      "screen_context": {"summary": "在看计划文档"}
+    }
+  ]
+}""",
+            encoding="utf-8",
+        )
+
+        try:
+            pending_payload, exit_code = skill_dispatch.handle_distill_pending(
+                self.make_args(action="distill.pending", date=date_str)
+            )
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(pending_payload["data"]["status"], "pending")
+            self.assertEqual(len(pending_payload["data"]["pending_scenes"]), 1)
+
+            submit_payload, submit_exit = skill_dispatch.handle_distill_submit(
+                self.make_args(
+                    action="distill.submit",
+                    date=date_str,
+                    payload_json='{"date":"2099-03-01","summaries":[{"scene_id":"s01","summary":"我把代理接手方案拆成了先蒸馏后提取。"}]}',
+                )
+            )
+            self.assertEqual(submit_exit, 0)
+            self.assertEqual(submit_payload["data"]["pending_count"], 0)
+            saved = skill_dispatch._read_json(scenes_path, {})
+            self.assertEqual(saved["scenes"][0]["summary"], "我把代理接手方案拆成了先蒸馏后提取。")
+        finally:
+            if original is None:
+                scenes_path.unlink(missing_ok=True)
+            else:
+                scenes_path.write_text(original, encoding="utf-8")
+
+    def test_extract_core_pending_and_submit_round_trip(self):
+        from openmy import skill_dispatch
+
+        date_str = "2099-03-02"
+        day_dir = skill_dispatch._cli().ensure_day_dir(date_str)
+        transcript_path = day_dir / "transcript.md"
+        scenes_path = day_dir / "scenes.json"
+        meta_path = day_dir / f"{date_str}.meta.json"
+        original_transcript = transcript_path.read_text(encoding="utf-8") if transcript_path.exists() else None
+        original_scenes = scenes_path.read_text(encoding="utf-8") if scenes_path.exists() else None
+        original_meta = meta_path.read_text(encoding="utf-8") if meta_path.exists() else None
+        transcript_path.write_text("## 10:00\n\n昨天把旧问题修好了，明天下午继续验收。", encoding="utf-8")
+        scenes_path.write_text(
+            """{
+  "scenes": [
+    {
+      "scene_id": "s01",
+      "time_start": "10:00",
+      "summary": "我昨天把旧问题修好了，明天下午继续验收。",
+      "preview": "昨天把旧问题修好了",
+      "screen_context": {"summary": "在看返工计划"}
+    }
+  ]
+}""",
+            encoding="utf-8",
+        )
+        meta_path.unlink(missing_ok=True)
+
+        try:
+            pending_payload, exit_code = skill_dispatch.handle_extract_core_pending(
+                self.make_args(action="extract.core.pending", date=date_str)
+            )
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(pending_payload["data"]["status"], "pending")
+            self.assertIn("output_schema", pending_payload["data"])
+
+            submit_payload, submit_exit = skill_dispatch.handle_extract_core_submit(
+                self.make_args(
+                    action="extract.core.submit",
+                    date=date_str,
+                    payload_json=(
+                        '{"daily_summary":"我昨天修完了旧问题，明天下午继续验收。",'
+                        '"intents":[{"intent_id":"i1","kind":"action_item","what":"明天下午继续验收","status":"open","who":{"kind":"user"},"confidence_label":"high"}],'
+                        '"facts":[{"fact_id":"f1","fact_type":"progress","content":"昨天把旧问题修好了","confidence_label":"high"}]}'
+                    ),
+                )
+            )
+            self.assertEqual(submit_exit, 0)
+            self.assertEqual(submit_payload["data"]["extract_enrich_status"], "pending")
+            saved_meta = skill_dispatch._read_json(meta_path, {})
+            self.assertEqual(saved_meta["extract_enrich_status"], "pending")
+            self.assertEqual(saved_meta["daily_summary"], "我昨天修完了旧问题，明天下午继续验收。")
+        finally:
+            if original_transcript is None:
+                transcript_path.unlink(missing_ok=True)
+            else:
+                transcript_path.write_text(original_transcript, encoding="utf-8")
+            if original_scenes is None:
+                scenes_path.unlink(missing_ok=True)
+            else:
+                scenes_path.write_text(original_scenes, encoding="utf-8")
+            if original_meta is None:
+                meta_path.unlink(missing_ok=True)
+            else:
+                meta_path.write_text(original_meta, encoding="utf-8")
 
 
 if __name__ == "__main__":

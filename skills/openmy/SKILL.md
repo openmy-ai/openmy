@@ -40,6 +40,8 @@ Use this skill when:
 - vocabulary initialization → `openmy-vocab-init`
 - profile onboarding → `openmy-profile-init`
 - environment and engine check → `openmy-health-check`
+- agent-side scene distillation handoff → `openmy-distill`
+- agent-side core extraction handoff → `openmy-extract`
 - export setup → `openmy-export`
 - screen recognition setup → `openmy-screen-recognition`
 
@@ -60,6 +62,7 @@ No API key is needed to process audio.
 - LLM keys (`GEMINI_API_KEY`) are only needed for distillation and extraction. The core pipeline (`transcribe -> clean -> segment -> briefing`) works without them.
 **Never tell the user they must configure an API key before processing audio.**
 Run `health.check` first. It shows which engines are already ready.
+If no LLM key is configured, agents can still finish distillation and extraction with `distill.pending -> distill.submit` and `extract.core.pending -> extract.core.submit`.
 
 ## Communication Style
 
@@ -86,6 +89,7 @@ If this looks like a first-time setup:
 6. Review the result with the user.
 7. Suggest corrections if the transcript clearly has errors.
 8. Route back to `openmy-vocab-init` if you discover more names or terms.
+9. If `health.check` says `llm_available: false`, route to `openmy-distill` and `openmy-extract` instead of asking for an API key.
 
 ## Typical Daily Workflow
 

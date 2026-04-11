@@ -18,6 +18,8 @@ SUBSKILLS = [
     "openmy-vocab-init",
     "openmy-profile-init",
     "openmy-health-check",
+    "openmy-distill",
+    "openmy-extract",
     "openmy-export",
     "openmy-screen-recognition",
 ]

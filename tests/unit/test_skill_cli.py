@@ -352,7 +352,7 @@ class TestSkillCliContract(unittest.TestCase):
                 env=env,
             )
 
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
             payload = json.loads(result.stdout)
             self.assertTrue(payload["ok"])
             self.assertEqual(payload["action"], "day.run")
@@ -360,7 +360,9 @@ class TestSkillCliContract(unittest.TestCase):
             self.assertTrue((PROJECT_ROOT / "data" / date_str / "transcript.raw.md").exists())
             self.assertTrue((PROJECT_ROOT / "data" / date_str / "transcript.md").exists())
             self.assertTrue((PROJECT_ROOT / "data" / date_str / "scenes.json").exists())
-            self.assertTrue((PROJECT_ROOT / "data" / date_str / "daily_briefing.json").exists())
+            self.assertFalse((PROJECT_ROOT / "data" / date_str / "daily_briefing.json").exists())
+            self.assertEqual(payload["data"]["run_status"]["current_step"], "distill")
+            self.assertIn("distill.pending", payload["next_actions"][0])
         finally:
             self.cleanup_day_dir(date_str)
             self.cleanup_context_outputs()
@@ -494,6 +496,165 @@ class TestSkillCliContract(unittest.TestCase):
             self.assertEqual(get_payload["data"]["profile"]["timezone"], "America/Los_Angeles")
         finally:
             self.restore_optional_text(profile_path, original_profile)
+
+    def test_skill_distill_pending_and_submit_cli_contract(self):
+        date_str = "2099-03-03"
+        day_dir = self.make_day_dir(date_str)
+        scenes_path = day_dir / "scenes.json"
+        scenes_path.write_text(
+            json.dumps(
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "s01",
+                            "time_start": "09:00",
+                            "text": "我今天把待办拆出来了。",
+                            "summary": "",
+                            "role": {"addressed_to": "自己"},
+                            "screen_context": {"summary": "在看任务清单"},
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        payload_path = day_dir / "distill-submit.json"
+        payload_path.write_text(
+            json.dumps(
+                {
+                    "date": date_str,
+                    "summaries": [{"scene_id": "s01", "summary": "我今天把待办拆出来，准备先做蒸馏再做提取。"}],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        try:
+            pending = subprocess.run(
+                [sys.executable, "-m", "openmy", "skill", "distill.pending", "--date", date_str, "--json"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(pending.returncode, 0, pending.stdout + pending.stderr)
+            pending_payload = json.loads(pending.stdout)
+            self.assertTrue(pending_payload["ok"])
+            self.assertEqual(pending_payload["data"]["status"], "pending")
+
+            submit = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "openmy",
+                    "skill",
+                    "distill.submit",
+                    "--date",
+                    date_str,
+                    "--payload-file",
+                    str(payload_path),
+                    "--json",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(submit.returncode, 0, submit.stdout + submit.stderr)
+            submit_payload = json.loads(submit.stdout)
+            self.assertTrue(submit_payload["ok"])
+            self.assertEqual(submit_payload["data"]["pending_count"], 0)
+        finally:
+            self.cleanup_day_dir(date_str)
+
+    def test_skill_extract_core_pending_and_submit_cli_contract(self):
+        date_str = "2099-03-04"
+        day_dir = self.make_day_dir(date_str)
+        (day_dir / "transcript.md").write_text("## 10:00\n\n昨天把旧问题修完了，明天继续验收。", encoding="utf-8")
+        (day_dir / "scenes.json").write_text(
+            json.dumps(
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "s01",
+                            "time_start": "10:00",
+                            "summary": "我昨天把旧问题修完了，明天继续验收。",
+                            "preview": "昨天把旧问题修完了",
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        payload_path = day_dir / "extract-submit.json"
+        payload_path.write_text(
+            json.dumps(
+                {
+                    "daily_summary": "我昨天修完了旧问题，明天继续验收。",
+                    "intents": [
+                        {
+                            "intent_id": "i1",
+                            "kind": "action_item",
+                            "what": "明天继续验收",
+                            "status": "open",
+                            "who": {"kind": "user"},
+                            "confidence_label": "high",
+                        }
+                    ],
+                    "facts": [
+                        {
+                            "fact_id": "f1",
+                            "fact_type": "progress",
+                            "content": "昨天把旧问题修完了",
+                            "confidence_label": "high",
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        try:
+            pending = subprocess.run(
+                [sys.executable, "-m", "openmy", "skill", "extract.core.pending", "--date", date_str, "--json"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(pending.returncode, 0, pending.stdout + pending.stderr)
+            pending_payload = json.loads(pending.stdout)
+            self.assertTrue(pending_payload["ok"])
+            self.assertEqual(pending_payload["data"]["status"], "pending")
+
+            submit = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "openmy",
+                    "skill",
+                    "extract.core.submit",
+                    "--date",
+                    date_str,
+                    "--payload-file",
+                    str(payload_path),
+                    "--json",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(submit.returncode, 0, submit.stdout + submit.stderr)
+            submit_payload = json.loads(submit.stdout)
+            self.assertTrue(submit_payload["ok"])
+            self.assertEqual(submit_payload["data"]["extract_enrich_status"], "pending")
+        finally:
+            self.cleanup_day_dir(date_str)
 
 
 if __name__ == "__main__":

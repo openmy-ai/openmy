@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Callable
@@ -41,6 +42,10 @@ def _read_json(path: Path, default: Any) -> Any:
 
 def _day_run_status_path(date_str: str) -> Path:
     return _cli().ensure_day_dir(date_str) / "run_status.json"
+
+
+def _meta_path(date_str: str) -> Path:
+    return _cli().ensure_day_dir(date_str) / f"{date_str}.meta.json"
 
 
 def build_success_payload(
@@ -164,6 +169,139 @@ def _format_day_summary(date_str: str, status: dict[str, Any]) -> str:
     return f"No usable data found for {date_str}."
 
 
+def _load_json_payload_arg(action: str, args: argparse.Namespace) -> dict[str, Any]:
+    payload_json = str(getattr(args, "payload_json", "") or "").strip()
+    payload_file = str(getattr(args, "payload_file", "") or "").strip()
+
+    if payload_json and payload_file:
+        raise SkillDispatchError(
+            action=action,
+            error_code="conflicting_payload_input",
+            message="Provide either --payload-json or --payload-file, not both.",
+            hint="Keep one payload source.",
+        )
+
+    if payload_json:
+        try:
+            payload = json.loads(payload_json)
+        except json.JSONDecodeError as exc:
+            raise SkillDispatchError(
+                action=action,
+                error_code="invalid_payload_json",
+                message=f"Payload JSON is invalid: {exc.msg}",
+                hint="Pass a valid JSON object string.",
+            ) from exc
+    elif payload_file:
+        payload_path = Path(payload_file).expanduser()
+        if not payload_path.exists():
+            raise SkillDispatchError(
+                action=action,
+                error_code="missing_payload_file",
+                message=f"Payload file not found: {payload_path}",
+                hint="Pass an existing JSON file path.",
+            )
+        try:
+            payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise SkillDispatchError(
+                action=action,
+                error_code="invalid_payload_file",
+                message=f"Payload file JSON is invalid: {exc.msg}",
+                hint="Make sure the file contains one valid JSON object.",
+            ) from exc
+    else:
+        raise SkillDispatchError(
+            action=action,
+            error_code="missing_payload",
+            message="Missing payload input.",
+            hint="Pass --payload-json or --payload-file.",
+        )
+
+    if not isinstance(payload, dict):
+        raise SkillDispatchError(
+            action=action,
+            error_code="invalid_payload_type",
+            message="Payload must be a JSON object.",
+            hint="Wrap the submitted fields in one JSON object.",
+        )
+    return payload
+
+
+def _meta_has_core_content(payload: dict[str, Any]) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if str(payload.get("daily_summary", "") or "").strip():
+        return True
+    if any(isinstance(item, dict) for item in payload.get("intents", [])):
+        return True
+    if any(isinstance(item, dict) for item in payload.get("facts", [])):
+        return True
+    return False
+
+
+def _load_scene_payload(action: str, date_str: str) -> tuple[Path, dict[str, Any]]:
+    scenes_path = _cli().resolve_day_paths(date_str)["scenes"]
+    if not scenes_path.exists():
+        raise SkillDispatchError(
+            action=action,
+            error_code="missing_scenes",
+            message=f"Scenes file not found for {date_str}.",
+            hint=f"Run openmy skill day.run --date {date_str} --audio path/to/audio.wav --json first.",
+        )
+    payload = _read_json(scenes_path, {})
+    scenes = payload.get("scenes", [])
+    if not isinstance(scenes, list):
+        raise SkillDispatchError(
+            action=action,
+            error_code="invalid_scenes",
+            message=f"Scenes payload is invalid for {date_str}.",
+            hint="Re-run the day pipeline to rebuild scenes.json.",
+        )
+    return scenes_path, payload
+
+
+def _load_transcript_text(date_str: str) -> tuple[Path, str]:
+    cli = _cli()
+    transcript_path = cli.resolve_day_paths(date_str)["transcript"]
+    if not transcript_path.exists():
+        raise SkillDispatchError(
+            action="extract.core.pending",
+            error_code="missing_transcript",
+            message=f"Transcript file not found for {date_str}.",
+            hint=f"Run openmy skill day.run --date {date_str} --audio path/to/audio.wav --json first.",
+        )
+    text = transcript_path.read_text(encoding="utf-8")
+    text = cli.strip_document_header(text).strip()
+    if not text:
+        raise SkillDispatchError(
+            action="extract.core.pending",
+            error_code="empty_transcript",
+            message=f"Transcript is empty for {date_str}.",
+            hint="Re-run transcription before extraction.",
+        )
+    return transcript_path, text
+
+
+def _scene_catalog_for_agent(scene_payload: dict[str, Any]) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    for raw in scene_payload.get("scenes", []):
+        if not isinstance(raw, dict):
+            continue
+        role = raw.get("role", {}) if isinstance(raw.get("role"), dict) else {}
+        screen_context = raw.get("screen_context", {}) if isinstance(raw.get("screen_context"), dict) else {}
+        items.append(
+            {
+                "scene_id": str(raw.get("scene_id", "") or "").strip(),
+                "time_start": str(raw.get("time_start", "") or "").strip(),
+                "summary": str(raw.get("summary", "") or "").strip(),
+                "preview": str(raw.get("preview", "") or "").strip(),
+                "role": str(role.get("addressed_to", "") or role.get("scene_type_label", "") or "").strip(),
+                "screen_context": str(screen_context.get("summary", "") or "").strip(),
+            }
+        )
+    return items
+
+
 def handle_status_get(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     cli = _cli()
     items = []
@@ -213,6 +351,221 @@ def handle_day_get(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         next_actions=[]
         if status.get("has_briefing")
         else [f"To generate missing outputs, run: openmy skill day.run --date {date_str} --json"],
+    )
+    return (payload, 0)
+
+
+def handle_distill_pending(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    date_str = _require_date("distill.pending", getattr(args, "date", None))
+    scenes_path, scene_payload = _load_scene_payload("distill.pending", date_str)
+
+    pending_scenes: list[dict[str, str]] = []
+    for raw in scene_payload.get("scenes", []):
+        if not isinstance(raw, dict):
+            continue
+        if str(raw.get("summary", "") or "").strip():
+            continue
+        role = raw.get("role", {}) if isinstance(raw.get("role"), dict) else {}
+        screen_context = raw.get("screen_context", {}) if isinstance(raw.get("screen_context"), dict) else {}
+        pending_scenes.append(
+            {
+                "scene_id": str(raw.get("scene_id", "") or "").strip(),
+                "text": str(raw.get("text", "") or "").strip(),
+                "role": str(role.get("addressed_to", "") or role.get("scene_type_label", "") or "").strip(),
+                "screen_context": str(screen_context.get("summary", "") or "").strip(),
+            }
+        )
+
+    status = "pending" if pending_scenes else "already_done"
+    next_actions = []
+    if pending_scenes:
+        next_actions.append(
+            f"Submit summaries with: openmy skill distill.submit --date {date_str} --payload-file path/to/payload.json --json"
+        )
+    else:
+        next_actions.append(f"Continue with: openmy skill extract.core.pending --date {date_str} --json")
+
+    payload = build_success_payload(
+        action="distill.pending",
+        data={
+            "date": date_str,
+            "status": status,
+            "pending_scenes": pending_scenes,
+            "guidelines": "1-3句话，30-80字，用'我'做主语，只写干货",
+        },
+        human_summary=(
+            f"{len(pending_scenes)} scenes need distillation for {date_str}."
+            if pending_scenes
+            else f"All scene summaries already exist for {date_str}."
+        ),
+        artifacts={"scenes": str(scenes_path)},
+        next_actions=next_actions,
+    )
+    return (payload, 0)
+
+
+def handle_distill_submit(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from openmy.utils.io import safe_write_json
+
+    submit_payload = _load_json_payload_arg("distill.submit", args)
+    date_str = _require_date("distill.submit", submit_payload.get("date") or getattr(args, "date", None))
+    summaries = submit_payload.get("summaries", [])
+    if not isinstance(summaries, list) or not summaries:
+        raise SkillDispatchError(
+            action="distill.submit",
+            error_code="missing_summaries",
+            message="Missing summaries array.",
+            hint="Provide {\"date\": \"YYYY-MM-DD\", \"summaries\": [{\"scene_id\": \"...\", \"summary\": \"...\"}]}",
+        )
+
+    scenes_path, scene_payload = _load_scene_payload("distill.submit", date_str)
+    scene_index = {}
+    for index, raw in enumerate(scene_payload.get("scenes", [])):
+        if not isinstance(raw, dict):
+            continue
+        scene_id = str(raw.get("scene_id", "") or "").strip()
+        if scene_id:
+            scene_index[scene_id] = index
+
+    updated_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for item in summaries:
+        if not isinstance(item, dict):
+            raise SkillDispatchError(
+                action="distill.submit",
+                error_code="invalid_summary_item",
+                message="Each summaries item must be an object.",
+                hint="Use {\"scene_id\": \"...\", \"summary\": \"...\"}.",
+            )
+        scene_id = str(item.get("scene_id", "") or "").strip()
+        summary = str(item.get("summary", "") or "").strip()
+        if not scene_id or not summary:
+            raise SkillDispatchError(
+                action="distill.submit",
+                error_code="invalid_summary_item",
+                message="Each summary item needs non-empty scene_id and summary.",
+                hint="Fill both fields before submitting.",
+            )
+        if scene_id in seen_ids:
+            raise SkillDispatchError(
+                action="distill.submit",
+                error_code="duplicate_scene_id",
+                message=f"Duplicate scene_id in submission: {scene_id}",
+                hint="Keep only one summary per scene_id.",
+            )
+        seen_ids.add(scene_id)
+        if scene_id not in scene_index:
+            raise SkillDispatchError(
+                action="distill.submit",
+                error_code="unknown_scene_id",
+                message=f"Unknown scene_id: {scene_id}",
+                hint=f"Run openmy skill distill.pending --date {date_str} --json again and use returned scene_id values.",
+            )
+        scene_payload["scenes"][scene_index[scene_id]]["summary"] = summary
+        updated_ids.append(scene_id)
+
+    safe_write_json(scenes_path, scene_payload)
+    pending_count = sum(1 for item in scene_payload.get("scenes", []) if not str(item.get("summary", "") or "").strip())
+    payload = build_success_payload(
+        action="distill.submit",
+        data={
+            "date": date_str,
+            "status": "completed" if pending_count == 0 else "partial",
+            "updated_count": len(updated_ids),
+            "updated_scene_ids": updated_ids,
+            "pending_count": pending_count,
+        },
+        human_summary=(
+            f"Saved {len(updated_ids)} scene summaries for {date_str}."
+            if pending_count
+            else f"Saved all pending scene summaries for {date_str}."
+        ),
+        artifacts={"scenes": str(scenes_path)},
+        next_actions=(
+            [f"Continue with: openmy skill extract.core.pending --date {date_str} --json"]
+            if pending_count == 0
+            else [f"Run openmy skill distill.pending --date {date_str} --json to review remaining scenes."]
+        ),
+    )
+    return (payload, 0)
+
+
+def handle_extract_core_pending(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from openmy.services.extraction.extractor import CORE_EXTRACTION_SCHEMA
+
+    date_str = _require_date("extract.core.pending", getattr(args, "date", None))
+    transcript_path, transcript_text = _load_transcript_text(date_str)
+    meta_path = _meta_path(date_str)
+    meta_payload = _read_json(meta_path, {}) if meta_path.exists() else {}
+    if _meta_has_core_content(meta_payload):
+        status = "already_done"
+        next_actions = [f"Run openmy skill day.run --date {date_str} --skip-transcribe --json to finish remaining steps."]
+    else:
+        status = "pending"
+        next_actions = [
+            f"Submit extraction with: openmy skill extract.core.submit --date {date_str} --payload-file path/to/payload.json --json"
+        ]
+
+    scenes_path, scene_payload = _load_scene_payload("extract.core.pending", date_str)
+    payload = build_success_payload(
+        action="extract.core.pending",
+        data={
+            "date": date_str,
+            "status": status,
+            "reference_date": date_str,
+            "transcript_text": transcript_text,
+            "output_schema": CORE_EXTRACTION_SCHEMA,
+            "scene_catalog": _scene_catalog_for_agent(scene_payload),
+        },
+        human_summary=(
+            f"Core extraction is ready for {date_str}."
+            if status == "pending"
+            else f"Core extraction already exists for {date_str}."
+        ),
+        artifacts={
+            "transcript": str(transcript_path),
+            "scenes": str(scenes_path),
+            "meta": str(meta_path),
+        },
+        next_actions=next_actions,
+    )
+    return (payload, 0)
+
+
+def handle_extract_core_submit(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from openmy.services.extraction.extractor import build_legacy_compatible_payload, normalize_extraction_payload
+    from openmy.utils.io import safe_write_json
+
+    submit_payload = _load_json_payload_arg("extract.core.submit", args)
+    date_str = _require_date("extract.core.submit", submit_payload.get("date") or getattr(args, "date", None))
+    raw_payload = submit_payload.get("payload") if isinstance(submit_payload.get("payload"), dict) else submit_payload
+
+    normalized = normalize_extraction_payload(raw_payload, reference_date=date_str)
+    if not _meta_has_core_content(normalized):
+        raise SkillDispatchError(
+            action="extract.core.submit",
+            error_code="empty_extraction_payload",
+            message="Submitted extraction payload has no usable core content.",
+            hint="At minimum, include daily_summary, intents, or facts.",
+        )
+    normalized["extract_enrich_status"] = "pending"
+    normalized["extract_enrich_message"] = ""
+
+    meta_path = _meta_path(date_str)
+    safe_write_json(meta_path, build_legacy_compatible_payload(normalized))
+    payload = build_success_payload(
+        action="extract.core.submit",
+        data={
+            "date": date_str,
+            "status": "completed",
+            "extract_enrich_status": "pending",
+            "daily_summary": normalized.get("daily_summary", ""),
+            "intent_count": len(normalized.get("intents", [])),
+            "fact_count": len(normalized.get("facts", [])),
+        },
+        human_summary=f"Saved core extraction payload for {date_str}.",
+        artifacts={"meta": str(meta_path)},
+        next_actions=[f"Run openmy skill day.run --date {date_str} --skip-transcribe --json to finish briefing and consolidation."],
     )
     return (payload, 0)
 
@@ -469,6 +822,15 @@ def handle_day_run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if not CORRECTIONS_FILE.exists():
         next_actions.append("Personal vocab not initialized. Run: openmy skill vocab.init --json")
 
+    current_step = str(run_status.get("current_step", "") or "").strip()
+    current_message = str(run_status.get("steps", {}).get(current_step, {}).get("message", "") or "").strip()
+    if final_status == "partial" and current_step == "distill" and "distill.pending" in current_message:
+        summary = f"{date_str} paused after deterministic steps; an agent now needs to distill scenes."
+        next_actions = [f"Run openmy skill distill.pending --date {date_str} --json next."]
+    elif final_status == "partial" and current_step == "extract_core" and "extract.core.pending" in current_message:
+        summary = f"{date_str} paused after scene distillation; an agent now needs to submit core extraction."
+        next_actions = [f"Run openmy skill extract.core.pending --date {date_str} --json next."]
+
     payload = build_success_payload(
         action="day.run",
         data={
@@ -620,7 +982,7 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if not has_stt_credentials():
         issues.append(f"Active STT provider '{current_stt}' needs an API key but none is configured.")
     if not llm_key_ok:
-        issues.append("No LLM API key configured. Distillation and extraction will be skipped.")
+        issues.append("No LLM API key configured. Agent handoff is available for distillation and extraction.")
     if not profile_exists:
         issues.append("User profile not initialized. Run: openmy skill profile.set --name 'Your Name' --json")
     if not vocab_exists:
@@ -637,12 +999,16 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     else:
         summary_parts.append(f"{len(issues)} issue(s) found.")
     summary_parts.append(f"STT: {current_stt}; LLM: {llm_provider}; {data_days} days of data.")
+    if not llm_key_ok:
+        summary_parts.append("An agent can finish distillation and extraction with its own model.")
 
     next_actions: list[str] = []
     if not profile_exists:
         next_actions.append("Run: openmy skill profile.set --name 'Your Name' --language en --timezone UTC --json")
     if not vocab_exists:
         next_actions.append("Run: openmy skill vocab.init --json")
+    if not llm_key_ok:
+        next_actions.append("If you want agent-native processing, run day.run first, then use distill.pending / distill.submit and extract.core.pending / extract.core.submit.")
     if not has_stt_credentials() and current_stt not in LOCAL_STT_PROVIDERS:
         next_actions.append(f"Add API key for '{current_stt}' to .env, or switch to a local provider: OPENMY_STT_PROVIDER=faster-whisper")
     if export_provider and not export_ready:
@@ -660,6 +1026,7 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "ffmpeg": {"available": ffmpeg_ok, "ffprobe_available": ffprobe_ok},
             "stt_providers": stt_providers,
             "stt_active": current_stt,
+            "llm_available": llm_key_ok,
             "llm": {"provider": llm_provider, "api_key_configured": llm_key_ok},
             "profile_exists": profile_exists,
             "vocab_exists": vocab_exists,
@@ -690,6 +1057,10 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 ACTION_HANDLERS: dict[str, Callable[[argparse.Namespace], tuple[dict[str, Any], int]]] = {
     "context.get": handle_context_get,
     "context.query": handle_context_query,
+    "distill.pending": handle_distill_pending,
+    "distill.submit": handle_distill_submit,
+    "extract.core.pending": handle_extract_core_pending,
+    "extract.core.submit": handle_extract_core_submit,
     "health.check": handle_health_check,
     "profile.get": handle_profile_get,
     "profile.set": handle_profile_set,

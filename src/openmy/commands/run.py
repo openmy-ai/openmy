@@ -194,6 +194,23 @@ def _finish_run(date_str: str, payload: dict, final_status: str, current_step: s
     _save_run_status(date_str, payload)
 
 
+def _load_existing_core_payload(date_str: str) -> dict | None:
+    cli = _cli()
+    meta_path = cli.ensure_day_dir(date_str) / f"{date_str}.meta.json"
+    if not meta_path.exists():
+        return None
+    payload = cli.read_json(meta_path, {})
+    if not isinstance(payload, dict):
+        return None
+    if str(payload.get("daily_summary", "") or "").strip():
+        return payload
+    if any(isinstance(item, dict) for item in payload.get("intents", [])):
+        return payload
+    if any(isinstance(item, dict) for item in payload.get("facts", [])):
+        return payload
+    return None
+
+
 def run_transcription_enrichment(day_dir: Path, *, diarize: bool = False) -> dict:
     from openmy.services.ingest.transcription_enrichment import run_transcription_enrichment as _run
 
@@ -416,9 +433,10 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     cli.console.print("\n[dim]⏭️ 跳过角色识别：功能已冻结[/dim]")
     _mark_step(date_str, run_status, "roles", "skipped", message="角色识别已冻结", artifact=paths["scenes"], skip_reason="role_step_frozen")
 
+    llm_available = has_llm_credentials("distill")
     missing_summaries = [scene for scene in scenes_data.get("scenes", []) if not scene.get("summary")]
     if missing_summaries:
-        if has_llm_credentials("distill"):
+        if llm_available:
             _mark_step(date_str, run_status, "distill", "running", message=f"正在蒸馏 {len(missing_summaries)} 个场景")
             cli.console.print("\n[bold]🧪 蒸馏[/bold]")
             result = cli.cmd_distill(args)
@@ -429,11 +447,50 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
                 return result
             _mark_step(date_str, run_status, "distill", "completed", message="蒸馏完成", artifact=paths["scenes"])
         else:
-            cli.console.print("\n[yellow]⏭️ 跳过蒸馏：缺少可用 LLM provider key，继续生成基础日报[/yellow]")
-            _mark_step(date_str, run_status, "distill", "skipped", message="缺少可用 LLM provider key", skip_reason="missing_llm_key")
+            cli.console.print("\n[yellow]⏸️ 暂停在蒸馏步骤：没有可用大模型密钥，请让代理先接手蒸馏。[/yellow]")
+            _mark_step(
+                date_str,
+                run_status,
+                "distill",
+                "skipped",
+                message="没有可用大模型密钥；请先调用 distill.pending / distill.submit",
+                artifact=paths["scenes"],
+                skip_reason="missing_llm_key_agent_handoff",
+            )
+            _finish_run(date_str, run_status, "partial", "distill")
+            cli.console.print(
+                cli.Panel(
+                    f"[yellow]⚠️ {date_str} 先做到场景切分为止[/yellow]\n"
+                    "下一步请先调用 distill.pending，再把结果用 distill.submit 写回。",
+                    border_style="yellow",
+                )
+            )
+            return PARTIAL_SUCCESS
     else:
         cli.console.print("\n[dim]⏭️ 跳过蒸馏：场景摘要已齐全[/dim]")
         _mark_step(date_str, run_status, "distill", "skipped", message="场景摘要已齐全", artifact=paths["scenes"], skip_reason="summaries_already_present")
+
+    existing_core_payload = _load_existing_core_payload(date_str)
+    if not has_llm_credentials("extract") and paths["transcript"].exists() and not existing_core_payload:
+        cli.console.print("\n[yellow]⏸️ 暂停在核心提取步骤：没有可用大模型密钥，请让代理先接手核心提取。[/yellow]")
+        _mark_step(
+            date_str,
+            run_status,
+            "extract_core",
+            "skipped",
+            message="没有可用大模型密钥；请先调用 extract.core.pending / extract.core.submit",
+            artifact=paths["transcript"],
+            skip_reason="missing_llm_key_agent_handoff",
+        )
+        _finish_run(date_str, run_status, "partial", "extract_core")
+        cli.console.print(
+            cli.Panel(
+                f"[yellow]⚠️ {date_str} 已完成确定性步骤[/yellow]\n"
+                "下一步请先调用 extract.core.pending，再把结果用 extract.core.submit 写回。",
+                border_style="yellow",
+            )
+        )
+        return PARTIAL_SUCCESS
 
     _mark_step(date_str, run_status, "briefing", "running", message="正在生成日报")
     cli.console.print("\n[bold]📋 日报[/bold]")
@@ -446,8 +503,20 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     _mark_step(date_str, run_status, "briefing", "completed", message="日报已生成", artifact=paths["briefing"])
 
     extract_core_failed = False
-    extract_core_payload = None
-    if has_llm_credentials("extract") and paths["transcript"].exists():
+    extract_core_payload = existing_core_payload
+    if extract_core_payload:
+        cli.console.print("\n[dim]⏭️ 跳过核心提取：结构化结果已存在[/dim]")
+        meta_path = cli.ensure_day_dir(date_str) / f"{date_str}.meta.json"
+        _mark_step(
+            date_str,
+            run_status,
+            "extract_core",
+            "skipped",
+            message="结构化结果已存在",
+            artifact=meta_path,
+            skip_reason="core_extraction_already_present",
+        )
+    elif has_llm_credentials("extract") and paths["transcript"].exists():
         _mark_step(date_str, run_status, "extract_core", "running", message="正在提取核心结构化摘要")
         cli.console.print("\n[bold]🔍 核心提取[/bold]")
         try:
@@ -558,7 +627,24 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             cli.console.print(f"[yellow]⚠️ 补全提取异常[/yellow]: {exc}")
             _mark_step(date_str, run_status, "extract_enrich", "failed", message=str(exc))
     elif run_status["steps"]["extract_enrich"]["status"] == "pending":
-        _mark_step(date_str, run_status, "extract_enrich", "skipped", message="缺少核心提取结果，未执行补全", skip_reason="missing_core_extraction_output")
+        if extract_core_payload and not has_llm_credentials("extract"):
+            _mark_step(
+                date_str,
+                run_status,
+                "extract_enrich",
+                "skipped",
+                message="已有核心结果，但没有可用大模型密钥，未执行补全提取",
+                skip_reason="missing_llm_key",
+            )
+        else:
+            _mark_step(
+                date_str,
+                run_status,
+                "extract_enrich",
+                "skipped",
+                message="缺少核心提取结果，未执行补全",
+                skip_reason="missing_core_extraction_output",
+            )
 
     _export_outputs(
         date_str,

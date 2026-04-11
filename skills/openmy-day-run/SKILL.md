@@ -54,3 +54,4 @@ Do not block audio processing because an API key is missing.
 4. If vocab is not initialized, suggest `vocab.init`.
 5. Summarize the day in plain language.
 6. If any step was skipped or failed, explain why and offer the next fix.
+7. If the run pauses at distillation or core extraction because no LLM key is configured, route to `distill.pending` / `distill.submit` or `extract.core.pending` / `extract.core.submit` instead of asking the user for a key first.
