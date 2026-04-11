@@ -81,8 +81,12 @@ class TestExtractorCompatibility(unittest.TestCase):
         payload = self.make_payload()
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            extractor.save_meta_json(payload, "2026-04-08", tmp_dir)
-            saved = json.loads((Path(tmp_dir) / "2026-04-08.meta.json").read_text(encoding="utf-8"))
+            day_dir = Path(tmp_dir) / "2026-04-08"
+            day_dir.mkdir(parents=True, exist_ok=True)
+            (day_dir / "transcript.md").write_text("你好 OpenMy", encoding="utf-8")
+            extractor.save_meta_json(payload, "2026-04-08", str(day_dir))
+            saved = json.loads((day_dir / "2026-04-08.meta.json").read_text(encoding="utf-8"))
+            search_index = json.loads((Path(tmp_dir) / "search_index.json").read_text(encoding="utf-8"))
 
         self.assertIn("intents", saved)
         self.assertIn("facts", saved)
@@ -93,6 +97,8 @@ class TestExtractorCompatibility(unittest.TestCase):
         self.assertEqual([item["task"] for item in saved["todos"]], ["重写 README"])
         self.assertEqual([item["what"] for item in saved["decisions"]], ["先做 Intent，再做前端。"])
         self.assertEqual(len(saved["insights"]), 2)
+        self.assertEqual(search_index["days"][0]["date"], "2026-04-08")
+        self.assertGreater(search_index["days"][0]["word_count"], 0)
 
     def test_distribute_to_vault_uses_intents_and_facts(self):
         payload = self.make_payload()

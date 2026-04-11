@@ -26,6 +26,7 @@ pip install .
 echo "GEMINI_API_KEY=your-key" > .env
 openmy skill vocab.init --json
 openmy quick-start path/to/your-audio.wav
+openmy quick-start --demo  # try the bundled sample first
 ```
 
 > Requirements: Python 3.10+, FFmpeg, and a usable provider key. The default path is still Gemini via `GEMINI_API_KEY`.

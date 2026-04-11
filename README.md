@@ -26,6 +26,7 @@ pip install .
 echo "GEMINI_API_KEY=你的key" > .env
 openmy skill vocab.init --json
 openmy quick-start path/to/your-audio.wav
+openmy quick-start --demo  # 用内置示例先跑一遍
 ```
 
 > 依赖：Python 3.10+、FFmpeg、一个可用的 provider key。默认推荐 Gemini，直接填 `GEMINI_API_KEY` 即可。

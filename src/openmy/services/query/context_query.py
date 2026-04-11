@@ -6,6 +6,7 @@ from typing import Any
 
 from openmy.domain.intent import DONE_STATUSES, Event, Fact, Intent, build_canonical_key, should_generate_open_loop
 from openmy.services.context.active_context import ActiveContext
+from openmy.services.query.search_index import candidate_dates_for_query, list_index_dates
 
 QUERY_KINDS = {"project", "person", "open", "closed", "evidence"}
 QUERY_KINDS_REQUIRING_TEXT = {"project", "person", "evidence"}
@@ -53,6 +54,7 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 def _list_dates(project_root: Path, data_root: Path) -> list[str]:
     dates: set[str] = set()
+    dates.update(candidate_dates_for_query(data_root, kind="project", query=""))
     if data_root.exists():
         for child in data_root.iterdir():
             if child.is_dir() and DATE_RE.match(child.name):
@@ -91,10 +93,15 @@ def _load_context(data_root: Path) -> ActiveContext:
     return consolidate(data_root)
 
 
-def _build_day_records(data_root: Path) -> list[dict[str, Any]]:
+def _build_day_records(data_root: Path, candidate_dates: list[str] | None = None) -> list[dict[str, Any]]:
     project_root = data_root.parent
     records: list[dict[str, Any]] = []
-    for date_str in _list_dates(project_root, data_root):
+    dates = candidate_dates or _list_dates(project_root, data_root)
+    seen_dates: set[str] = set()
+    for date_str in dates:
+        if date_str in seen_dates:
+            continue
+        seen_dates.add(date_str)
         paths = _resolve_paths(project_root, data_root, date_str)
         meta = _load_json(paths["meta"])
         scenes = _load_json(paths["scenes"])
@@ -907,7 +914,14 @@ def query_context(
         return {"error": f"{final_kind} 查询需要提供 query"}
 
     ctx = _load_context(data_root)
-    day_records = _build_day_records(data_root)
+    candidate_dates = candidate_dates_for_query(data_root, kind=final_kind, query=final_query)
+    has_index = bool(list_index_dates(data_root))
+    if not candidate_dates and final_kind in {"project", "person", "evidence"} and has_index:
+        day_records = []
+    elif final_kind == "open":
+        day_records = []
+    else:
+        day_records = _build_day_records(data_root, candidate_dates=candidate_dates or None)
     scene_lookup = _scene_index(day_records)
 
     if final_kind == "project":

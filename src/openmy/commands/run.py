@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import tempfile
+import wave
 from datetime import datetime
 from pathlib import Path
 from dataclasses import asdict, is_dataclass
@@ -39,6 +41,53 @@ def _cli():
 
 def _now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _build_demo_wav(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sample_rate = 16000
+    duration_seconds = 3
+    with wave.open(str(path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(b"\x00\x00" * sample_rate * duration_seconds)
+
+
+def _prepare_demo_inputs() -> tuple[Path, str]:
+    cli = _cli()
+    fixture_dir = cli.ROOT_DIR / "tests" / "fixtures"
+    fixture_audio = fixture_dir / "sample.wav"
+    fixture_transcript = fixture_dir / "sample.transcript.txt"
+
+    transcript_text = fixture_transcript.read_text(encoding="utf-8").strip() if fixture_transcript.exists() else "今天先体验 OpenMy 的整条主链。"
+    temp_dir = Path(tempfile.mkdtemp(prefix="openmy-demo-"))
+    demo_audio = temp_dir / "TX01_MIC005_20991231_120000_demo.wav"
+    if fixture_audio.exists():
+        demo_audio.write_bytes(fixture_audio.read_bytes())
+    else:
+        _build_demo_wav(demo_audio)
+
+    try:
+        with wave.open(str(demo_audio), "rb"):
+            pass
+    except Exception:
+        _build_demo_wav(demo_audio)
+
+    demo_audio.with_suffix(".transcript.txt").write_text(transcript_text, encoding="utf-8")
+    return demo_audio, transcript_text
+
+
+def _seed_demo_transcript(date_str: str, transcript_text: str) -> None:
+    cli = _cli()
+    day_dir = cli.ensure_day_dir(date_str)
+    transcript_path = day_dir / "transcript.md"
+    if transcript_path.exists():
+        return
+    transcript_path.write_text(
+        "# OpenMy demo\n\n---\n\n## 12:00\n\n" + transcript_text.strip() + "\n",
+        encoding="utf-8",
+    )
 
 
 def _init_run_status(date_str: str, entrypoint: str) -> dict:
@@ -532,18 +581,28 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
 def cmd_quick_start(args: argparse.Namespace) -> int:
     """面向第一次使用者的一键入口。"""
     cli = _cli()
-    audio_path = Path(args.audio_path).expanduser()
+    if getattr(args, "demo", False):
+        audio_path, transcript_text = _prepare_demo_inputs()
+        target_date = cli.infer_date_from_path(audio_path)
+        _seed_demo_transcript(target_date, transcript_text)
+    elif getattr(args, "audio_path", None):
+        audio_path = Path(args.audio_path).expanduser()
+        target_date = cli.infer_date_from_path(audio_path)
+    else:
+        cli.console.print("[red]❌ 请传音频路径，或直接加 --demo[/red]")
+        return 1
+
     if not audio_path.exists():
         cli.console.print(f"[red]❌ 找不到音频文件[/red]: {audio_path}")
         return 1
 
-    try:
-        cli.ensure_runtime_dependencies(stt_provider=getattr(args, "stt_provider", None))
-    except cli.FriendlyCliError as exc:
-        cli.console.print(f"[red]❌ {exc}[/red]")
-        return 1
+    if not getattr(args, "demo", False):
+        try:
+            cli.ensure_runtime_dependencies(stt_provider=getattr(args, "stt_provider", None))
+        except cli.FriendlyCliError as exc:
+            cli.console.print(f"[red]❌ {exc}[/red]")
+            return 1
 
-    target_date = cli.infer_date_from_path(audio_path)
     cli.console.print(
         cli.Panel(
             f"🚀 OpenMy quick-start\n🎙️ 音频: {audio_path.name}\n📅 自动识别日期: {target_date}",
@@ -553,8 +612,8 @@ def cmd_quick_start(args: argparse.Namespace) -> int:
 
     run_args = argparse.Namespace(
         date=target_date,
-        audio=[str(audio_path)],
-        skip_transcribe=False,
+        audio=None if getattr(args, "demo", False) else [str(audio_path)],
+        skip_transcribe=bool(getattr(args, "demo", False)),
         stt_provider=getattr(args, "stt_provider", None),
         stt_model=getattr(args, "stt_model", None),
         stt_vad=bool(getattr(args, "stt_vad", False)),

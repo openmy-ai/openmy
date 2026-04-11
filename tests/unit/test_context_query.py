@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from openmy.services.query.context_query import query_context
 
@@ -445,6 +446,56 @@ class TestContextQuery(unittest.TestCase):
             self.assertTrue(any(item["scene_id"] == "scene_001" for item in result["evidence"]))
             self.assertTrue(any("faster-whisper" in (item.get("quote") or item.get("scene_summary") or "") for item in result["evidence"]))
             self.assertTrue(result["conflicts"])
+
+    def test_project_query_uses_search_index_to_skip_irrelevant_days(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            data_root = self.seed_workspace(root)
+            unrelated_dir = data_root / "2026-04-08"
+            unrelated_dir.mkdir(parents=True, exist_ok=True)
+            self.write_json(
+                unrelated_dir / "2026-04-08.meta.json",
+                {"daily_summary": "今天只是在看电影。", "events": [], "intents": [], "facts": [], "role_hints": []},
+            )
+            self.write_json(root / "search_index.json", {"schema_version": "openmy.search_index.v1", "days": []})
+            self.write_json(
+                data_root / "search_index.json",
+                {
+                    "schema_version": "openmy.search_index.v1",
+                    "days": [
+                        {
+                            "date": "2026-04-10",
+                            "daily_summary": "今天主要把默认转写后端切到 faster-whisper，并补 Agent 查询。",
+                            "terms": {"project": ["OpenMy"], "person": ["张总"], "evidence": ["faster-whisper"], "closed": []},
+                        },
+                        {
+                            "date": "2026-04-09",
+                            "daily_summary": "讨论是否把默认本地转写换成 FunASR。",
+                            "terms": {"project": ["OpenMy", "FunASR"], "person": [], "evidence": ["FunASR"], "closed": []},
+                        },
+                        {
+                            "date": "2026-04-08",
+                            "daily_summary": "今天只是在看电影。",
+                            "terms": {"project": ["电影"], "person": [], "evidence": ["电影"], "closed": []},
+                        },
+                    ],
+                },
+            )
+
+            from openmy.services.query import context_query as context_query_module
+
+            original_load_json = context_query_module._load_json
+            loaded_paths: list[str] = []
+
+            def spy(path):
+                loaded_paths.append(str(path))
+                return original_load_json(path)
+
+            with patch("openmy.services.query.context_query._load_json", side_effect=spy):
+                result = query_context(data_root, kind="project", query="OpenMy")
+
+            self.assertIn("OpenMy", result["summary"])
+            self.assertFalse(any("2026-04-08.meta.json" in path for path in loaded_paths))
 
 
 if __name__ == "__main__":

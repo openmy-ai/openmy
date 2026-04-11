@@ -41,6 +41,7 @@ from openmy.config import (
 )
 from openmy.utils.io import safe_write_json
 from openmy.services.query.context_query import query_context, render_query_result
+from openmy.services.query.search_index import get_day_status_from_index, list_index_dates
 
 
 console = Console()
@@ -72,6 +73,7 @@ class FriendlyCliError(RuntimeError):
 def find_all_dates() -> list[str]:
     """扫描所有可用日期。"""
     dates: set[str] = set()
+    dates.update(list_index_dates(DATA_ROOT))
     if DATA_ROOT.exists():
         for child in DATA_ROOT.iterdir():
             if child.is_dir() and DATE_RE.match(child.name):
@@ -110,6 +112,10 @@ def strip_document_header(markdown: str) -> str:
 def get_date_status(date_str: str) -> dict[str, Any]:
     """获取某一天的处理阶段。"""
     from openmy.config import ROLE_RECOGNITION_ENABLED
+
+    indexed = get_day_status_from_index(DATA_ROOT, date_str)
+    if indexed is not None:
+        return indexed
 
     day_dir = DATA_ROOT / date_str
     legacy = LEGACY_ROOT / f"{date_str}.md"
@@ -1135,7 +1141,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_stt_runtime_args(p_run)
 
     p_quick = sub.add_parser("quick-start", help="第一次使用：自动处理音频并打开本地日报")
-    p_quick.add_argument("audio_path", help="音频文件路径")
+    p_quick.add_argument("audio_path", nargs="?", help="音频文件路径；传 --demo 时可不填")
+    p_quick.add_argument("--demo", action="store_true", help="使用内置示例音频跑一遍主链")
     add_stt_runtime_args(p_quick)
 
     p_correct = sub.add_parser("correct", help="纠正转写或活动上下文")

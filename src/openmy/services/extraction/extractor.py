@@ -38,7 +38,9 @@ from openmy.config import (
     get_stage_llm_model,
 )
 from openmy.domain.intent import DONE_STATUSES, DueDate, Fact, Intent
+from openmy.utils.io import safe_write_json
 from openmy.providers.registry import ProviderRegistry
+from openmy.services.query.search_index import update_search_index_for_day
 from openmy.services.screen_recognition.summary import infer_project_hint_from_text
 from openmy.utils.time import iso_at
 
@@ -1228,12 +1230,11 @@ def call_gemini_enrichment(
 
 def save_meta_json(data: dict, date: str, output_dir: str):
     """保存结构化数据为 .meta.json，同时补旧字段兼容层。"""
-    meta_path = Path(output_dir) / f"{date}.meta.json"
+    day_dir = Path(output_dir)
+    meta_path = day_dir / f"{date}.meta.json"
     compat_payload = build_legacy_compatible_payload(data)
-    meta_path.write_text(
-        json.dumps(compat_payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    safe_write_json(meta_path, compat_payload)
+    update_search_index_for_day(day_dir=day_dir, date_str=date, meta=compat_payload)
     print(f"✓ 结构化数据: {meta_path}", file=sys.stderr)
 
 

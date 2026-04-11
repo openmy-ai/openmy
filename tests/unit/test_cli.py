@@ -308,6 +308,35 @@ class TestOpenMyCli(unittest.TestCase):
         self.assertEqual(forwarded_args.stt_provider, "funasr")
         self.assertEqual(forwarded_args.stt_enrich_mode, "recommended")
 
+    def test_cli_quick_start_demo_uses_bundled_fixture_without_runtime_check(self):
+        import openmy.cli as cli
+
+        parser = cli.build_parser()
+        args = parser.parse_args(["quick-start", "--demo"])
+        demo_audio = PROJECT_ROOT / "tests" / "fixtures" / "TX01_MIC005_20991231_120000_demo.wav"
+        demo_audio.parent.mkdir(parents=True, exist_ok=True)
+        demo_audio.write_bytes(b"wav")
+
+        try:
+            with (
+                patch("openmy.commands.run._prepare_demo_inputs", return_value=(demo_audio, "演示一下 OpenMy。")),
+                patch("openmy.commands.run._seed_demo_transcript", return_value=None) as seed_mock,
+                patch("openmy.cli.cmd_run", return_value=0) as run_mock,
+                patch("openmy.cli.ensure_runtime_dependencies", return_value=None) as ensure_mock,
+                patch("openmy.cli.launch_local_report", return_value=None),
+            ):
+                result = cli.main_with_args(args)
+
+            self.assertEqual(result, 0)
+            ensure_mock.assert_not_called()
+            seed_mock.assert_called_once_with("2099-12-31", "演示一下 OpenMy。")
+            forwarded_args = run_mock.call_args.args[0]
+            self.assertIsNone(forwarded_args.audio)
+            self.assertTrue(forwarded_args.skip_transcribe)
+            self.assertEqual(forwarded_args.date, "2099-12-31")
+        finally:
+            demo_audio.unlink(missing_ok=True)
+
     def test_runtime_dependency_check_allows_local_funasr_without_key(self):
         import openmy.cli as cli
 
