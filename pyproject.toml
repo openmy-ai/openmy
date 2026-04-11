@@ -7,7 +7,7 @@ dependencies = [
     "faster-whisper>=1.1.0",
     "google-genai>=1.12.1",
     "rich>=13.0",
-    "watchdog>=4.0.0",
+    "watchdog>=6.0.0",
 ]
 
 [project.scripts]
