@@ -9,7 +9,7 @@ Turns raw personal signals such as audio and screen context into state that agen
 [![Release](https://img.shields.io/github/v/release/openmy-ai/openmy?style=flat-square&color=blue)](https://github.com/openmy-ai/openmy/releases)
 [![MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
-[![Tests](https://img.shields.io/badge/tests-313%20passed-brightgreen?style=flat-square)]()
+[![Tests](https://img.shields.io/badge/tests-328%20passed-brightgreen?style=flat-square)]()
 
 [中文](README.md)
 
@@ -24,6 +24,7 @@ git clone https://github.com/openmy-ai/openmy.git && cd openmy
 python3 -m venv .venv && source .venv/bin/activate
 pip install .
 echo "GEMINI_API_KEY=your-key" > .env
+openmy skill vocab.init --json
 openmy quick-start path/to/your-audio.wav
 ```
 
@@ -31,10 +32,10 @@ openmy quick-start path/to/your-audio.wav
 
 **First use: initialize your private vocabulary files**
 ```bash
-cp src/openmy/resources/corrections.example.json src/openmy/resources/corrections.json
-cp src/openmy/resources/vocab.example.txt src/openmy/resources/vocab.txt
+openmy skill vocab.init --json
 ```
 
+This command creates `corrections.json` and `vocab.txt` from the bundled examples.
 These files are ignored by git so you can safely store personal typo fixes and proper nouns locally.
 
 ### Provider Config
@@ -129,6 +130,46 @@ The generated report includes 7 views:
 
 ---
 
+## 📤 Export
+
+OpenMy can optionally export the generated daily briefing to:
+
+- `Obsidian` — as Markdown inside your vault
+- `Notion` — via the API
+
+If export is not configured, the main pipeline still completes normally. Export is additive, not a blocker.
+
+## 🖥️ Screen Recognition
+
+OpenMy can also enrich a day with screen context so the system knows what was on-screen while you were speaking.
+
+This feature is optional. If the local screen service is not running, OpenMy falls back to voice-only mode and the main flow still works.
+
+## 👀 Folder Watcher Mode
+
+If you prefer dropping recordings into a folder and letting OpenMy pick them up automatically, run:
+
+```bash
+python3 -m openmy.services.watcher ~/Recordings/OpenMy
+```
+
+- Great for DJI Mic-style files with date-based filenames
+- Uses `watchdog` events when available, then falls back to directory scanning
+- Waits until files are stable on disk before triggering `openmy run <date> --audio ...`
+- Entirely optional: manual `quick-start` and `run` still work the same way
+
+## 📥 Recommended Capture Workflow
+
+A simple setup that works well in practice:
+
+1. Record on your phone, recorder, or DJI Mic
+2. Sync audio to a fixed folder on your Mac via AirDrop, iCloud Drive, Dropbox, or NAS
+3. Either run `openmy quick-start path/to/audio.wav` manually or let the watcher process that folder
+
+This keeps capture and processing separate: your device records reliably, and OpenMy handles transcription plus context building on the computer.
+
+---
+
 ## 📍 Roadmap
 
 - ~~**v0.1**~~ ✅ Core pipeline running
@@ -142,7 +183,8 @@ The generated report includes 7 views:
 
 ```bash
 pip install -e .
-python3 -m pytest tests/ -v   # 167 tests, no API key needed
+uvx ruff check .
+python3 -m pytest tests/ -v   # 328 tests, no API key needed
 ```
 
 ---
@@ -171,7 +213,7 @@ tests/                Automated tests
 
 ---
 
-[CONTRIBUTING](CONTRIBUTING.md) · [MIT License](LICENSE) · by [Joseph Zhou](https://github.com/openmy-ai)
+[CONTRIBUTING](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md) · [Discussions](https://github.com/openmy-ai/openmy/discussions) · [MIT License](LICENSE) · by [Joseph Zhou](https://github.com/openmy-ai)
 
 <div align="center">
 
