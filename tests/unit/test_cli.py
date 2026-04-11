@@ -33,6 +33,12 @@ class TestOpenMyCli(unittest.TestCase):
     def cleanup_day_dir(self, date_str: str) -> None:
         shutil.rmtree(PROJECT_ROOT / "data" / date_str, ignore_errors=True)
 
+    def test_infer_date_from_path_prefers_parent_directory(self):
+        from openmy import cli as openmy_cli
+
+        path = PROJECT_ROOT / "data" / "2026-04-08" / "transcript.md"
+        self.assertEqual(openmy_cli.infer_date_from_path(path), "2026-04-08")
+
     def seed_view_day(self, date_str: str) -> Path:
         day_dir = self.make_day_dir(date_str)
         (day_dir / "transcript.md").write_text(

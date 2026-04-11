@@ -96,6 +96,18 @@ class TestSkillDispatch(unittest.TestCase):
         self.assertEqual(payload["action"], "day.run")
         run_mock.assert_called_once()
 
+    def test_day_run_rejects_invalid_date_format(self):
+        from openmy import skill_dispatch
+
+        payload, exit_code = skill_dispatch.dispatch_skill_action(
+            "day.run",
+            self.make_args(action="day.run", date="../../etc"),
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error_code"], "invalid_date")
+
     def test_vocab_init_creates_files_from_example(self):
         from pathlib import Path
 

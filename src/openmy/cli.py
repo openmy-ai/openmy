@@ -212,7 +212,11 @@ def parse_audio_time(audio_path: Path) -> str:
 
 
 def infer_date_from_path(path: Path) -> str:
-    """从文件名推断日期，支持 YYYY-MM-DD / YYYYMMDD。"""
+    """优先从父目录，再从文件名推断日期，支持 YYYY-MM-DD / YYYYMMDD。"""
+    parent_name = path.parent.name
+    if DATE_RE.match(parent_name):
+        return parent_name
+
     match = DATE_IN_FILENAME_RE.search(path.name)
     if not match:
         return date.today().isoformat()

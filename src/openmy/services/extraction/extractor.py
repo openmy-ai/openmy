@@ -1230,18 +1230,25 @@ def distribute_to_vault(data: dict, date: str, vault_path: str):
     event_file = event_dir / "context.jsonl"
 
     events = compat_payload.get("events", [])
-    with open(event_file, "a", encoding="utf-8") as fh:
-        for event in events:
-            entry = {
-                "time": iso_at(date, str(event.get("time", "00:00") or "00:00")),
-                "actor": "context",
-                "project": event.get("project", ""),
-                "type": "口述记录",
-                "summary": event.get("summary", ""),
-            }
-            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    if events:
-        print(f"✓ 事件流: {len(events)} 条 → {event_file}", file=sys.stderr)
+    existing_event_lines = set(event_file.read_text(encoding="utf-8").splitlines()) if event_file.exists() else set()
+    new_event_lines: list[str] = []
+    for event in events:
+        entry = {
+            "time": iso_at(date, str(event.get("time", "00:00") or "00:00")),
+            "actor": "context",
+            "project": event.get("project", ""),
+            "type": "口述记录",
+            "summary": event.get("summary", ""),
+        }
+        line = json.dumps(entry, ensure_ascii=False)
+        if line in existing_event_lines:
+            continue
+        existing_event_lines.add(line)
+        new_event_lines.append(line)
+    if new_event_lines:
+        with open(event_file, "a", encoding="utf-8") as fh:
+            fh.write("\n".join(new_event_lines) + "\n")
+        print(f"✓ 事件流: {len(new_event_lines)} 条 → {event_file}", file=sys.stderr)
 
     summary = compat_payload.get("daily_summary", "")
     if summary:
@@ -1283,14 +1290,21 @@ def distribute_to_vault(data: dict, date: str, vault_path: str):
     inbox_file = vault / "收件箱" / "灵感速记.md"
     inbox_file.parent.mkdir(parents=True, exist_ok=True)
     inbox_appends: list[str] = []
+    existing_inbox_lines = set(inbox_file.read_text(encoding="utf-8").splitlines()) if inbox_file.exists() else set()
 
     for todo in compat_payload.get("todos", []):
         prio = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(todo.get("priority", "medium"), "🟡")
         proj = f"[{todo['project']}] " if todo.get("project") else ""
-        inbox_appends.append(f"- [ ] {prio} {proj}{todo.get('task', '')} _{date}_")
+        line = f"- [ ] {prio} {proj}{todo.get('task', '')} _{date}_"
+        if line not in existing_inbox_lines:
+            existing_inbox_lines.add(line)
+            inbox_appends.append(line)
 
     for insight in compat_payload.get("insights", []):
-        inbox_appends.append(f"- 💡 **{insight.get('topic', '')}**: {insight.get('content', '')} _{date}_")
+        line = f"- 💡 **{insight.get('topic', '')}**: {insight.get('content', '')} _{date}_"
+        if line not in existing_inbox_lines:
+            existing_inbox_lines.add(line)
+            inbox_appends.append(line)
 
     if inbox_appends:
         with open(inbox_file, "a", encoding="utf-8") as fh:
@@ -1303,13 +1317,19 @@ def distribute_to_vault(data: dict, date: str, vault_path: str):
         decision_file.parent.mkdir(parents=True, exist_ok=True)
         if not decision_file.exists():
             decision_file.write_text("# 决策复盘库\n\n", encoding="utf-8")
+        existing_decision_lines = set(decision_file.read_text(encoding="utf-8").splitlines())
+        new_decision_lines: list[str] = []
 
-        with open(decision_file, "a", encoding="utf-8") as fh:
-            for item in decisions:
-                proj = f"【{item['project']}】" if item.get("project") else ""
-                entry = f"- **{date}** {proj}{item.get('what', '')} （{item.get('why', '')}）\n"
-                fh.write(entry)
-        print(f"✓ 决策复盘同步: {len(decisions)} 条", file=sys.stderr)
+        for item in decisions:
+            proj = f"【{item['project']}】" if item.get("project") else ""
+            line = f"- **{date}** {proj}{item.get('what', '')} （{item.get('why', '')}）"
+            if line not in existing_decision_lines:
+                existing_decision_lines.add(line)
+                new_decision_lines.append(line)
+        if new_decision_lines:
+            with open(decision_file, "a", encoding="utf-8") as fh:
+                fh.write("\n".join(new_decision_lines) + "\n")
+            print(f"✓ 决策复盘同步: {len(new_decision_lines)} 条", file=sys.stderr)
 
     todos = compat_payload.get("todos", [])
     if todos:
@@ -1323,8 +1343,16 @@ def distribute_to_vault(data: dict, date: str, vault_path: str):
 def _resolve_final_date(input_path: Path, date_value: str | None) -> str:
     if date_value:
         return date_value
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", input_path.parent.name):
+        return input_path.parent.name
     match = re.search(r"(\d{4}-\d{2}-\d{2})", input_path.stem)
-    return match.group(1) if match else datetime.now().strftime("%Y-%m-%d")
+    if match:
+        return match.group(1)
+    compact_match = re.search(r"(\d{8})", input_path.stem)
+    if compact_match:
+        raw = compact_match.group(1)
+        return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
+    return datetime.now().strftime("%Y-%m-%d")
 
 
 def _load_transcript_body(input_path: Path) -> str:

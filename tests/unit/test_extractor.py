@@ -109,6 +109,31 @@ class TestExtractorCompatibility(unittest.TestCase):
         self.assertIn("真正的问题是 Intent 和 facts 要分桶", inbox)
         self.assertIn("先做 Intent，再做前端。", log_text)
 
+    def test_distribute_to_vault_is_idempotent_on_rerun(self):
+        payload = self.make_payload()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            vault = Path(tmp_dir) / "vault"
+            extractor.distribute_to_vault(payload, "2026-04-08", str(vault))
+            extractor.distribute_to_vault(payload, "2026-04-08", str(vault))
+
+            event_lines = (vault / "系统" / "事件流" / "2026-04-08" / "context.jsonl").read_text(encoding="utf-8").splitlines()
+            inbox_lines = (vault / "收件箱" / "灵感速记.md").read_text(encoding="utf-8").splitlines()
+            decision_lines = (vault / "日志" / "决策复盘库.md").read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(len(event_lines), len(set(event_lines)))
+        self.assertEqual(len(inbox_lines), len(set(inbox_lines)))
+        self.assertEqual(len(decision_lines), len(set(decision_lines)))
+
+    def test_resolve_final_date_prefers_parent_directory_over_filename(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            day_dir = Path(tmp_dir) / "data" / "2026-04-08"
+            day_dir.mkdir(parents=True, exist_ok=True)
+            transcript = day_dir / "transcript.md"
+            transcript.write_text("# test", encoding="utf-8")
+
+            self.assertEqual(extractor._resolve_final_date(transcript, None), "2026-04-08")
+
 
 class TestExtractorCallGemini(unittest.TestCase):
     def test_normalize_extraction_payload_resolves_relative_due_dates_against_reference_date(self):

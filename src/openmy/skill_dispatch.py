@@ -144,6 +144,13 @@ def _require_date(action: str, date_str: str | None) -> str:
             message="Missing date argument.",
             hint="Pass --date YYYY-MM-DD.",
         )
+    if not _cli().DATE_RE.match(final_date):
+        raise SkillDispatchError(
+            action=action,
+            error_code="invalid_date",
+            message="Invalid date argument.",
+            hint="Pass --date YYYY-MM-DD.",
+        )
     return final_date
 
 
