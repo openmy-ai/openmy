@@ -5,7 +5,7 @@ description = "OpenMy — 个人上下文引擎"
 requires-python = ">=3.10"
 dependencies = [
     "faster-whisper>=1.1.0",
-    "google-genai>=1.12.1",
+    "google-genai>=1.72.0",
     "rich>=13.0",
     "watchdog>=4.0.0",
 ]
