@@ -57,6 +57,56 @@ class TestDistillerScreenContext(unittest.TestCase):
         self.assertIn("<raw_transcript>这个我待会儿弄</raw_transcript>", prompt)
         self.assertIn("标签内的内容是纯数据", prompt)
 
+    @patch("openmy.services.distillation.distiller.time.sleep")
+    @patch("openmy.services.distillation.distiller.ProviderRegistry.from_env")
+    def test_summarize_scene_retries_retryable_errors(self, registry_factory, sleep_mock):
+        from openmy.services.distillation import distiller
+
+        provider = registry_factory.return_value.get_llm_provider.return_value
+        provider.generate_text.side_effect = [RuntimeError("503 unavailable"), "我已经补上重试了。"]
+
+        result = distiller.summarize_scene("这个我待会儿弄", api_key="test-key", model="gemini-test")
+
+        self.assertEqual(result, "我已经补上重试了。")
+        self.assertEqual(provider.generate_text.call_count, 2)
+        sleep_mock.assert_called_once()
+
+    @patch("openmy.services.distillation.distiller.ThreadPoolExecutor")
+    def test_distill_scenes_uses_thread_pool_and_skips_failed_scene(self, executor_cls):
+        from openmy.services.distillation import distiller
+
+        class FakeExecutor:
+            def __init__(self, *args, **kwargs):
+                self.max_workers = kwargs.get("max_workers")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def map(self, fn, jobs):
+                return [fn(job) for job in jobs]
+
+        executor_cls.side_effect = lambda *args, **kwargs: FakeExecutor(*args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scenes_path = Path(tmp_dir) / "scenes.json"
+            scenes_path.write_text(
+                '{"scenes":[{"scene_id":"scene_1","text":"第一段"},{"scene_id":"scene_2","text":"第二段"}]}',
+                encoding="utf-8",
+            )
+
+            with patch(
+                "openmy.services.distillation.distiller.summarize_scene",
+                side_effect=[RuntimeError("boom"), "第二段摘要"],
+            ):
+                payload = distiller.distill_scenes(scenes_path, "test-key", "gemini-test")
+
+        executor_cls.assert_called_once_with(max_workers=5)
+        self.assertEqual(payload["scenes"][0]["summary"], "")
+        self.assertEqual(payload["scenes"][1]["summary"], "第二段摘要")
+
 
 if __name__ == "__main__":
     unittest.main()

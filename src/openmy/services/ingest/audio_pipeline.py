@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import re
@@ -43,6 +44,13 @@ SILENCE_FILTER = (
 @dataclass(frozen=True)
 class PreparedChunk:
     path: Path
+    time_label: str
+
+
+@dataclass(frozen=True)
+class ChunkJob:
+    source_audio_path: Path
+    persistent_chunk_path: Path
     time_label: str
 
 
@@ -290,6 +298,41 @@ def _coerce_transcription_result(payload: Any) -> TranscriptionResult:
     raise TypeError(f"不支持的转写结果类型: {type(payload)!r}")
 
 
+def _transcribe_chunk_with_retry(
+    chunk_job: ChunkJob,
+    *,
+    provider_name: str,
+    api_key: str,
+    model: str,
+    vocab_terms: str,
+    vad_filter: bool,
+    word_timestamps: bool,
+) -> tuple[ChunkJob, TranscriptionResult]:
+    last_error: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            transcript_payload = transcribe_audio(
+                audio_path=chunk_job.persistent_chunk_path,
+                provider_name=provider_name,
+                api_key=api_key,
+                model=model,
+                vocab_terms=vocab_terms,
+                timeout_seconds=AUDIO_PIPELINE_TIMEOUT,
+                vad_filter=vad_filter,
+                word_timestamps=word_timestamps,
+            )
+            return chunk_job, _coerce_transcription_result(transcript_payload)
+        except Exception as exc:  # pragma: no cover - retried behavior exercised by tests
+            last_error = exc
+            if attempt == 3:
+                raise
+            time.sleep(5)
+
+    if last_error is not None:  # pragma: no cover - guarded by raise above
+        raise last_error
+    raise RuntimeError("转写 chunk 失败")
+
+
 def transcribe_audio_files(
     date_str: str,
     audio_files: list[str],
@@ -361,44 +404,42 @@ def transcribe_audio_files(
                 chunk_minutes=chunk_minutes,
                 provider_name=final_provider_name,
             )
-
+            chunk_jobs: list[ChunkJob] = []
             for chunk in chunks:
                 persistent_chunk_path = persisted_chunk_dir / f"audio_{index:03d}_{chunk.path.name}"
                 shutil.copy2(chunk.path, persistent_chunk_path)
-                transcript = ""
-                last_error: Exception | None = None
-                for attempt in range(1, 4):
-                    try:
-                        transcript_payload = transcribe_audio(
-                            audio_path=persistent_chunk_path,
-                            provider_name=final_provider_name,
-                            api_key=api_key,
-                            model=final_model,
-                            vocab_terms=vocab_terms,
-                            timeout_seconds=AUDIO_PIPELINE_TIMEOUT,
-                            vad_filter=final_vad_filter,
-                            word_timestamps=final_word_timestamps,
-                        )
-                        transcript_result = _coerce_transcription_result(transcript_payload)
-                        transcript = transcript_result.text
-                        last_error = None
-                        break
-                    except Exception as exc:  # pragma: no cover - retried behavior exercised by tests
-                        last_error = exc
-                        if attempt == 3:
-                            raise
-                        time.sleep(5)
+                chunk_jobs.append(
+                    ChunkJob(
+                        source_audio_path=audio_path,
+                        persistent_chunk_path=persistent_chunk_path,
+                        time_label=chunk.time_label,
+                    )
+                )
 
-                if last_error is not None:  # pragma: no cover - guarded by raise above
-                    raise last_error
+            transcribe_fn = lambda job: _transcribe_chunk_with_retry(
+                job,
+                provider_name=final_provider_name,
+                api_key=api_key,
+                model=final_model,
+                vocab_terms=vocab_terms,
+                vad_filter=final_vad_filter,
+                word_timestamps=final_word_timestamps,
+            )
 
-                rendered_parts.extend([f"## {chunk.time_label}", "", transcript.strip(), ""])
+            if stt_provider_requires_api_key(final_provider_name):
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    chunk_results = list(executor.map(transcribe_fn, chunk_jobs))
+            else:
+                chunk_results = [transcribe_fn(job) for job in chunk_jobs]
+
+            for chunk_job, transcript_result in chunk_results:
+                rendered_parts.extend([f"## {chunk_job.time_label}", "", transcript_result.text.strip(), ""])
                 transcription_payload["chunks"].append(
                     {
                         "chunk_id": f"chunk_{len(transcription_payload['chunks']) + 1:04d}",
-                        "source_audio_path": str(audio_path),
-                        "chunk_path": str(persistent_chunk_path),
-                        "time_label": chunk.time_label,
+                        "source_audio_path": str(chunk_job.source_audio_path),
+                        "chunk_path": str(chunk_job.persistent_chunk_path),
+                        "time_label": chunk_job.time_label,
                         "text": transcript_result.text,
                         "language": transcript_result.language,
                         "duration_seconds": transcript_result.duration_seconds,

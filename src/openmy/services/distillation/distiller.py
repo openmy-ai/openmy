@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 from openmy.config import (
@@ -16,6 +18,11 @@ from openmy.config import (
 )
 from openmy.providers.registry import ProviderRegistry
 from openmy.utils.io import safe_write_json
+
+
+def _is_retryable_llm_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "429" in message or "503" in message or "resource exhausted" in message or "temporarily unavailable" in message
 
 
 def summarize_scene(
@@ -53,35 +60,65 @@ def summarize_scene(
         f'6. 总字数控制在 30-80 字\n\n'
         f'录音原文：\n<raw_transcript>{text}</raw_transcript>'
     )
-    response_text = provider.generate_text(
-        task="scene distillation",
-        prompt=prompt,
-        model=model,
-        temperature=DISTILL_TEMPERATURE,
-        thinking_level=DISTILL_THINKING_LEVEL,
-    )
+    response_text = ""
+    last_error: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            response_text = provider.generate_text(
+                task="scene distillation",
+                prompt=prompt,
+                model=model,
+                temperature=DISTILL_TEMPERATURE,
+                thinking_level=DISTILL_THINKING_LEVEL,
+            )
+            last_error = None
+            break
+        except Exception as exc:
+            last_error = exc
+            if attempt == 3 or not _is_retryable_llm_error(exc):
+                raise
+            time.sleep(2 ** (attempt - 1))
+
+    if last_error is not None:  # pragma: no cover - guarded by raise above
+        raise last_error
     return response_text.strip().replace('**', '').replace('\n', ' ')
 
 
-def distill_scenes(scenes_path: Path, api_key: str, model: str | None) -> dict:
-    data = json.loads(scenes_path.read_text(encoding='utf-8'))
-    for scene in data.get('scenes', []):
-        if scene.get('summary'):
-            continue
-        text = scene.get('text', '').strip()
-        if not text:
-            scene['summary'] = ''
-            continue
-        role = scene.get('role', {})
-        addressed_to = role.get('addressed_to', '')
-        screen_context = scene.get('screen_context', {}) if isinstance(scene.get('screen_context', {}), dict) else {}
-        scene['summary'] = summarize_scene(
+def _distill_scene_job(job: tuple[int, dict, str, str | None]) -> tuple[int, str]:
+    index, scene, api_key, model = job
+    text = scene.get("text", "").strip()
+    if not text:
+        return index, ""
+
+    role = scene.get("role", {})
+    addressed_to = role.get("addressed_to", "")
+    screen_context = scene.get("screen_context", {}) if isinstance(scene.get("screen_context", {}), dict) else {}
+    try:
+        summary = summarize_scene(
             text,
             api_key,
             model,
             role_info=addressed_to,
-            screen_summary=str(screen_context.get('summary', '')).strip(),
+            screen_summary=str(screen_context.get("summary", "")).strip(),
         )
+    except Exception as exc:
+        print(f"⚠️ 场景蒸馏失败，已跳过 scene[{index}]: {exc}", file=sys.stderr)
+        summary = ""
+    return index, summary
+
+
+def distill_scenes(scenes_path: Path, api_key: str, model: str | None) -> dict:
+    data = json.loads(scenes_path.read_text(encoding='utf-8'))
+    jobs: list[tuple[int, dict, str, str | None]] = []
+    for index, scene in enumerate(data.get('scenes', [])):
+        if scene.get('summary'):
+            continue
+        jobs.append((index, scene, api_key, model))
+
+    if jobs:
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            for index, summary in executor.map(_distill_scene_job, jobs):
+                data['scenes'][index]['summary'] = summary
     safe_write_json(scenes_path, data)
     return data
 

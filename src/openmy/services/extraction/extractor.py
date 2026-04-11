@@ -23,6 +23,7 @@ import json
 import os
 import re
 import sys
+import time
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -1143,6 +1144,11 @@ ENRICH_EXTRACTION_SCHEMA = {
 }
 
 
+def _is_retryable_llm_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "429" in message or "503" in message or "resource exhausted" in message or "temporarily unavailable" in message
+
+
 def _call_gemini_json(
     prompt: str,
     *,
@@ -1157,15 +1163,26 @@ def _call_gemini_json(
             api_key=api_key,
             model=model or get_stage_llm_model("extract") or GEMINI_MODEL,
         )
-        return provider.generate_json(
-            task="structured extraction",
-            prompt=prompt,
-            schema=response_json_schema,
-            model=model,
-            temperature=EXTRACT_TEMPERATURE,
-            thinking_level=EXTRACT_THINKING_LEVEL,
-            timeout_seconds=timeout_seconds,
-        )
+        last_error: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                return provider.generate_json(
+                    task="structured extraction",
+                    prompt=prompt,
+                    schema=response_json_schema,
+                    model=model,
+                    temperature=EXTRACT_TEMPERATURE,
+                    thinking_level=EXTRACT_THINKING_LEVEL,
+                    timeout_seconds=timeout_seconds,
+                )
+            except Exception as exc:
+                last_error = exc
+                if attempt == 3 or not _is_retryable_llm_error(exc):
+                    raise
+                time.sleep(2 ** (attempt - 1))
+        if last_error is not None:  # pragma: no cover - guarded by raise above
+            raise last_error
+        raise ExtractionError("Gemini 请求失败")
     except Exception as exc:
         if _looks_like_timeout(exc):
             raise ExtractionTimeoutError(f"Gemini 提取超时（{timeout_seconds}s）") from exc

@@ -231,6 +231,27 @@ class TestExtractorCallGemini(unittest.TestCase):
         with self.assertRaises(extractor.ExtractionTimeoutError):
             extractor.call_gemini("你好", api_key="test-key", model="gemini-test", reference_date="2026-04-08")
 
+    @patch("openmy.services.extraction.extractor.time.sleep")
+    @patch("openmy.services.extraction.extractor.ProviderRegistry.from_env")
+    def test_call_gemini_retries_retryable_errors(self, registry_factory, sleep_mock):
+        provider = registry_factory.return_value.get_llm_provider.return_value
+        provider.generate_json.side_effect = [
+            RuntimeError("429 Too Many Requests"),
+            {
+                "daily_summary": "ok",
+                "events": [],
+                "intents": [],
+                "facts": [],
+                "role_hints": [],
+            },
+        ]
+
+        payload = extractor.call_gemini("你好", api_key="test-key", model="gemini-test", reference_date="2026-04-08")
+
+        self.assertEqual(payload["daily_summary"], "ok")
+        self.assertEqual(provider.generate_json.call_count, 2)
+        sleep_mock.assert_called_once()
+
     def test_normalize_extraction_payload_accepts_core_payload_and_fills_defaults(self):
         payload = extractor.normalize_extraction_payload(
             {

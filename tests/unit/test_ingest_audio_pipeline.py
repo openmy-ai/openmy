@@ -383,6 +383,58 @@ class TranscribeAudioFilesTest(unittest.TestCase):
             self.assertEqual(transcribe_mock.call_count, 3)
             self.assertEqual(sleep_mock.call_count, 2)
 
+    def test_cloud_provider_uses_thread_pool_for_chunks(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            audio_one = tmp_path / "TX01_MIC005_20260408_131552_orig.wav"
+            audio_one.write_bytes(b"wav")
+
+            chunk_one = tmp_path / "seg_1.mp3"
+            chunk_two = tmp_path / "seg_2.mp3"
+            chunk_one.write_bytes(b"mp3")
+            chunk_two.write_bytes(b"mp3")
+
+            class FakeExecutor:
+                def __init__(self, *args, **kwargs):
+                    self.max_workers = kwargs.get("max_workers")
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+                def map(self, fn, jobs):
+                    return [fn(job) for job in jobs]
+
+            with (
+                mock.patch.dict("os.environ", {"GEMINI_API_KEY": "fake-key", "OPENMY_STT_PROVIDER": "gemini"}, clear=True),
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.prepare_audio_chunks",
+                    return_value=[
+                        PreparedChunk(path=chunk_one, time_label="13:15"),
+                        PreparedChunk(path=chunk_two, time_label="13:25"),
+                    ],
+                ),
+                mock.patch("openmy.services.ingest.audio_pipeline.load_vocab_terms", return_value="OpenMy"),
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.transcribe_audio",
+                    side_effect=[
+                        {"text": "第一段", "language": "zh", "duration_seconds": 1.0, "segments": [], "provider_metadata": {}},
+                        {"text": "第二段", "language": "zh", "duration_seconds": 1.0, "segments": [], "provider_metadata": {}},
+                    ],
+                ),
+                mock.patch("openmy.services.ingest.audio_pipeline.ThreadPoolExecutor", side_effect=lambda *a, **k: FakeExecutor(*a, **k)) as executor_mock,
+            ):
+                output_path = transcribe_audio_files(
+                    date_str="2026-04-08",
+                    audio_files=[str(audio_one)],
+                    output_dir=tmp_path,
+                )
+
+            self.assertTrue(output_path.exists())
+            executor_mock.assert_called_once_with(max_workers=5)
+
 
 if __name__ == "__main__":
     unittest.main()
