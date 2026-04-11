@@ -292,7 +292,7 @@ body {
   .app { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; }
   .main { padding: 32px 24px 80px; }
-  .briefing-grid, .props-grid, .charts-grid, .pipeline-layout { grid-template-columns: 1fr; }
+  .briefing-grid, .props-grid, .charts-grid { grid-template-columns: 1fr; }
   .record-item { grid-template-columns: 1fr; gap: 10px; }
   .daily-link-item { grid-template-columns: 1fr; }
   .settings-query-grid { grid-template-columns: 1fr; }
