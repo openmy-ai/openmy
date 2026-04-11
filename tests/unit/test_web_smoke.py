@@ -168,6 +168,29 @@ class TestWebSmoke(unittest.TestCase):
 
             self.assertEqual(ctx.exception.code, 404)
 
+    def test_server_serves_static_assets(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner(job_dir=project_root / "jobs")
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                with urlopen(f"{base_url}/static/style.css", timeout=2) as style_response:
+                    style_body = style_response.read().decode("utf-8")
+                    style_type = style_response.headers.get_content_type()
+                with urlopen(f"{base_url}/static/app.js", timeout=2) as script_response:
+                    script_body = script_response.read().decode("utf-8")
+                    script_type = script_response.headers.get_content_type()
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertEqual(style_type, "text/css")
+        self.assertIn("--font-body", style_body)
+        self.assertEqual(script_type, "text/javascript")
+        self.assertIn("function init()", script_body)
+
     def test_invalid_date_path_returns_400(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_root = Path(tmp_dir)

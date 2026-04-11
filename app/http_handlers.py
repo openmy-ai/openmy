@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import re
 from http.server import SimpleHTTPRequestHandler
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from app.context_api import (
@@ -133,6 +135,8 @@ class BrainHandler(SimpleHTTPRequestHandler):
             send_json(self, get_corrections())
         elif path == "/api/settings/screen-context":
             send_json(self, get_screen_context_settings_payload())
+        elif path.startswith("/static/"):
+            self._serve_static(path)
         elif path in {"/", "/index.html"}:
             serve_index(self)
         else:
@@ -182,6 +186,28 @@ class BrainHandler(SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self):
         send_options(self)
+
+    def _serve_static(self, path: str) -> None:
+        clean_path = path.lstrip("/")
+        static_dir = Path(__file__).parent / "static"
+        file_path = (static_dir / clean_path.removeprefix("static/")).resolve()
+        static_root = static_dir.resolve()
+
+        if not str(file_path).startswith(str(static_root)):
+            self.send_error(403, "Forbidden")
+            return
+        if not file_path.exists() or not file_path.is_file():
+            self.send_error(404, "Not Found")
+            return
+
+        content_type, _ = mimetypes.guess_type(str(file_path))
+        payload = file_path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type or "application/octet-stream")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(payload)
 
     def log_message(self, format, *args):
         pass

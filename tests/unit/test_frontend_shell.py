@@ -6,12 +6,25 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INDEX_HTML = PROJECT_ROOT / "app" / "index.html"
+STYLE_CSS = PROJECT_ROOT / "app" / "static" / "style.css"
+APP_JS = PROJECT_ROOT / "app" / "static" / "app.js"
 
 
 class TestFrontendShell(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.content = INDEX_HTML.read_text(encoding="utf-8")
+        cls.html_content = INDEX_HTML.read_text(encoding="utf-8")
+        cls.style_content = STYLE_CSS.read_text(encoding="utf-8")
+        cls.script_content = APP_JS.read_text(encoding="utf-8")
+        cls.content = "\n".join(
+            [
+                cls.html_content,
+                "\n/* STYLE */\n",
+                cls.style_content,
+                "\n// SCRIPT\n",
+                cls.script_content,
+            ]
+        )
 
     def test_index_preserves_reading_first_shell(self):
         self.assertIn('class="view-tabs"', self.content)

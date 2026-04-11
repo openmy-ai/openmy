@@ -24,7 +24,12 @@ class TestScreenProductCopy(unittest.TestCase):
             self.assertNotIn(legacy_brand.lower(), content, path.as_posix())
 
     def test_frontend_uses_openmy_screen_context_terms(self):
-        content = (PROJECT_ROOT / "app" / "index.html").read_text(encoding="utf-8")
+        content = "\n".join(
+            [
+                (PROJECT_ROOT / "app" / "index.html").read_text(encoding="utf-8"),
+                (PROJECT_ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8"),
+            ]
+        )
         self.assertIn("屏幕上下文", content)
 
 
