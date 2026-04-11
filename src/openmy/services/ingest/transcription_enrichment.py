@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from openmy.utils.io import safe_write_json
+
 try:
     import whisperx
 except ImportError:  # pragma: no cover - exercised in environments without optional dependency
@@ -48,7 +50,7 @@ def update_pipeline_meta(day_dir: Path, **fields: Any) -> Path:
     path = _meta_path(day_dir)
     payload = _load_json(path) or _default_meta_payload(day_dir.name)
     payload.update({key: value for key, value in fields.items() if value is not None})
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    safe_write_json(path, payload)
     return path
 
 
@@ -212,7 +214,7 @@ def run_transcription_enrichment(day_dir: Path, *, diarize: bool = False) -> dic
         "diarization_enabled": diarization_enabled,
         "diarization_requested": diarize,
     }
-    transcription_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    safe_write_json(transcription_path, payload)
     return payload["enrichment"]
 
 
@@ -257,4 +259,4 @@ def apply_transcription_enrichment_to_scenes(day_dir: Path) -> None:
             }
         )
 
-    scenes_path.write_text(json.dumps(scenes_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    safe_write_json(scenes_path, scenes_payload)

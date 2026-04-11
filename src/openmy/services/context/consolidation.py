@@ -44,6 +44,8 @@ from openmy.services.context.active_context import (
     TodayState,
 )
 from openmy.services.context.corrections import apply_corrections, load_corrections
+from openmy.utils.io import safe_write_json
+from openmy.utils.time import iso_at, iso_now
 
 
 DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -61,6 +63,7 @@ DEFAULT_PROFILE_PAYLOAD: dict[str, Any] = {
     "avoid": ["long_bullet_lists", "empty_empathy"],
     "prefer": ["short_paragraphs", "specific_recommendations"],
 }
+_ACTIVE_TIMEZONE = DEFAULT_PROFILE_PAYLOAD["timezone"]
 
 
 def profile_path(data_root: Path) -> Path:
@@ -101,8 +104,7 @@ def save_profile_settings(data_root: Path, updates: dict[str, Any]) -> dict[str,
         if isinstance(value, str) and value.strip():
             payload[key] = value.strip()
     path = profile_path(data_root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    safe_write_json(path, payload, trailing_newline=True)
     return payload
 
 
@@ -160,10 +162,11 @@ def _slug(prefix: str, text: str) -> str:
 
 
 def _iso_at(date_str: str, time_str: str = "00:00") -> str:
-    cleaned_time = time_str.strip() or "00:00"
-    if not re.match(r"^\d{2}:\d{2}$", cleaned_time):
-        cleaned_time = "00:00"
-    return f"{date_str}T{cleaned_time}:00+08:00"
+    return iso_at(date_str, time_str, timezone_name=_ACTIVE_TIMEZONE)
+
+
+def _iso_day_end(date_str: str) -> str:
+    return iso_at(date_str, "23:59", timezone_name=_ACTIVE_TIMEZONE, seconds=59)
 
 
 def _build_provenance(
@@ -261,7 +264,7 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                     source_rank="declared",
                     confidence=intent.confidence_score or 0.8,
                     first_seen_at=_iso_at(date_str),
-                    last_seen_at=f"{date_str}T23:59:59+08:00",
+                    last_seen_at=_iso_day_end(date_str),
                     reinforcement_count=1,
                     due_hint=intent.due.iso_date or intent.due.raw_text,
                     valid_from=intent.valid_from or _iso_at(date_str),
@@ -292,7 +295,8 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                     ),
                 ),
             )
-        return list(loops.values())
+        if loops:
+            return list(loops.values())
 
     for item in briefing.get("todos_open", []):
         title = str(item).strip()
@@ -314,7 +318,7 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                 source_rank="aggregate",
                 confidence=0.8,
                 first_seen_at=_iso_at(date_str),
-                last_seen_at=f"{date_str}T23:59:59+08:00",
+                last_seen_at=_iso_day_end(date_str),
                 reinforcement_count=1,
                 valid_from=_iso_at(date_str),
                 current_state="active",
@@ -352,7 +356,7 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                 source_rank="declared",
                 confidence=0.9,
                 first_seen_at=_iso_at(date_str),
-                last_seen_at=f"{date_str}T23:59:59+08:00",
+                last_seen_at=_iso_day_end(date_str),
                 reinforcement_count=1,
                 valid_from=_iso_at(date_str),
                 current_state="active",
@@ -452,14 +456,14 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
                     topic=topic,
                     decision=decision,
                     scope="project",
-                    effective_from=f"{date_str}T12:00:00+08:00",
+                    effective_from=_iso_at(date_str, "12:00"),
                     source_rank="declared",
                     confidence=intent.confidence_score or 0.9,
                     valid_from=intent.valid_from or _iso_at(date_str),
                     valid_until=intent.valid_until or "",
                     current_state=intent.current_state or "active",
                     first_seen_at=intent.valid_from or _iso_at(date_str),
-                    last_seen_at=f"{date_str}T23:59:59+08:00",
+                    last_seen_at=_iso_day_end(date_str),
                     reinforcement_count=1,
                     state_reason="intent_decision",
                     provenance_refs=_build_provenance(
@@ -472,7 +476,8 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
                     ),
                 ),
             )
-        return list(items.values())
+        if items:
+            return list(items.values())
 
     for text in briefing.get("decisions", []):
         decision = str(text).strip()
@@ -486,13 +491,13 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
                 topic="briefing",
                 decision=decision,
                 scope="project",
-                effective_from=f"{date_str}T12:00:00+08:00",
+                effective_from=_iso_at(date_str, "12:00"),
                 source_rank="aggregate",
                 confidence=0.8,
                 valid_from=_iso_at(date_str),
                 current_state="active",
                 first_seen_at=_iso_at(date_str),
-                last_seen_at=f"{date_str}T23:59:59+08:00",
+                last_seen_at=_iso_day_end(date_str),
                 reinforcement_count=1,
                 state_reason="briefing_decision",
                 provenance_refs=_build_provenance(
@@ -520,13 +525,13 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
                 topic=topic,
                 decision=decision,
                 scope="project",
-                effective_from=f"{date_str}T12:00:00+08:00",
+                effective_from=_iso_at(date_str, "12:00"),
                 source_rank="declared",
                 confidence=0.9,
                 valid_from=_iso_at(date_str),
                 current_state="active",
                 first_seen_at=_iso_at(date_str),
-                last_seen_at=f"{date_str}T23:59:59+08:00",
+                last_seen_at=_iso_day_end(date_str),
                 reinforcement_count=1,
                 state_reason="meta_decision",
                 provenance_refs=_build_provenance(
@@ -711,6 +716,7 @@ def _group_fact_conflicts(meta_payload: dict[str, Any], date_str: str) -> dict[s
 
 def consolidate(data_root: Path, existing_context: ActiveContext | None = None) -> ActiveContext:
     """扫描所有日期数据，生成新的 ActiveContext。"""
+    global _ACTIVE_TIMEZONE
     project_root = data_root.parent
     dates = _list_dates(project_root, data_root)
     ctx = ActiveContext()
@@ -720,9 +726,9 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
     else:
         ctx.context_seq = 1
     ctx.materialized_from_event_seq = ctx.context_seq
-    ctx.generated_at = datetime.now().isoformat()
-
     profile = load_profile_settings(data_root)
+    _ACTIVE_TIMEZONE = str(profile.get("timezone", "") or DEFAULT_PROFILE_PAYLOAD["timezone"])
+    ctx.generated_at = iso_now(data_root=data_root)
     ctx.stable_profile = StableProfile(
         identity=Identity(
             canonical_name=str(profile.get("name", "") or DEFAULT_PROFILE_PAYLOAD["name"]),
@@ -787,25 +793,26 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
         if delta_days <= 6:
             scene_count_7d += len(scenes)
 
-        if ROLE_RECOGNITION_ENABLED:
-            for scene in scenes:
-                role = scene.get("role", {}) if isinstance(scene.get("role", {}), dict) else {}
-                addressed_to = str(role.get("addressed_to", "")).strip()
-                if not addressed_to:
-                    continue
+        for scene in scenes:
+            role = scene.get("role", {}) if isinstance(scene.get("role", {}), dict) else {}
+            if not ROLE_RECOGNITION_ENABLED and str(role.get("source", "")).strip() != "human_confirmed":
+                continue
+            addressed_to = str(role.get("addressed_to", "")).strip()
+            if not addressed_to:
+                continue
 
-                addressed_date_hits[addressed_to].add(date_str)
-                if delta_days <= 6:
-                    addressed_counts_7d[addressed_to] += 1
-                if delta_days <= 29:
-                    addressed_counts_30d[addressed_to] += 1
+            addressed_date_hits[addressed_to].add(date_str)
+            if delta_days <= 6:
+                addressed_counts_7d[addressed_to] += 1
+            if delta_days <= 29:
+                addressed_counts_30d[addressed_to] += 1
 
-                summary = str(scene.get("summary", "")).strip()
-                if summary and summary not in addressed_topics[addressed_to]:
-                    addressed_topics[addressed_to].append(summary)
+            summary = str(scene.get("summary", "")).strip()
+            if summary and summary not in addressed_topics[addressed_to]:
+                addressed_topics[addressed_to].append(summary)
 
-                if delta_days <= 6 and bool(role.get("needs_review")):
-                    uncertain_count_7d += 1
+            if delta_days <= 6 and bool(role.get("needs_review")):
+                uncertain_count_7d += 1
 
         for loop in _make_open_loops(briefing_payload, meta_payload, date_str):
             canonical = build_canonical_key("loop", loop.title)
@@ -835,7 +842,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             all_projects[project_title] = {
                 "title": project_title,
                 "snippets": snippets,
-                "last_touched_at": f"{date_str}T23:59:59+08:00",
+                "last_touched_at": _iso_day_end(date_str),
                 "valid_from": _iso_at(date_str),
                 "provenance_refs": _build_provenance(
                     date_str=date_str,
@@ -849,7 +856,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
                 recent_changes.append(
                     ChangeItem(
                         change_id=_slug("chg", f"{date_str}_{decision.decision}"),
-                        changed_at=f"{date_str}T23:59:59+08:00",
+                        changed_at=_iso_day_end(date_str),
                         change_type="new_decision",
                         summary=decision.decision,
                         affected_ids=[decision.decision_id],
@@ -867,7 +874,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             aliases=[name],
             confidence=0.9 if len(date_hits) >= 2 else 0.5,
             source_rank="aggregate",
-            last_seen_at=max(date_hits) + "T23:59:59+08:00",
+            last_seen_at=_iso_day_end(max(date_hits)),
         )
         for name, date_hits in sorted(addressed_date_hits.items())
         if len(date_hits) >= 1
@@ -971,7 +978,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
                 entity_id=name,
                 interaction_7d_count=addressed_counts_7d[name],
                 interaction_30d_count=addressed_counts_30d[name],
-                last_interaction_at=max(addressed_date_hits[name]) + "T23:59:59+08:00",
+                last_interaction_at=_iso_day_end(max(addressed_date_hits[name])),
                 recent_topics=addressed_topics[name][:3],
             )
             for name, _count in addressed_counts_30d.most_common()
@@ -1026,7 +1033,10 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
     )
 
     unresolved_ratio_1d = 0.0
-    if latest_scenes and ROLE_RECOGNITION_ENABLED:
+    if latest_scenes and (
+        ROLE_RECOGNITION_ENABLED
+        or any(str((scene.get("role", {}) or {}).get("source", "")).strip() == "human_confirmed" for scene in latest_scenes)
+    ):
         unresolved_count = sum(
             1
             for scene in latest_scenes
@@ -1102,11 +1112,16 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
 
     top_projects = [item.title for item in ctx.rolling_context.active_projects[:2]]
     top_entities = [item.entity_id for item in ctx.rolling_context.entity_rollups[:2]]
+    active_loops = [
+        item
+        for item in ctx.rolling_context.open_loops
+        if item.status == "open" and item.current_state in {"", "active", "future"}
+    ]
     project_text = "、".join(top_projects) if top_projects else "日常事务"
     entity_text = "、".join(top_entities) if top_entities else "暂无"
     ctx.status_line = (
         f"最近{min(len(dates), 3)}天主要推进 {project_text}；"
-        f"当前有 {len(ctx.rolling_context.open_loops)} 个待办未闭环；"
+        f"当前有 {len(active_loops)} 个待办未闭环；"
         f"高频互动对象是 {entity_text}。"
     )
 

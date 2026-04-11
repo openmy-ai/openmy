@@ -314,6 +314,13 @@ class TestSkillCliContract(unittest.TestCase):
         if not sample_audio_exists:
             sample_audio.write_bytes(b"wav")
 
+        env_path = PROJECT_ROOT / ".env"
+        backup_path = PROJECT_ROOT / ".env.test-backup"
+        if backup_path.exists():
+            backup_path.unlink()
+        if env_path.exists():
+            env_path.rename(backup_path)
+
         env = os.environ.copy()
         env.pop("GEMINI_API_KEY", None)
         env.pop("OPENMY_STT_API_KEY", None)
@@ -334,6 +341,8 @@ class TestSkillCliContract(unittest.TestCase):
                     date_str,
                     "--audio",
                     str(sample_audio),
+                    "--stt-provider",
+                    "gemini",
                     "--json",
                 ],
                 capture_output=True,
@@ -355,6 +364,8 @@ class TestSkillCliContract(unittest.TestCase):
         finally:
             self.cleanup_day_dir(date_str)
             self.cleanup_context_outputs()
+            if backup_path.exists():
+                backup_path.rename(env_path)
             if not sample_audio_exists:
                 sample_audio.unlink(missing_ok=True)
 
@@ -372,7 +383,7 @@ class TestSkillCliContract(unittest.TestCase):
             env_path.rename(backup_path)
 
         env = os.environ.copy()
-        env["GEMINI_API_KEY"] = "shadow-shell-key"
+        env.pop("GEMINI_API_KEY", None)
         env.pop("OPENMY_STT_API_KEY", None)
         env.pop("OPENMY_LLM_API_KEY", None)
 
@@ -388,6 +399,8 @@ class TestSkillCliContract(unittest.TestCase):
                     date_str,
                     "--audio",
                     str(audio_path),
+                    "--stt-provider",
+                    "gemini",
                     "--json",
                 ],
                 capture_output=True,

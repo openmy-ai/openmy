@@ -6,11 +6,20 @@ from __future__ import annotations
 from openmy.services.context.active_context import ActiveContext
 
 
+def _unresolved_loops(ctx: ActiveContext):
+    return [
+        item
+        for item in ctx.rolling_context.open_loops
+        if item.status == "open" and item.current_state in {"", "active", "future"}
+    ]
+
+
 def render_level0(ctx: ActiveContext) -> str:
     """Level 0：极简摘要。"""
     top_changes = [item.summary for item in ctx.rolling_context.recent_changes[:2]]
+    open_loops = _unresolved_loops(ctx)
     lines = [ctx.status_line]
-    lines.append(f"当前未闭环事项：{len(ctx.rolling_context.open_loops)} 个")
+    lines.append(f"当前未闭环事项：{len(open_loops)} 个")
     if top_changes:
         lines.append(f"最近变化：{'；'.join(top_changes)}")
     return "\n".join(line for line in lines if line.strip())
@@ -37,9 +46,10 @@ def render_level1(ctx: ActiveContext) -> str:
             parts.append(f"- {item.title}：{item.current_goal}")
         parts.append("")
 
-    if ctx.rolling_context.open_loops:
+    open_loops = _unresolved_loops(ctx)
+    if open_loops:
         parts.append("待处理")
-        for item in ctx.rolling_context.open_loops[:10]:
+        for item in open_loops[:10]:
             parts.append(f"- {item.title}")
         parts.append("")
 
@@ -87,9 +97,10 @@ def render_compact_md(ctx: ActiveContext) -> str:
     else:
         lines.append("- 暂无")
 
-    if ctx.rolling_context.open_loops:
+    open_loops = _unresolved_loops(ctx)
+    if open_loops:
         lines.extend(["", "## 待处理"])
-        lines.extend([f"- {item.title}" for item in ctx.rolling_context.open_loops[:10]])
+        lines.extend([f"- {item.title}" for item in open_loops[:10]])
 
     if ctx.rolling_context.recent_decisions:
         lines.extend(["", "## 最近决定"])

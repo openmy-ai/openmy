@@ -117,6 +117,73 @@ class TestGenerateBriefing(unittest.TestCase):
         finally:
             os.unlink(tmp_path)
 
+    def test_briefing_consumes_human_confirmed_roles_even_when_auto_role_is_off(self):
+        scenes = {
+            "scenes": [
+                {
+                    "time_start": "12:00",
+                    "time_end": "12:10",
+                    "text": "Codex，继续跑一下。",
+                    "summary": "继续让 AI 跑任务。",
+                    "role": {
+                        "addressed_to": "AI助手",
+                        "scene_type": "ai",
+                        "source": "human_confirmed",
+                    },
+                }
+            ],
+            "stats": {},
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as fh:
+            json.dump(scenes, fh, ensure_ascii=False)
+            tmp_path = Path(fh.name)
+
+        try:
+            briefing = generate_briefing(tmp_path, "2026-04-07")
+            self.assertIn("AI助手", briefing.people_interaction_map)
+            self.assertEqual(briefing.time_blocks[0].people_talked_to, ["AI助手"])
+        finally:
+            os.unlink(tmp_path)
+
+    def test_briefing_uses_profile_timezone_for_screen_queries(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            day_dir = data_root / "2026-04-07"
+            day_dir.mkdir(parents=True, exist_ok=True)
+            (data_root / "profile.json").write_text(
+                json.dumps({"timezone": "America/Los_Angeles"}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            scenes_path = day_dir / "scenes.json"
+            scenes_path.write_text(
+                json.dumps(
+                    {
+                        "scenes": [
+                            {
+                                "time_start": "12:00",
+                                "time_end": "12:10",
+                                "text": "看屏幕",
+                                "summary": "看屏幕",
+                                "role": {"addressed_to": "", "scene_type": "self"},
+                            }
+                        ],
+                        "stats": {},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            client = MagicMock()
+            client.is_available.return_value = True
+            client.search_ocr.return_value = []
+            client.activity_summary.return_value = {"apps": []}
+
+            generate_briefing(scenes_path, "2026-04-07", client)
+
+            self.assertEqual(client.activity_summary.call_args.args[0], "2026-04-07T00:00:00-07:00")
+            self.assertEqual(client.activity_summary.call_args.args[1], "2026-04-07T23:59:59-07:00")
+
 
 class TestSaveBriefing(unittest.TestCase):
     def test_save_briefing_writes_json(self):

@@ -15,6 +15,7 @@ from openmy.config import (
     get_stage_llm_model,
 )
 from openmy.providers.registry import ProviderRegistry
+from openmy.utils.io import safe_write_json
 
 
 def summarize_scene(
@@ -81,7 +82,7 @@ def distill_scenes(scenes_path: Path, api_key: str, model: str | None) -> dict:
             role_info=addressed_to,
             screen_summary=str(screen_context.get('summary', '')).strip(),
         )
-    scenes_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    safe_write_json(scenes_path, data)
     return data
 
 def main() -> int:

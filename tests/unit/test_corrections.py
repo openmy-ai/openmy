@@ -249,8 +249,10 @@ class TestCorrections(unittest.TestCase):
             ],
         )
 
-        titles = {item.title for item in corrected.rolling_context.open_loops}
-        self.assertNotIn("README 重写", titles)
+        loop = next(item for item in corrected.rolling_context.open_loops if item.title == "README 重写")
+        self.assertEqual(loop.status, "done")
+        self.assertEqual(loop.current_state, "closed")
+        self.assertEqual(loop.last_confirmed_at, "2026-04-08T10:01:00+08:00")
 
     def test_merge_project(self):
         ctx = self.make_context()
@@ -338,6 +340,29 @@ class TestCorrections(unittest.TestCase):
         self.assertEqual(entity.relation_type, "partner")
         self.assertEqual(entity.source_rank, "human_confirmed")
         self.assertEqual(rollup.entity_id, "伴侣")
+
+    def test_confirm_scene_role_promotes_human_confirmed_entity(self):
+        ctx = self.make_context()
+        corrected = apply_corrections(
+            ctx,
+            [
+                CorrectionEvent(
+                    correction_id="corr_001",
+                    created_at="2026-04-08T10:01:00+08:00",
+                    actor="user",
+                    op="confirm_scene_role",
+                    target_type="scene",
+                    target_id="2026-04-08:s01",
+                    payload={"to": "AI助手"},
+                )
+            ],
+        )
+
+        entity = next(item for item in corrected.stable_profile.key_people_registry if item.entity_id == "AI助手")
+        rollup = next(item for item in corrected.rolling_context.entity_rollups if item.entity_id == "AI助手")
+        self.assertEqual(entity.source_rank, "human_confirmed")
+        self.assertEqual(entity.last_confirmed_at, "2026-04-08T10:01:00+08:00")
+        self.assertEqual(rollup.last_interaction_at, "2026-04-08T10:01:00+08:00")
 
     def test_status_line_regenerated(self):
         ctx = self.make_context()

@@ -14,6 +14,7 @@ from openmy.config import get_llm_api_key, get_stage_llm_model
 from openmy.domain.models import RoleTag, SceneBlock, ScreenContext
 from openmy.providers.registry import ProviderRegistry
 from openmy.services.segmentation.segmenter import segment
+from openmy.utils.io import safe_write_json
 
 
 ROLE_LABELS = {
@@ -437,7 +438,7 @@ def main() -> None:
         output_path = input_path.parent / f'{date_str}.scenes.json'
 
     result = scenes_to_dict(scenes)
-    output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
+    safe_write_json(output_path, result)
     stats = result['stats']
     print(f"✓ 场景切分: {stats['total_scenes']} 个场景块", file=sys.stderr)
     print(f"✓ 角色分布: {json.dumps(stats['role_distribution'], ensure_ascii=False)}", file=sys.stderr)

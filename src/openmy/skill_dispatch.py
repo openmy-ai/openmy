@@ -102,7 +102,7 @@ def _run_existing_command(command: str, args: argparse.Namespace) -> int:
     cli = _cli()
 
     if command == "day.run":
-        final_stt_provider = getattr(args, "stt_provider", None) or "gemini"
+        final_stt_provider = getattr(args, "stt_provider", None) or cli.get_stt_provider_name()
         return int(
             cli._run_with_silent_console(
                 cli.cmd_run,
@@ -399,7 +399,7 @@ def _validate_day_run_inputs(args: argparse.Namespace) -> None:
     if args.audio and not args.skip_transcribe:
         audio_files = [Path(str(item)).expanduser() for item in args.audio]
         missing_sidecar_audio = [str(path) for path in audio_files if not load_sidecar_transcript(path)]
-        final_stt_provider = str(getattr(args, "stt_provider", "") or "gemini").strip().lower()
+        final_stt_provider = str(getattr(args, "stt_provider", "") or cli.get_stt_provider_name()).strip().lower()
         if (
             missing_sidecar_audio
             and cli.stt_provider_requires_api_key(final_stt_provider)

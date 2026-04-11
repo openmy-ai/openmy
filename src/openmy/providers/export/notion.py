@@ -7,6 +7,7 @@ from typing import Any
 from urllib import error, request
 
 from openmy.providers.export.base import ExportProvider
+from openmy.utils.time import iso_at
 
 NOTION_VERSION = "2025-09-03"
 NOTION_API_BASE = "https://api.notion.com/v1"
@@ -71,7 +72,7 @@ class NotionExportProvider(ExportProvider):
 
     def _notion_timestamp(self, date: str) -> str:
         # 坑 6：日期字段要带完整时间，不能只给 YYYY-MM-DD。
-        return f"{date}T08:00:00.000+08:00"
+        return iso_at(date, "08:00")
 
     def _paragraph_block(self, text: str) -> dict[str, Any]:
         return {

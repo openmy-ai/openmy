@@ -39,6 +39,7 @@ from openmy.config import (
     has_llm_credentials,
     stt_provider_requires_api_key,
 )
+from openmy.utils.io import safe_write_json
 from openmy.services.query.context_query import query_context, render_query_result
 
 
@@ -361,8 +362,7 @@ def launch_local_report(host: str = "127.0.0.1", port: int = 8420) -> None:
 
 
 def write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    safe_write_json(path, payload)
 
 
 def infer_scene_role_profile(addressed_to: str) -> tuple[str, str]:
@@ -430,6 +430,9 @@ def freeze_scene_roles(data: dict[str, Any]) -> dict[str, Any]:
         "needs_review": False,
     }
     for scene in scenes:
+        role = scene.get("role", {}) if isinstance(scene.get("role", {}), dict) else {}
+        if str(role.get("source", "")).strip() == "human_confirmed":
+            continue
         scene["role"] = dict(frozen_role)
     data["stats"] = build_frozen_scene_stats(len(scenes))
     return data

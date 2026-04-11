@@ -15,6 +15,7 @@ from openmy.services.screen_recognition.settings import (
     load_screen_context_settings,
     screen_context_participation_enabled,
 )
+from openmy.utils.time import iso_at, iso_now
 
 
 @dataclass
@@ -130,13 +131,13 @@ def _sanitize_briefing_text(text: str) -> str:
     return cleaned
 
 
-def _get_screen_context_apps(client, date_str: str, time_start: str, time_end: str) -> list[str]:
+def _get_screen_context_apps(client, date_str: str, time_start: str, time_end: str, *, data_root: Path | None = None) -> list[str]:
     """查询屏幕上下文服务，获取指定时间段使用的 App 列表。"""
     if not client:
         return []
     try:
-        start_iso = f"{date_str}T{time_start}:00+08:00"
-        end_iso = f"{date_str}T{time_end}:59+08:00"
+        start_iso = iso_at(date_str, time_start, data_root=data_root, seconds=0)
+        end_iso = iso_at(date_str, time_end, data_root=data_root, seconds=59)
         events = client.search_ocr(start_time=start_iso, end_time=end_iso, limit=50)
         apps = set()
         for event in events:
@@ -147,13 +148,13 @@ def _get_screen_context_apps(client, date_str: str, time_start: str, time_end: s
         return []
 
 
-def _get_screen_context_app_usage(client, date_str: str) -> dict[str, float]:
+def _get_screen_context_app_usage(client, date_str: str, *, data_root: Path | None = None) -> dict[str, float]:
     """用 activity_summary API 获取各 App 真实使用时长（分钟）。"""
     if not client:
         return {}
     try:
-        start_iso = f"{date_str}T00:00:00+08:00"
-        end_iso = f"{date_str}T23:59:59+08:00"
+        start_iso = iso_at(date_str, "00:00", data_root=data_root, seconds=0)
+        end_iso = iso_at(date_str, "23:59", data_root=data_root, seconds=59)
         # 优先用 activity_summary（精确时长）
         if hasattr(client, "activity_summary"):
             data = client.activity_summary(start_iso, end_iso)
@@ -178,8 +179,14 @@ def _get_screen_context_app_usage(client, date_str: str) -> dict[str, float]:
 
 def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> DailyBriefing:
     """生成 Daily Briefing。"""
-    briefing = DailyBriefing(date=date_str, generated_at=datetime.now().isoformat())
-    screen_settings = load_screen_context_settings()
+    data_root = None
+    if (scenes_path.parent / "profile.json").exists():
+        data_root = scenes_path.parent
+    elif (scenes_path.parent.parent / "profile.json").exists():
+        data_root = scenes_path.parent.parent
+
+    briefing = DailyBriefing(date=date_str, generated_at=iso_now(data_root=data_root))
+    screen_settings = load_screen_context_settings(data_root=data_root)
     screen_participation_enabled = screen_context_participation_enabled(screen_settings)
 
     if not scenes_path.exists():
@@ -227,7 +234,8 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
         summaries: list[str] = []
 
         for scene in grouped_scenes:
-            role = scene.get("role", {}) if ROLE_RECOGNITION_ENABLED else {}
+            raw_role = scene.get("role", {}) if isinstance(scene.get("role", {}), dict) else {}
+            role = raw_role if ROLE_RECOGNITION_ENABLED or str(raw_role.get("source", "")).strip() == "human_confirmed" else {}
             addressed_to = role.get("addressed_to", "") if isinstance(role, dict) else ""
             screen_context = scene.get("screen_context", {}) if isinstance(scene.get("screen_context", {}), dict) else {}
             if addressed_to:
@@ -270,7 +278,7 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
                 mode = "dual"
         if screen_participation_enabled and briefing.screen_recognition_available and time_range:
             start_time, end_time = time_range.split("-")
-            provider_apps = _get_screen_context_apps(screen_client, date_str, start_time, end_time)
+            provider_apps = _get_screen_context_apps(screen_client, date_str, start_time, end_time, data_root=data_root)
             apps = provider_apps or apps
             if apps:
                 mode = "dual"
@@ -319,7 +327,7 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
             briefing.key_events.append(summary)
 
     if screen_participation_enabled and briefing.screen_recognition_available:
-        app_usage = _get_screen_context_app_usage(screen_client, date_str)
+        app_usage = _get_screen_context_app_usage(screen_client, date_str, data_root=data_root)
         for app, minutes in app_usage.items():
             if isinstance(minutes, (int, float)) and minutes > 0:
                 if minutes >= 60:

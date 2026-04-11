@@ -69,6 +69,11 @@ class TestExportProviders(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             provider.export_daily_briefing("2026-04-11", {"summary": "今天很好"})
 
+    def test_notion_export_uses_profile_timezone_for_date_property(self):
+        provider = NotionExportProvider(config={"api_key": "key", "database_id": "db"})
+        with patch("openmy.providers.export.notion.iso_at", return_value="2026-04-11T08:00:00-07:00"):
+            self.assertEqual(provider._notion_timestamp("2026-04-11"), "2026-04-11T08:00:00-07:00")
+
     def test_registry_builds_obsidian_export_provider(self):
         with patch.dict("os.environ", {"OPENMY_EXPORT_PROVIDER": "obsidian", "OPENMY_OBSIDIAN_VAULT_PATH": "/tmp/vault"}, clear=True):
             provider = ProviderRegistry.from_env().get_export_provider()

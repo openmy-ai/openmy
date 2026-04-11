@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from openmy.config import SCREEN_RECOGNITION_API, SCREEN_RECOGNITION_ENABLED
+from openmy.utils.io import safe_write_json
 
 
 def _project_root() -> Path:
@@ -93,8 +94,7 @@ def load_screen_context_settings(
 
 def save_screen_context_settings(settings: ScreenContextSettings, *, data_root: Path | None = None) -> Path:
     path = settings_path(data_root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(settings.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+    safe_write_json(path, settings.to_dict())
     return path
 
 

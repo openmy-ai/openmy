@@ -697,6 +697,7 @@ class TestOpenMyCli(unittest.TestCase):
             payload = corrections_path.read_text(encoding="utf-8")
             self.assertIn("close_loop", payload)
             self.assertIn("loop_readme", payload)
+            self.assertIn('"status": "done"', payload)
         finally:
             if original_corrections is None:
                 corrections_path.unlink(missing_ok=True)
@@ -954,6 +955,93 @@ class TestOpenMyCli(unittest.TestCase):
             self.assertEqual(transcript_path.read_text(encoding="utf-8"), "新 transcript")
             self.assertEqual(json.loads(scenes_path.read_text(encoding="utf-8"))["scenes"][0]["scene_id"], "new")
             self.assertEqual(json.loads(briefing_path.read_text(encoding="utf-8"))["summary"], "新 briefing")
+            self.assertFalse((transcript_path.with_name("transcript.md.bak")).exists())
+            self.assertFalse((scenes_path.with_name("scenes.json.bak")).exists())
+            self.assertFalse((briefing_path.with_name("daily_briefing.json.bak")).exists())
+            self.assertFalse((meta_path.with_name(f"{date_str}.meta.json.bak")).exists())
+        finally:
+            self.cleanup_day_dir(date_str)
+
+    def test_cmd_run_keeps_backup_artifacts_when_rerun_extract_fails(self):
+        from openmy.commands import run as run_command
+
+        date_str = "2099-01-25"
+        day_dir = self.make_day_dir(date_str)
+        transcript_path = day_dir / "transcript.md"
+        scenes_path = day_dir / "scenes.json"
+        briefing_path = day_dir / "daily_briefing.json"
+        meta_path = day_dir / f"{date_str}.meta.json"
+
+        transcript_path.write_text("旧 transcript", encoding="utf-8")
+        scenes_path.write_text(json.dumps({"scenes": [{"scene_id": "old"}], "stats": {}}, ensure_ascii=False), encoding="utf-8")
+        briefing_path.write_text(json.dumps({"summary": "旧 briefing"}, ensure_ascii=False), encoding="utf-8")
+        meta_path.write_text(json.dumps({"daily_summary": "旧 meta"}, ensure_ascii=False), encoding="utf-8")
+
+        def fake_transcribe(*args, **kwargs):
+            (day_dir / "transcript.raw.md").write_text("# raw", encoding="utf-8")
+            return 0
+
+        def fake_clean(args):
+            transcript_path.write_text("新 transcript", encoding="utf-8")
+            return 0
+
+        segmented_payload = {
+            "scenes": [
+                {
+                    "scene_id": "new",
+                    "time_start": "10:00",
+                    "time_end": "10:05",
+                    "text": "新文本",
+                    "summary": "新摘要",
+                    "preview": "新文本",
+                    "role": {"addressed_to": "", "scene_type_label": "自言自语", "needs_review": False},
+                }
+            ],
+            "stats": {"total_scenes": 1, "role_distribution": {}, "needs_review_count": 0},
+        }
+
+        def fake_briefing(args):
+            briefing_path.write_text(json.dumps({"summary": "新 briefing"}, ensure_ascii=False), encoding="utf-8")
+            return 0
+
+        try:
+            with (
+                patch.object(run_command, "transcribe_audio_files", side_effect=fake_transcribe),
+                patch("openmy.cli.cmd_clean", side_effect=fake_clean),
+                patch("openmy.cli.build_segmented_scenes_payload", return_value=segmented_payload),
+                patch("openmy.cli.cmd_briefing", side_effect=fake_briefing),
+                patch("openmy.commands.run.has_llm_credentials", side_effect=lambda stage=None: stage == "extract"),
+                patch(
+                    "openmy.services.extraction.extractor.run_core_extraction",
+                    side_effect=RuntimeError("boom"),
+                    create=True,
+                ),
+                patch("openmy.services.context.consolidation.consolidate") as consolidate_mock,
+            ):
+                result = run_command.cmd_run(
+                    argparse.Namespace(
+                        date=date_str,
+                        audio=["/tmp/fake.wav"],
+                        skip_transcribe=False,
+                        stt_provider="gemini",
+                        stt_model="gemini-3.1-flash-lite-preview",
+                        stt_vad=False,
+                        stt_word_timestamps=False,
+                        stt_enrich_mode="off",
+                        stt_align=False,
+                        stt_diarize=False,
+                    )
+                )
+
+            self.assertEqual(result, 2)
+            consolidate_mock.assert_not_called()
+            self.assertEqual((day_dir / "transcript.md.bak").read_text(encoding="utf-8"), "旧 transcript")
+            self.assertEqual(
+                json.loads((day_dir / "scenes.json.bak").read_text(encoding="utf-8"))["scenes"][0]["scene_id"],
+                "old",
+            )
+            self.assertEqual(json.loads((day_dir / "daily_briefing.json.bak").read_text(encoding="utf-8"))["summary"], "旧 briefing")
+            self.assertEqual(json.loads((day_dir / f"{date_str}.meta.json.bak").read_text(encoding="utf-8"))["daily_summary"], "旧 meta")
         finally:
             self.cleanup_day_dir(date_str)
 

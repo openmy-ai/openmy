@@ -6,7 +6,14 @@ from datetime import datetime
 from pathlib import Path
 from dataclasses import asdict, is_dataclass
 
-from openmy.config import GEMINI_MODEL, get_export_provider_name, get_llm_api_key, get_stage_llm_model, has_llm_credentials
+from openmy.config import (
+    GEMINI_MODEL,
+    get_export_provider_name,
+    get_llm_api_key,
+    get_stage_llm_model,
+    get_stt_provider_name,
+    has_llm_credentials,
+)
 
 
 PARTIAL_SUCCESS = 2
@@ -64,16 +71,28 @@ def _save_run_status(date_str: str, payload: dict) -> None:
     cli.write_json(cli.ensure_day_dir(date_str) / "run_status.json", payload)
 
 
-def _clear_downstream_artifacts(date_str: str) -> None:
+def _clear_downstream_artifacts(date_str: str) -> list[Path]:
     cli = _cli()
     day_dir = cli.ensure_day_dir(date_str)
+    backups: list[Path] = []
     for path in [
         day_dir / "transcript.md",
         day_dir / "scenes.json",
         day_dir / "daily_briefing.json",
         day_dir / f"{date_str}.meta.json",
     ]:
-        path.unlink(missing_ok=True)
+        if not path.exists():
+            continue
+        backup_path = path.with_name(f"{path.name}.bak")
+        backup_path.unlink(missing_ok=True)
+        path.replace(backup_path)
+        backups.append(backup_path)
+    return backups
+
+
+def _cleanup_downstream_backups(backups: list[Path]) -> None:
+    for backup_path in backups:
+        backup_path.unlink(missing_ok=True)
 
 
 def _export_outputs(date_str: str, *, briefing_path: Path, context_snapshot: dict | None = None) -> None:
@@ -195,6 +214,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     )
 
     paths = cli.resolve_day_paths(date_str)
+    downstream_backups: list[Path] = []
     if args.audio and not args.skip_transcribe:
         _mark_step(date_str, run_status, "transcribe", "running", message="正在转写音频")
         cli.console.print("[bold]Step 0: 🎙️ 转写音频[/bold]")
@@ -210,7 +230,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             _mark_step(date_str, run_status, "transcribe", "failed", message="转写失败")
             _finish_run(date_str, run_status, "failed", "transcribe")
             return result
-        _clear_downstream_artifacts(date_str)
+        downstream_backups = _clear_downstream_artifacts(date_str)
         paths = cli.resolve_day_paths(date_str)
         _mark_step(date_str, run_status, "transcribe", "completed", message="转写完成", artifact=paths["raw"])
     else:
@@ -220,14 +240,14 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
 
     update_pipeline_meta(
         cli.ensure_day_dir(date_str),
-        transcription_provider=getattr(args, "stt_provider", None) or "faster-whisper",
+        transcription_provider=getattr(args, "stt_provider", None) or get_stt_provider_name(),
         transcription_model=getattr(args, "stt_model", None) or "",
         transcription_vad=bool(getattr(args, "stt_vad", False)),
         transcription_word_timestamps=bool(getattr(args, "stt_word_timestamps", False)),
         transcription_enrich_mode=getattr(args, "stt_enrich_mode", "recommended"),
     )
 
-    final_provider_name = (getattr(args, "stt_provider", None) or "faster-whisper").lower()
+    final_provider_name = (getattr(args, "stt_provider", None) or get_stt_provider_name()).lower()
     requested_enrich_mode = str(getattr(args, "stt_enrich_mode", "recommended") or "recommended").lower()
     enrich_mode = requested_enrich_mode
     if bool(getattr(args, "stt_align", False)):
@@ -504,6 +524,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         )
     )
     final_step = "extract_enrich" if run_status["steps"]["extract_enrich"]["status"] != "pending" else "consolidate"
+    _cleanup_downstream_backups(downstream_backups)
     _finish_run(date_str, run_status, "completed", final_step)
     return 0
 

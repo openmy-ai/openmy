@@ -479,6 +479,96 @@ class TestConsolidation(unittest.TestCase):
             self.assertTrue(ctx.realtime_context.screen_completion_candidates)
             self.assertEqual(ctx.realtime_context.screen_completion_candidates[0].label, "保存成功")
 
+    def test_consolidate_uses_briefing_fallback_when_intents_list_is_empty(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            self.write_json(
+                data_root / "2026-04-10" / "daily_briefing.json",
+                {
+                    "date": "2026-04-10",
+                    "summary": "今天继续推进 OpenMy。",
+                    "todos_open": ["补 README"],
+                    "decisions": ["默认开启新导出链路"],
+                },
+            )
+            self.write_json(
+                data_root / "2026-04-10" / "2026-04-10.meta.json",
+                {"daily_summary": "今天继续推进 OpenMy。", "intents": [], "events": [], "facts": []},
+            )
+
+            ctx = consolidate(data_root)
+
+            self.assertIn("补 README", {item.title for item in ctx.rolling_context.open_loops})
+            self.assertIn("默认开启新导出链路", {item.decision for item in ctx.rolling_context.recent_decisions})
+
+    def test_consolidate_tracks_human_confirmed_scene_roles_when_auto_roles_are_off(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            self.write_json(
+                data_root / "2026-04-10" / "scenes.json",
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "scene_001",
+                            "time_start": "10:00",
+                            "time_end": "10:20",
+                            "summary": "继续让 AI 跑任务。",
+                            "role": {
+                                "addressed_to": "AI助手",
+                                "needs_review": False,
+                                "source": "human_confirmed",
+                            },
+                        }
+                    ]
+                },
+            )
+            self.write_json(
+                data_root / "2026-04-10" / "daily_briefing.json",
+                {"date": "2026-04-10", "summary": "今天继续推进 OpenMy。"},
+            )
+            self.write_json(
+                data_root / "2026-04-10" / "2026-04-10.meta.json",
+                {"daily_summary": "今天继续推进 OpenMy。", "intents": [], "events": [], "facts": []},
+            )
+
+            ctx = consolidate(data_root)
+
+            self.assertEqual(ctx.rolling_context.entity_rollups[0].entity_id, "AI助手")
+
+    def test_consolidate_uses_profile_timezone_for_generated_timestamps(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            self.write_json(data_root / "profile.json", {"timezone": "America/Los_Angeles"})
+            self.write_json(
+                data_root / "2026-04-10" / "2026-04-10.meta.json",
+                {
+                    "intents": [
+                        {
+                            "intent_id": "intent_001",
+                            "kind": "action_item",
+                            "what": "补 README",
+                            "status": "open",
+                            "who": {"kind": "user", "label": "老板"},
+                            "confidence_label": "high",
+                            "confidence_score": 0.95,
+                        }
+                    ]
+                },
+            )
+
+            ctx = consolidate(data_root)
+
+            loop = next(item for item in ctx.rolling_context.open_loops if item.title == "补 README")
+            self.assertTrue(loop.first_seen_at.endswith("-07:00"))
+
 
 class TestRenderer(unittest.TestCase):
     def make_context(self) -> ActiveContext:

@@ -9,6 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from openmy.domain.models import SceneBlock
+from openmy.utils.io import safe_write_json
 
 
 TIME_HEADER_RE = re.compile(r'^##\s+(\d{1,2}:\d{2})')
@@ -93,7 +94,7 @@ def main() -> None:
 
     scenes = segment(markdown)
     output_path = Path(args.output) if args.output else input_path.with_suffix('.segments.json')
-    output_path.write_text(json.dumps(build_scenes_payload(scenes), ensure_ascii=False, indent=2), encoding='utf-8')
+    safe_write_json(output_path, build_scenes_payload(scenes))
     print(f'✓ 输出: {output_path}', file=sys.stderr)
 
 

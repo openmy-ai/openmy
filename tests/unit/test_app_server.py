@@ -365,11 +365,12 @@ class TestAppServer(unittest.TestCase):
                 payload = app_server.handle_close_loop({"query": "补前端工作台", "status": "done"})
 
             updated = json.loads((data_root / "active_context.json").read_text(encoding="utf-8"))
-            loop_titles = [item["title"] for item in updated["rolling_context"]["open_loops"]]
+            loop = next(item for item in updated["rolling_context"]["open_loops"] if item["title"] == "补前端工作台")
             corrections_log = (data_root / "corrections.jsonl").read_text(encoding="utf-8")
 
             self.assertTrue(payload["success"])
-            self.assertNotIn("补前端工作台", loop_titles)
+            self.assertEqual(loop["status"], "done")
+            self.assertEqual(loop["current_state"], "closed")
             self.assertIn("close_loop", corrections_log)
             self.assertIn("loop_frontend", corrections_log)
 

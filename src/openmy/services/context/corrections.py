@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from openmy.services.context.active_context import ActiveContext, EntityRegistryCard
+from openmy.services.context.active_context import ActiveContext, EntityRegistryCard, EntityRollup
 
 CORRECTIONS_FILE = "corrections.jsonl"
 _SPACE_RE = re.compile(r"\s+")
@@ -74,11 +74,16 @@ def _dedupe_strings(items: list[str], limit: int = 5) -> list[str]:
 def _build_status_line(ctx: ActiveContext) -> str:
     top_projects = [item.title for item in ctx.rolling_context.active_projects[:2] if item.title]
     top_entities = [item.entity_id for item in ctx.rolling_context.entity_rollups[:2] if item.entity_id]
+    active_loops = [
+        item
+        for item in ctx.rolling_context.open_loops
+        if item.status == "open" and item.current_state in {"", "active", "future"}
+    ]
     project_text = "、".join(top_projects) if top_projects else "日常事务"
     entity_text = "、".join(top_entities) if top_entities else "暂无"
     return (
         f"最近主要推进 {project_text}；"
-        f"当前有 {len(ctx.rolling_context.open_loops)} 个待办未闭环；"
+        f"当前有 {len(active_loops)} 个待办未闭环；"
         f"高频互动对象是 {entity_text}。"
     )
 
@@ -163,11 +168,12 @@ def apply_corrections(ctx: ActiveContext, corrections: list[CorrectionEvent]) ->
             continue
 
         if corr.op == "close_loop":
-            corrected.rolling_context.open_loops = [
-                loop
-                for loop in corrected.rolling_context.open_loops
-                if not _matches(corr.target_id, loop.loop_id, loop.id, loop.title)
-            ]
+            for loop in corrected.rolling_context.open_loops:
+                if _matches(corr.target_id, loop.loop_id, loop.id, loop.title):
+                    loop.status = str(corr.payload.get("status", "") or "closed").strip()
+                    loop.current_state = "closed"
+                    loop.last_confirmed_at = corr.created_at
+                    loop.valid_until = corr.created_at
             continue
 
         if corr.op == "keep_loop":
@@ -260,6 +266,43 @@ def apply_corrections(ctx: ActiveContext, corrections: list[CorrectionEvent]) ->
             for rollup in corrected.rolling_context.entity_rollups:
                 if any(_matches(name, rollup.entity_id) for name in old_names if name):
                     rollup.entity_id = replacement_name
+            continue
+
+        if corr.op == "confirm_scene_role":
+            addressed_to = str(corr.payload.get("to", "")).strip()
+            if not addressed_to:
+                continue
+            entity = _find_entity(corrected, addressed_to)
+            if entity is None:
+                entity = EntityRegistryCard(
+                    id=addressed_to,
+                    entity_id=addressed_to,
+                    display_name=addressed_to,
+                    aliases=[addressed_to],
+                    confidence=1.0,
+                    source_rank="human_confirmed",
+                    last_confirmed_at=corr.created_at,
+                )
+                corrected.stable_profile.key_people_registry.append(entity)
+            entity.source_rank = "human_confirmed"
+            entity.confidence = max(entity.confidence, 1.0)
+            entity.last_confirmed_at = corr.created_at
+            entity.aliases = _dedupe_strings(entity.aliases + [addressed_to], limit=6)
+
+            rollup = next((item for item in corrected.rolling_context.entity_rollups if _matches(addressed_to, item.entity_id)), None)
+            if rollup is None:
+                corrected.rolling_context.entity_rollups.append(
+                    EntityRollup(
+                        entity_id=addressed_to,
+                        interaction_7d_count=1,
+                        interaction_30d_count=1,
+                        last_interaction_at=corr.created_at,
+                        recent_topics=[],
+                    )
+                )
+            else:
+                rollup.entity_id = addressed_to
+                rollup.last_interaction_at = corr.created_at
 
     corrected.status_line = _build_status_line(corrected)
     return corrected
