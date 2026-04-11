@@ -92,6 +92,9 @@ def build_correction_tokens(args: argparse.Namespace) -> list[str]:
     extra_args = [str(item).strip() for item in (getattr(args, "arg", None) or []) if str(item).strip()]
     if not op:
         return []
+    if op in {"typo", "scene-role"}:
+        date_str = str(getattr(args, "date", "") or "").strip()
+        return [op, date_str, *extra_args] if date_str else [op, *extra_args]
     return [op, *extra_args]
 
 
@@ -373,6 +376,15 @@ def handle_correction_apply(args: argparse.Namespace) -> tuple[dict[str, Any], i
             error_code="missing_operation",
             message="缺少纠错动作。",
             hint="请传入 --op 和一个或多个 --arg，或继续使用 --correct-args。",
+        )
+
+    if tokens[0] in {"typo", "scene-role"} and not str(getattr(args, "date", "") or "").strip():
+        raise SkillDispatchError(
+            action="correction.apply",
+            error_code="missing_date",
+            message=f"{tokens[0]} 纠错动作缺少日期。",
+            hint="请传入 --date YYYY-MM-DD。",
+            data={"op": tokens[0], "args": tokens[1:]},
         )
 
     exit_code = _run_existing_command("correction.apply", args)

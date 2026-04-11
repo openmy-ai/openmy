@@ -48,6 +48,16 @@ class TestSkillDispatch(unittest.TestCase):
             ["close-loop", "README"],
         )
 
+    def test_correction_apply_injects_date_for_typo_ops(self):
+        from openmy import skill_dispatch
+
+        self.assertEqual(
+            skill_dispatch.build_correction_tokens(
+                self.make_args(date="2026-04-09", op="typo", arg=["错词", "正词"], correct_args=None)
+            ),
+            ["typo", "2026-04-09", "错词", "正词"],
+        )
+
     def test_dispatch_routes_through_handler_table(self):
         from openmy import skill_dispatch
 

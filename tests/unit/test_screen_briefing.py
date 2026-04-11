@@ -99,6 +99,43 @@ class TestScreenBriefing(unittest.TestCase):
         self.assertEqual(client.search_calls, 0)
         self.assertEqual(client.summary_calls, 0)
 
+    def test_briefing_summary_uses_first_person_when_screen_usage_is_available(self):
+        scenes = {
+            "scenes": [
+                {
+                    "scene_id": "scene_001",
+                    "time_start": "20:00",
+                    "time_end": "20:10",
+                    "text": "简单记录一下。",
+                    "summary": "简单记录一下。",
+                    "role": {"addressed_to": "自己", "scene_type": "self"},
+                }
+            ],
+            "stats": {},
+        }
+
+        class StubScreenClient:
+            def is_available(self):
+                return True
+
+            def search_ocr(self, **_kwargs):
+                return []
+
+            def activity_summary(self, *_args, **_kwargs):
+                return {"apps": [{"name": "Codex", "minutes": 95}, {"name": "Google Chrome", "minutes": 61}]}
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as fh:
+            json.dump(scenes, fh, ensure_ascii=False)
+            tmp_path = Path(fh.name)
+
+        try:
+            briefing = generate_briefing(tmp_path, "2026-04-10", StubScreenClient())
+        finally:
+            os.unlink(tmp_path)
+
+        self.assertTrue(briefing.summary.startswith("我"))
+        self.assertIn("Codex", briefing.summary)
+
 
 if __name__ == "__main__":
     unittest.main()

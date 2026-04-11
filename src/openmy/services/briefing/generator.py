@@ -317,20 +317,40 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
         for app, count in app_counts.most_common(5):
             briefing.work_sessions[app] = f"{count} 段场景"
 
-    summary_parts: list[str] = []
     people_names = list(briefing.people_interaction_map.keys())
-    if people_names:
-        summary_parts.append(f"跟 {'、'.join(people_names[:3])} 有互动")
-    if briefing.time_blocks:
-        active_periods = [block.period.split(" ")[0] for block in briefing.time_blocks]
-        summary_parts.append(f"活跃时段：{'、'.join(active_periods)}")
-    if briefing.screen_highlights:
-        summary_parts.append(f"屏幕上主要在处理 {briefing.screen_highlights[0]}")
-    elif briefing.work_sessions:
-        top_apps = list(briefing.work_sessions.keys())[:3]
-        summary_parts.append(f"主要用了 {'、'.join(top_apps)}")
+    active_periods = [block.period.split(" ")[0] for block in briefing.time_blocks] if briefing.time_blocks else []
+    top_apps = list(briefing.work_sessions.keys())[:3] if briefing.work_sessions else []
 
-    briefing.summary = "。".join(summary_parts) + "。" if summary_parts else f"{date_str} 的记录"
+    summary_parts: list[str] = []
+    first_signal = ""
+    if people_names:
+        first_signal = "people"
+        summary_parts.append(f"我跟 {'、'.join(people_names[:3])} 有互动")
+    elif top_apps:
+        first_signal = "apps"
+        summary_parts.append(f"我主要用了 {'、'.join(top_apps)}")
+    elif briefing.screen_highlights:
+        first_signal = "screen"
+        summary_parts.append(f"我在屏幕上主要在处理 {briefing.screen_highlights[0]}")
+    elif active_periods:
+        first_signal = "periods"
+        summary_parts.append(f"我活跃时段：{'、'.join(active_periods)}")
+
+    if active_periods:
+        period_summary = f"活跃时段：{'、'.join(active_periods)}"
+        if period_summary not in summary_parts:
+            summary_parts.append(period_summary)
+
+    if briefing.screen_highlights and first_signal != "screen":
+        highlight_summary = f"屏幕上主要在处理 {briefing.screen_highlights[0]}"
+        if highlight_summary not in summary_parts:
+            summary_parts.append(highlight_summary)
+    elif top_apps and first_signal != "apps":
+        app_summary = f"主要用了 {'、'.join(top_apps)}"
+        if app_summary not in summary_parts:
+            summary_parts.append(app_summary)
+
+    briefing.summary = "。".join(summary_parts) + "。" if summary_parts else f"我在 {date_str} 的记录较少。"
     briefing.key_events = briefing.key_events[:10]
     briefing.decisions = briefing.decisions[:10]
     briefing.todos_open = briefing.todos_open[:10]

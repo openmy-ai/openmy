@@ -207,6 +207,53 @@ class TestSkillCliContract(unittest.TestCase):
             else:
                 context_path.write_text(original_context, encoding="utf-8")
 
+    def test_skill_correction_apply_typo_uses_date_from_skill_args(self):
+        date_str = "2099-02-02"
+        day_dir = self.make_day_dir(date_str)
+        transcript_path = day_dir / "transcript.md"
+        transcript_path.write_text("## 10:00\n\n青维今天去散步。", encoding="utf-8")
+
+        corrections_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "corrections.json"
+        vocab_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "vocab.txt"
+        original_corrections = corrections_path.read_text(encoding="utf-8")
+        original_vocab = vocab_path.read_text(encoding="utf-8")
+
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "openmy",
+                    "skill",
+                    "correction.apply",
+                    "--op",
+                    "typo",
+                    "--arg",
+                    "青维",
+                    "--arg",
+                    "青梅",
+                    "--date",
+                    date_str,
+                    "--json",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["action"], "correction.apply")
+            self.assertEqual(payload["version"], "v1")
+            self.assertEqual(payload["data"]["op"], "typo")
+            self.assertEqual(payload["data"]["args"], [date_str, "青维", "青梅"])
+            self.assertIn("青梅", transcript_path.read_text(encoding="utf-8"))
+        finally:
+            corrections_path.write_text(original_corrections, encoding="utf-8")
+            vocab_path.write_text(original_vocab, encoding="utf-8")
+            self.cleanup_day_dir(date_str)
+
     def test_agent_recent_is_compat_alias_over_skill_contract(self):
         result = subprocess.run(
             [sys.executable, "-m", "openmy", "agent", "--recent"],
@@ -250,6 +297,9 @@ class TestSkillCliContract(unittest.TestCase):
         date_str = "2099-02-02"
         self.cleanup_day_dir(date_str)
         sample_audio = PROJECT_ROOT / "tests" / "fixtures" / "sample.wav"
+        sample_audio_exists = sample_audio.exists()
+        if not sample_audio_exists:
+            sample_audio.write_bytes(b"wav")
 
         env = os.environ.copy()
         env.pop("GEMINI_API_KEY", None)
@@ -292,6 +342,8 @@ class TestSkillCliContract(unittest.TestCase):
         finally:
             self.cleanup_day_dir(date_str)
             self.cleanup_context_outputs()
+            if not sample_audio_exists:
+                sample_audio.unlink(missing_ok=True)
 
     def test_skill_day_run_requires_project_env_stt_key_for_api_transcription(self):
         date_str = "2099-02-04"
