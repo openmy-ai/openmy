@@ -50,6 +50,62 @@ DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ROOT_FILE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.(?:md|meta\.json|scenes\.json)$")
 
 
+DEFAULT_PROFILE_PAYLOAD: dict[str, Any] = {
+    "name": "User",
+    "language": "en",
+    "timezone": "UTC",
+    "roles": [],
+    "answer_language": "en",
+    "answer_style": "direct_compact",
+    "tone": "plain",
+    "avoid": ["long_bullet_lists", "empty_empathy"],
+    "prefer": ["short_paragraphs", "specific_recommendations"],
+}
+
+
+def profile_path(data_root: Path) -> Path:
+    return data_root / "profile.json"
+
+
+def load_profile_settings(data_root: Path) -> dict[str, Any]:
+    payload = dict(DEFAULT_PROFILE_PAYLOAD)
+    path = profile_path(data_root)
+    if not path.exists():
+        return payload
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return payload
+
+    for key, value in raw.items():
+        if key not in payload:
+            continue
+        if isinstance(payload[key], list):
+            if isinstance(value, list):
+                payload[key] = value
+            continue
+        if isinstance(value, str) and value.strip():
+            payload[key] = value.strip()
+    return payload
+
+
+def save_profile_settings(data_root: Path, updates: dict[str, Any]) -> dict[str, Any]:
+    payload = load_profile_settings(data_root)
+    for key, value in updates.items():
+        if key not in payload:
+            continue
+        if isinstance(payload[key], list):
+            if isinstance(value, list):
+                payload[key] = value
+            continue
+        if isinstance(value, str) and value.strip():
+            payload[key] = value.strip()
+    path = profile_path(data_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return payload
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -666,20 +722,21 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
     ctx.materialized_from_event_seq = ctx.context_seq
     ctx.generated_at = datetime.now().isoformat()
 
+    profile = load_profile_settings(data_root)
     ctx.stable_profile = StableProfile(
         identity=Identity(
-            canonical_name=get_user_canonical_name(),
-            preferred_name=get_user_preferred_name(),
-            primary_language="zh-CN",
-            timezone="Asia/Shanghai",
-            roles=["solo_founder", "builder"],
+            canonical_name=str(profile.get("name", "") or DEFAULT_PROFILE_PAYLOAD["name"]),
+            preferred_name=str(profile.get("name", "") or DEFAULT_PROFILE_PAYLOAD["name"]),
+            primary_language=str(profile.get("language", "") or DEFAULT_PROFILE_PAYLOAD["language"]),
+            timezone=str(profile.get("timezone", "") or DEFAULT_PROFILE_PAYLOAD["timezone"]),
+            roles=list(profile.get("roles", DEFAULT_PROFILE_PAYLOAD["roles"])),
         ),
         communication_contract=CommunicationContract(
-            answer_language="zh-CN",
-            answer_style="direct_compact",
-            tone="plain",
-            avoid=["long_bullet_lists", "empty_empathy", "english_syntax_chinese"],
-            prefer=["short_paragraphs", "specific_recommendations"],
+            answer_language=str(profile.get("answer_language", "") or DEFAULT_PROFILE_PAYLOAD["answer_language"]),
+            answer_style=str(profile.get("answer_style", "") or DEFAULT_PROFILE_PAYLOAD["answer_style"]),
+            tone=str(profile.get("tone", "") or DEFAULT_PROFILE_PAYLOAD["tone"]),
+            avoid=list(profile.get("avoid", DEFAULT_PROFILE_PAYLOAD["avoid"])),
+            prefer=list(profile.get("prefer", DEFAULT_PROFILE_PAYLOAD["prefer"])),
         ),
     )
 

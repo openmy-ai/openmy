@@ -49,6 +49,7 @@ def _init_run_status(date_str: str, entrypoint: str) -> dict:
                 "message": "",
                 "updated_at": timestamp,
                 "artifacts": [],
+                "skip_reason": "",
             }
             for step in RUN_STEPS
         },
@@ -82,11 +83,13 @@ def _mark_step(
     *,
     message: str = "",
     artifact: str | Path | None = None,
+    skip_reason: str = "",
 ) -> None:
     step_payload = payload["steps"][step]
     step_payload["status"] = status
     step_payload["message"] = message
     step_payload["updated_at"] = _now_iso()
+    step_payload["skip_reason"] = skip_reason if status == "skipped" else ""
     if artifact is not None:
         artifact_str = str(artifact)
         if artifact_str not in step_payload["artifacts"]:
@@ -190,7 +193,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         paths = cli.resolve_day_paths(date_str)
         _mark_step(date_str, run_status, "transcribe", "completed", message="转写完成", artifact=paths["raw"])
     else:
-        _mark_step(date_str, run_status, "transcribe", "skipped", message="未执行新的音频转写")
+        _mark_step(date_str, run_status, "transcribe", "skipped", message="未执行新的音频转写", skip_reason="no_new_audio")
 
     from openmy.services.ingest.transcription_enrichment import update_pipeline_meta
 
@@ -250,6 +253,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             "transcribe_enrich",
             "failed" if enrichment_plan.get("status") == "failed" else "skipped",
             message=enrichment_plan.get("message", "未启用 WhisperX 精标层"),
+            skip_reason=("enrichment_unavailable" if enrichment_plan.get("status") != "failed" else ""),
         )
 
     if args.skip_transcribe and not paths["raw"].exists() and not paths["transcript"].exists() and not paths["scenes"].exists():
@@ -275,7 +279,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         _mark_step(date_str, run_status, "clean", "completed", message="清洗完成", artifact=paths["transcript"])
     else:
         cli.console.print("\n[dim]⏭️ 跳过清洗：已存在 transcript.md[/dim]")
-        _mark_step(date_str, run_status, "clean", "skipped", message="复用已有 transcript.md", artifact=paths["transcript"])
+        _mark_step(date_str, run_status, "clean", "skipped", message="复用已有 transcript.md", artifact=paths["transcript"], skip_reason="existing_transcript")
 
     scenes_data = cli.read_json(paths["scenes"], {}) if paths["scenes"].exists() else {}
     if not paths["scenes"].exists():
@@ -316,10 +320,10 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
                 scenes_data = cli.read_json(paths["scenes"], {})
             except Exception as exc:
                 cli.console.print(f"[yellow]⚠️ 场景未附加精标证据[/yellow]: {exc}")
-        _mark_step(date_str, run_status, "segment", "skipped", message="复用已有 scenes.json", artifact=paths["scenes"])
+        _mark_step(date_str, run_status, "segment", "skipped", message="复用已有 scenes.json", artifact=paths["scenes"], skip_reason="existing_scenes")
 
     cli.console.print("\n[dim]⏭️ 跳过角色识别：功能已冻结[/dim]")
-    _mark_step(date_str, run_status, "roles", "skipped", message="角色识别已冻结", artifact=paths["scenes"])
+    _mark_step(date_str, run_status, "roles", "skipped", message="角色识别已冻结", artifact=paths["scenes"], skip_reason="role_step_frozen")
 
     missing_summaries = [scene for scene in scenes_data.get("scenes", []) if not scene.get("summary")]
     if missing_summaries:
@@ -335,10 +339,10 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             _mark_step(date_str, run_status, "distill", "completed", message="蒸馏完成", artifact=paths["scenes"])
         else:
             cli.console.print("\n[yellow]⏭️ 跳过蒸馏：缺少可用 LLM provider key，继续生成基础日报[/yellow]")
-            _mark_step(date_str, run_status, "distill", "skipped", message="缺少可用 LLM provider key")
+            _mark_step(date_str, run_status, "distill", "skipped", message="缺少可用 LLM provider key", skip_reason="missing_llm_key")
     else:
         cli.console.print("\n[dim]⏭️ 跳过蒸馏：场景摘要已齐全[/dim]")
-        _mark_step(date_str, run_status, "distill", "skipped", message="场景摘要已齐全", artifact=paths["scenes"])
+        _mark_step(date_str, run_status, "distill", "skipped", message="场景摘要已齐全", artifact=paths["scenes"], skip_reason="summaries_already_present")
 
     _mark_step(date_str, run_status, "briefing", "running", message="正在生成日报")
     cli.console.print("\n[bold]📋 日报[/bold]")
@@ -385,12 +389,12 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             _mark_step(date_str, run_status, "extract_core", "failed", message=str(exc))
     else:
         cli.console.print("\n[dim]⏭️ 跳过核心提取：缺少 LLM provider key 或转写文件[/dim]")
-        _mark_step(date_str, run_status, "extract_core", "skipped", message="缺少 LLM provider key 或 transcript.md")
-        _mark_step(date_str, run_status, "extract_enrich", "skipped", message="核心提取未执行")
+        _mark_step(date_str, run_status, "extract_core", "skipped", message="缺少 LLM provider key 或 transcript.md", skip_reason="missing_llm_key_or_transcript")
+        _mark_step(date_str, run_status, "extract_enrich", "skipped", message="核心提取未执行", skip_reason="core_extraction_not_run")
 
     if extract_core_failed:
-        _mark_step(date_str, run_status, "extract_enrich", "skipped", message="核心提取失败，跳过补全提取")
-        _mark_step(date_str, run_status, "consolidate", "skipped", message="提取失败，跳过 active_context 聚合")
+        _mark_step(date_str, run_status, "extract_enrich", "skipped", message="核心提取失败，跳过补全提取", skip_reason="core_extraction_failed")
+        _mark_step(date_str, run_status, "consolidate", "skipped", message="提取失败，跳过 active_context 聚合", skip_reason="core_extraction_failed")
         _finish_run(date_str, run_status, "partial", "extract_core")
         cli.console.print(
             cli.Panel(
@@ -412,7 +416,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     except Exception as exc:
         cli.console.print(f"[yellow]⚠️ 聚合异常: {exc}，继续[/yellow]")
         _mark_step(date_str, run_status, "consolidate", "failed", message=f"聚合异常: {exc}")
-        _mark_step(date_str, run_status, "extract_enrich", "skipped", message="聚合失败，跳过补全提取")
+        _mark_step(date_str, run_status, "extract_enrich", "skipped", message="聚合失败，跳过补全提取", skip_reason="consolidation_failed")
         _finish_run(date_str, run_status, "partial", "consolidate")
         return PARTIAL_SUCCESS
 
@@ -463,7 +467,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             cli.console.print(f"[yellow]⚠️ 补全提取异常[/yellow]: {exc}")
             _mark_step(date_str, run_status, "extract_enrich", "failed", message=str(exc))
     elif run_status["steps"]["extract_enrich"]["status"] == "pending":
-        _mark_step(date_str, run_status, "extract_enrich", "skipped", message="缺少核心提取结果，未执行补全")
+        _mark_step(date_str, run_status, "extract_enrich", "skipped", message="缺少核心提取结果，未执行补全", skip_reason="missing_core_extraction_output")
 
     cli.console.print(
         cli.Panel(

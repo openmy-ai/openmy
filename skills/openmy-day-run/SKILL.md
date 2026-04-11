@@ -1,28 +1,52 @@
 # OpenMy Day Run
 
-## 用途
+## Purpose
 
-处理新音频、补跑某天、重跑某天的数据流。
+Process new audio, re-run one day, or finish missing outputs for a date.
 
-## 触发条件
+## Trigger
 
-- 用户给了音频
-- 用户要求重跑某天
-- 用户要求补齐某天日报或结构化结果
+Use it when:
+- the user gives audio
+- the user wants to process one day
+- the user wants to re-run one day
+- the user wants to complete missing outputs for a day
 
-## 执行动作
+## Action
 
 - `openmy skill day.run --date YYYY-MM-DD --audio path/to/audio.wav --json`
 
-## 禁止事项
+## Restrictions
 
-- 不要直接调内部 Python 模块
-- 不要要求用户自己在终端里拼命令
-- 不要直接修改当天的原始证据文件
+- Do not call internal modules directly.
+- Do not ask the user to assemble commands manually.
+- Do not change raw evidence files by hand.
 
-## 输出说明
+## Output
 
-- 先读 `human_summary`
-- 再看 `data.run_status`
-- 如果返回 `error_code=missing_stt_key`，提醒用户当前项目 `.env` 里还没接入语音转写 KEY；如果用户选择 API 转写，就让 Agent 提醒他补这个 key
-- 如果用户只是想看结果而不是重跑，转到 openmy-day-view
+- start with `human_summary`
+- then inspect `data.run_status`
+- if a step is skipped, explain `skip_reason`
+- if the user only wants to inspect results, route to `openmy-day-view`
+
+## Audio Input Guide
+
+OpenMy accepts any normal audio file.
+It is not tied to one device.
+
+- wireless mic recordings
+- phone voice memos
+- meeting recordings
+- screen recorder exports
+- any `ffmpeg`-compatible audio file
+
+If the file date is unclear, ask the user before choosing a date.
+
+## Agent Behavior After Successful Run
+
+1. Call `day.get` for the same date.
+2. Scan for obvious transcript errors.
+3. Suggest corrections when names or terms look wrong.
+4. If vocab is not initialized, suggest `vocab.init`.
+5. Summarize the day in plain language.
+6. If any step was skipped or failed, explain why and offer the next fix.

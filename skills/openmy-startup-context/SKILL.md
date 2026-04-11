@@ -1,27 +1,41 @@
 # OpenMy Startup Context
 
-## 用途
+## Purpose
 
-新对话启动时，先拉取当前上下文和整体状态，给后续子 Skill 选路。
+Use this skill at the start of an OpenMy conversation.
+Pull the latest context and status before choosing the next workflow.
 
-## 触发条件
+## Trigger
 
-- 每次新对话
-- 需要先知道最近主要推进什么、有没有 stale loop、当前主问题是什么
+Use it when:
+- a new OpenMy conversation starts
+- you need the current focus before doing anything else
+- you need to know whether onboarding is still incomplete
 
-## 执行动作
+## Action
 
 - `openmy skill context.get --level 0 --json`
 - `openmy skill status.get --json`
 
-## 禁止事项
+## Restrictions
 
-- 不要要求用户手动输入命令
-- 不要跳过总 Skill 直接改内部状态文件
-- 不要直接读取或覆盖原始证据文件
+- Do not ask the user to type commands.
+- Do not edit context files directly.
+- Do not jump into day processing until you know the current state.
 
-## 输出说明
+## Output
 
-- 优先用 `human_summary` 给出一句话启动摘要
-- 如果任务还不明确，转到 openmy-status-review
-- 如果已经明确要读状态细节，转到 openmy-context-read
+- lead with `human_summary`
+- mention the top current focus
+- mention whether onboarding is incomplete
+- if the next step is unclear, route to `openmy-status-review`
+
+## Agent Behavior After Reading Context
+
+Do not just report counts.
+Turn the snapshot into a next move.
+
+1. If an open loop has been around for more than 3 days, ask whether it is still active.
+2. If recent days have no data, ask whether recordings exist.
+3. Mention the last obvious focus area.
+4. If profile or vocab is missing, start onboarding.

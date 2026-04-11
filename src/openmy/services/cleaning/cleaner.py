@@ -11,6 +11,7 @@ cleaner.py — 规则引擎清洗 + corrections.json 确定性纠错
 
 import json
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -231,17 +232,21 @@ VOCAB_FILE = RESOURCES_DIR / 'vocab.txt'
 VOCAB_EXAMPLE_FILE = RESOURCES_DIR / 'vocab.example.txt'
 
 
-def resolve_resource_path(primary: Path, fallback: Path) -> Path | None:
+def resolve_resource_path(primary: Path, fallback: Path, *, auto_init: bool = False) -> Path | None:
     if primary.exists():
         return primary
     if fallback.exists():
+        if auto_init:
+            primary.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(fallback, primary)
+            return primary
         return fallback
     return None
 
 
 def load_corrections() -> list[dict]:
     """加载纠错词典"""
-    final_path = resolve_resource_path(CORRECTIONS_FILE, CORRECTIONS_EXAMPLE_FILE)
+    final_path = resolve_resource_path(CORRECTIONS_FILE, CORRECTIONS_EXAMPLE_FILE, auto_init=True)
     if not final_path:
         return []
     try:
@@ -281,8 +286,8 @@ def apply_corrections(text: str) -> str:
 
 def sync_correction_to_vocab(wrong: str, right: str, context: str = ''):
     """将纠正同步写入 vocab.txt（事前预防层）"""
-    vocab_file = VOCAB_FILE
-    if not vocab_file.exists():
+    vocab_file = resolve_resource_path(VOCAB_FILE, VOCAB_EXAMPLE_FILE, auto_init=True)
+    if not vocab_file:
         return
 
     existing = vocab_file.read_text(encoding='utf-8')

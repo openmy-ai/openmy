@@ -109,6 +109,23 @@ openmy skill day.run --date 2026-04-08 --audio path/to/audio.wav --json
 
 兼容入口 `openmy agent` 仍然保留，但后续会逐步退到兼容别名。
 
+### Install Skills for Your Agent
+
+如果你要把 OpenMy 接进自己的 Agent（助手程序），把这些 Skill（技能说明文件）一起带上：
+
+- `skills/openmy/`
+- `skills/openmy-startup-context/`
+- `skills/openmy-context-read/`
+- `skills/openmy-context-query/`
+- `skills/openmy-day-run/`
+- `skills/openmy-day-view/`
+- `skills/openmy-correction-apply/`
+- `skills/openmy-status-review/`
+- `skills/openmy-vocab-init/`
+- `skills/openmy-profile-init/`
+
+这样 Agent（助手程序）就知道：什么时候先看状态，什么时候该跑一天，什么时候该主动建议补词库和用户资料。
+
 ---
 
 ## 🖼️ 输出效果

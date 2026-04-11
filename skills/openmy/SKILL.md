@@ -1,48 +1,80 @@
 ---
 name: openmy
-description: 总 Skill。用在 OpenMy 相关任务的路由、禁令和统一交互原则判断，不直接承担具体工作流执行。
+description: Router skill for OpenMy tasks. Use it to choose the right sub-skill, enforce command boundaries, and apply onboarding or follow-up patterns.
 ---
 
-# OpenMy 总 Skill
+# OpenMy Router Skill
 
-OpenMy 的主架构固定为：
+OpenMy is a personal context engine.
+It is **not** an MCP server, not a note app, and not a generic chat wrapper.
 
-**个人上下文引擎 + 总 Skill 编排层 + 子 Skill 工作流层 + CLI 执行层 + 前端展示层。**
+The fixed stack is:
 
-这里的 OpenMy 本体负责状态、证据、管线和纠错；Skill 负责路由和编排；CLI 只负责执行；前端只给用户看。  
-**不要把 OpenMy 写成 MCP。**
+- personal context engine
+- router skill layer
+- sub-skill workflow layer
+- CLI execution layer
+- frontend display layer
 
-产品与接口参考：
-- `references/architecture.md`
-- `references/action-contracts.md`
-- `references/routing-rules.md`
+Reference files:
+- `skills/openmy/references/architecture.md`
+- `skills/openmy/references/action-contracts.md`
+- `skills/openmy/references/routing-rules.md`
 
-## 什么时候触发
+## When to use this skill
 
-- 任务和 OpenMy 的上下文读取、单日处理、状态盘点、纠错闭环相关
-- 需要决定“现在该读哪个子 Skill”
-- 需要先定禁令，避免直接碰内部文件和内部 Python 模块
+Use this skill when:
+- the task is about OpenMy data, processing, corrections, status, or onboarding
+- you need to choose the right sub-skill before acting
+- you need to enforce the stable command boundary
 
-## 路由规则
+## Routing map
 
-- 新对话启动、要先知道最近状态：读 openmy-startup-context
-- 要回答“我最近在干什么 / 重点是什么 / 有哪些待办”：读 openmy-context-read
-- 要处理新音频、重跑某天、补一天的数据流：读 openmy-day-run
-- 要查看某天日报、时间线、提取结果：读 openmy-day-view
-- 要修正项目、关闭 loop、排除误判：读 openmy-correction-apply
-- 任务不明确、先想盘整体：读 openmy-status-review
+- startup context → `openmy-startup-context`
+- context snapshot reading → `openmy-context-read`
+- structured context search → `openmy-context-query`
+- day processing / re-run → `openmy-day-run`
+- single-day result reading → `openmy-day-view`
+- correction write-back → `openmy-correction-apply`
+- overall status review → `openmy-status-review`
+- vocabulary initialization → `openmy-vocab-init`
+- profile onboarding → `openmy-profile-init`
 
-## 全局禁令
+## Global rules
 
-- 不要要求用户输入终端命令
-- 不要跳过 `openmy skill <action> --json` 直接调用内部 Python 模块
-- 不要直接编辑 `active_context.json`、`corrections.jsonl`、`scenes.json`、`meta.json`
-- 不要把前端当成 Skill 执行面
-- 不要把 MCP 作为本项目主架构的一部分
+- Do not ask the user to type commands manually.
+- Do not bypass `openmy skill <action> --json` to call internal modules.
+- Do not edit `active_context.json`, `corrections.jsonl`, `scenes.json`, `meta.json`, or `profile.json` directly.
+- Do not treat the frontend as the execution surface.
+- Do not describe OpenMy as an MCP-first product.
 
-## 统一交互原则
+## First-Time Setup Flow
 
-- 先判断任务类型，再路由到单一子 Skill
-- 子 Skill 只做一类工作流，不补产品大背景
-- 不明确时先走 openmy-status-review，再决定后续子 Skill
-- 对用户回复时优先使用返回里的 `human_summary`
+If this looks like a first-time setup:
+
+1. route to `openmy-profile-init`
+2. route to `openmy-vocab-init`
+3. help the user locate the first audio file
+4. route to `openmy-day-run`
+5. review the result with the user
+6. suggest corrections if the transcript clearly has errors
+7. route back to `openmy-vocab-init` if you discover more names or terms
+
+## Typical Daily Workflow
+
+1. user records audio during the day
+2. route to `openmy-day-run`
+3. route to `openmy-day-view`
+4. route to `openmy-correction-apply` for any fixes
+5. route to `openmy-context-read` or `openmy-status-review` for follow-up
+
+When the next step is unclear, start with `openmy-status-review`.
+
+## Proactive Patterns
+
+Always apply these checks:
+
+- if words look like transcription errors, suggest corrections
+- if open loops keep piling up, ask which ones should be closed
+- if several recent days have no data, ask whether recordings exist
+- if a new proper noun appears, suggest adding it to vocab

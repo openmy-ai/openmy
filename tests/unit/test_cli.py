@@ -393,7 +393,7 @@ class TestOpenMyCli(unittest.TestCase):
                             "total_days": 1,
                             "latest_date": "2026-04-08",
                         },
-                        "human_summary": "共有 1 天数据；最近一天是 2026-04-08。",
+                        "human_summary": "1 day of data available; latest: 2026-04-08.",
                         "artifacts": {"data_root": "data"},
                         "next_actions": [],
                     },
@@ -1204,6 +1204,7 @@ class TestOpenMyCli(unittest.TestCase):
             self.assertEqual(status_payload["steps"]["transcribe"]["status"], "completed")
             self.assertEqual(status_payload["steps"]["transcribe_enrich"]["status"], "failed")
             self.assertEqual(status_payload["steps"]["consolidate"]["status"], "completed")
+            self.assertEqual(status_payload["steps"]["roles"]["skip_reason"], "role_step_frozen")
 
             meta_payload = json.loads((day_dir / f"{date_str}.meta.json").read_text(encoding="utf-8"))
             self.assertEqual(meta_payload["transcription_enrich_status"], "failed")

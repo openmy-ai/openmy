@@ -1,27 +1,37 @@
 # OpenMy Status Review
 
-## 用途
+## Purpose
 
-先盘整体状态，再决定接下来要走哪个子 Skill。
+Review the overall OpenMy state before choosing the next workflow.
 
-## 触发条件
+## Trigger
 
-- 任务不明确
-- 需要先看最近哪些天缺数据
-- 需要判断当前闭环情况和下一步优先级
+Use it when:
+- the task is still vague
+- you need to see which days are complete or partial
+- you need to decide the next highest-value action
 
-## 执行动作
+## Action
 
 - `openmy skill status.get --json`
 
-## 禁止事项
+## Restrictions
 
-- 不要直接跑单日处理
-- 不要直接做纠错写入
-- 不要替代总 Skill 做长期产品定义
+- Do not start day processing automatically.
+- Do not write corrections from this skill.
+- Do not let this skill turn into a long product discussion.
 
-## 输出说明
+## Output
 
-- 用 `human_summary` 先给总览
-- 再从 `data.items` 里看具体日期状态
-- 盘完后再转到 openmy-context-read、openmy-day-run 或 openmy-day-view
+- start with `human_summary`
+- categorize days into complete, partial, and empty
+- end with one recommendation
+
+## Agent Behavior After Status Review
+
+Always recommend something concrete.
+Examples:
+- process yesterday first
+- finish the partial day
+- review stale open items
+- initialize vocab before the next run

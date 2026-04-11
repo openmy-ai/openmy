@@ -27,7 +27,7 @@ class TestSkillDispatch(unittest.TestCase):
 
         self.assertEqual(
             set(skill_dispatch.ACTION_HANDLERS.keys()),
-            {"context.get", "context.query", "day.get", "day.run", "correction.apply", "status.get"},
+            {"context.get", "context.query", "correction.apply", "day.get", "day.run", "profile.get", "profile.set", "status.get", "vocab.init"},
         )
 
     def test_dispatch_unknown_action_returns_contract_error(self):
@@ -64,7 +64,7 @@ class TestSkillDispatch(unittest.TestCase):
         fake_payload = skill_dispatch.build_success_payload(
             action="status.get",
             data={"total_days": 1},
-            human_summary="共有 1 天数据。",
+            human_summary="1 day of data available.",
         )
         with patch.dict(skill_dispatch.ACTION_HANDLERS, {"status.get": lambda _args: (fake_payload, 0)}, clear=False):
             payload, exit_code = skill_dispatch.dispatch_skill_action("status.get", self.make_args())
@@ -92,6 +92,61 @@ class TestSkillDispatch(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["action"], "day.run")
         run_mock.assert_called_once()
+
+    def test_vocab_init_creates_files_from_example(self):
+        from pathlib import Path
+
+        from openmy import skill_dispatch
+        from openmy.services.cleaning.cleaner import CORRECTIONS_FILE, VOCAB_FILE
+
+        original_corrections = CORRECTIONS_FILE.read_text(encoding="utf-8") if CORRECTIONS_FILE.exists() else None
+        original_vocab = VOCAB_FILE.read_text(encoding="utf-8") if VOCAB_FILE.exists() else None
+        CORRECTIONS_FILE.unlink(missing_ok=True)
+        VOCAB_FILE.unlink(missing_ok=True)
+
+        try:
+            payload, exit_code = skill_dispatch.dispatch_skill_action("vocab.init", self.make_args(action="vocab.init"))
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(payload["ok"])
+            self.assertIn("corrections.json", payload["data"]["created"])
+            self.assertIn("vocab.txt", payload["data"]["created"])
+            self.assertTrue(CORRECTIONS_FILE.exists())
+            self.assertTrue(VOCAB_FILE.exists())
+        finally:
+            if original_corrections is None:
+                CORRECTIONS_FILE.unlink(missing_ok=True)
+            else:
+                CORRECTIONS_FILE.write_text(original_corrections, encoding="utf-8")
+            if original_vocab is None:
+                VOCAB_FILE.unlink(missing_ok=True)
+            else:
+                VOCAB_FILE.write_text(original_vocab, encoding="utf-8")
+
+    def test_profile_set_updates_fields(self):
+        from openmy import skill_dispatch
+        from openmy.services.context.consolidation import profile_path
+
+        data_root = skill_dispatch._cli().DATA_ROOT
+        path = profile_path(data_root)
+        original = path.read_text(encoding="utf-8") if path.exists() else None
+
+        try:
+            args = self.make_args(action="profile.set", name="Alice", language="en-US", timezone="America/Los_Angeles")
+            payload, exit_code = skill_dispatch.dispatch_skill_action("profile.set", args)
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["data"]["profile"]["name"], "Alice")
+            self.assertEqual(payload["data"]["profile"]["language"], "en-US")
+            self.assertEqual(payload["data"]["profile"]["timezone"], "America/Los_Angeles")
+
+            payload, exit_code = skill_dispatch.dispatch_skill_action("profile.get", self.make_args(action="profile.get"))
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(payload["data"]["profile"]["name"], "Alice")
+        finally:
+            if original is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_text(original, encoding="utf-8")
 
 
 if __name__ == "__main__":

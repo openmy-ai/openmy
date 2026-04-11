@@ -1,28 +1,51 @@
 # OpenMy Correction Apply
 
-## 用途
+## Purpose
 
-把用户的纠错反馈落成 append-only 修正事件，例如关闭 loop、排除误判、合并项目。
+Write correction events such as closing loops, fixing transcript errors, rejecting false decisions, or merging duplicate projects.
 
-## 触发条件
+## Trigger
 
-- 用户说“这不是项目”
-- 用户说“这个已经做完了”
-- 用户说“这条待办不重要”
-- 用户说“这两个项目该合并”
+Use it when the user says things like:
+- this is wrong
+- I already did that
+- this is not a project
+- merge these two project names
+- fix this transcript spelling
 
-## 执行动作
+## Action
 
-- `openmy skill correction.apply --op close-loop --arg "任务标题" --json`
+- `openmy skill correction.apply --op close-loop --arg "Task Title" --json`
+- `openmy skill correction.apply --op typo --arg "Cload" --arg "Claude" --date YYYY-MM-DD --json`
 
-## 禁止事项
+## Restrictions
 
-- 不要直接编辑纠错历史文件
-- 不要直接改上下文快照
-- 不要跳过动作契约去调用内部实现
+- Do not edit correction history files directly.
+- Do not edit the context snapshot directly.
+- Do not bypass the stable action contract.
 
-## 输出说明
+## Output
 
-- 先读 `human_summary`
-- 再确认 `data.op` 和 `data.args`
-- 如需刷新当前上下文视图，再转到 openmy-context-read
+- lead with `human_summary`
+- confirm `data.op` and `data.args`
+- if the user wants a refreshed view, route to `openmy-context-read`
+
+## Available Operations
+
+| Operation | Purpose | Args | Needs --date? |
+|-----------|---------|------|:---:|
+| `close-loop` | Mark a task/loop as done | `--arg "task title"` | No |
+| `typo` | Fix a transcription error | `--arg "wrong" --arg "right"` | Yes |
+| `reject-decision` | Remove a false decision | `--arg "decision text"` | No |
+| `merge-project` | Merge duplicate projects | `--arg "source" --arg "target"` | No |
+
+Examples:
+
+```
+openmy skill correction.apply --op close-loop --arg "Finalize README" --json
+openmy skill correction.apply --op typo --arg "Cload" --arg "Claude" --date 2026-04-08 --json
+openmy skill correction.apply --op reject-decision --arg "要退休了" --json
+openmy skill correction.apply --op merge-project --arg "openmy" --arg "OpenMy" --json
+```
+
+Pick the operation that matches the user's correction intent.

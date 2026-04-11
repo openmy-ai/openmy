@@ -1,27 +1,38 @@
 # OpenMy Day View
 
-## 用途
+## Purpose
 
-读取某天日报、时间线、场景和提取结果，不重新处理数据。
+Read one processed day without re-running anything.
 
-## 触发条件
+## Trigger
 
-- 用户要看某天日报
-- 用户要看某天时间线或提取结果
-- Agent 需要确认某天已有产物
+Use it when the user asks for:
+- the briefing for a day
+- the timeline for a day
+- the scenes for a day
+- the extracted results for a day
+- confirmation that a day already has outputs
 
-## 执行动作
+## Action
 
 - `openmy skill day.get --date YYYY-MM-DD --json`
 
-## 禁止事项
+## Restrictions
 
-- 不要自动触发重跑
-- 不要直接修改当天数据目录
-- 不要把查看动作升级成处理动作
+- Do not auto re-run the day.
+- Do not edit files inside the day folder.
+- Do not turn a read into a write unless the user asks.
 
-## 输出说明
+## Output
 
-- 优先读 `human_summary`
-- 再从 `data.status`、`data.briefing`、`data.scenes` 里取细节
-- 如果发现当天缺产物，再转到 openmy-day-run
+- lead with `human_summary`
+- use `data.briefing`, `data.scenes`, and `data.status` for detail
+- if outputs are missing, offer `openmy-day-run`
+
+## Agent Behavior After Viewing Results
+
+1. lead with the one-line summary
+2. list key events and decisions
+3. highlight open items from that day
+4. if the day is incomplete, explain what is missing
+5. if no data exists, ask whether the user has audio for that date

@@ -1,111 +1,80 @@
 # OpenMy Architecture
 
-## 主定义
+## Core definition
 
-OpenMy 是一个**个人上下文引擎**，不是 MCP Server，也不是笔记工具。
+OpenMy is a personal context engine.
+It is not an MCP server and not a generic note tool.
 
-它的主架构固定为：
+The fixed architecture is:
 
 ```text
-个人上下文引擎
-  + 总 Skill 编排层
-  + 子 Skill 工作流层
-  + CLI 执行层
-  + 前端展示层
+personal context engine
+  + router skill layer
+  + sub-skill workflow layer
+  + CLI execution layer
+  + frontend display layer
 ```
 
-## 五层分工
+## Responsibility split
 
-### 1. 个人上下文引擎
+### 1. Personal context engine
 
-系统中心资产不变：
-
+Core assets:
 - `data/active_context.json`
 - `data/corrections.jsonl`
-- 各天数据目录
-- `src/openmy/services/*` 管线
+- `data/profile.json`
+- per-day data folders
+- `src/openmy/services/*`
 
-这一层负责状态、证据、管线和纠错。
+This layer owns state, evidence, processing, and correction history.
 
-### 2. 总 Skill 编排层
+### 2. Router skill layer
 
-总 Skill 只负责：
+The router skill only:
+- classifies the task
+- picks the right sub-skill
+- enforces boundaries and order
 
-- 判断任务类型
-- 选择子 Skill
-- 规定执行顺序和禁令
+### 3. Sub-skill workflow layer
 
-### 3. 子 Skill 工作流层
+Each sub-skill handles one workflow only:
+- startup context
+- context reading
+- context query
+- single-day processing
+- single-day viewing
+- corrections
+- status review
+- vocab setup
+- profile setup
 
-子 Skill 一次只做一类工作流：
+### 4. CLI execution layer
 
-- 启动上下文
-- 上下文读取
-- 单日处理
-- 单日查看
-- 纠错闭环
-- 状态总览
-
-### 4. CLI 执行层
-
-Agent 稳定后端入口固定为：
+The stable backend entrypoint is:
 
 ```bash
 openmy skill <action> --json
 ```
 
-CLI 只负责执行动作契约，不承载产品定义。
+The CLI executes contracts.
+It does not define the product.
 
-### 5. 前端展示层
+### 5. Frontend display layer
 
-`app/` 只给用户看。  
-人类入口仍然是 `openmy quick-start`；Agent 入口是 `openmy skill ... --json`。
+`app/` is for human viewing only.
+Human entrypoint stays `openmy quick-start`.
+Agent entrypoint stays `openmy skill ... --json`.
 
-## 系统中心
-
-```text
-active_context.json     ← 当前状态快照
-corrections.jsonl       ← append-only 纠错历史
-```
-
-所有推断都围绕这两类中心资产聚合和纠偏。
-
-## 当前处理管线
+## Current processing chain
 
 ```text
-音频
-  → ingest
-  → cleaning
-  → segmentation
-  → distillation
-  → extraction
-  → consolidation
-  → active_context / corrections
-  → Agent / frontend
-```
-
-角色识别代码仍保留在仓库里，但不再是这轮架构定义的中心。
-
-## 仓库落点
-
-```text
-src/openmy/
-  cli.py
-  skill_dispatch.py
-  commands/
-  services/
-  providers/
-
-skills/
-  openmy/
-  openmy-startup-context/
-  openmy-context-read/
-  openmy-day-run/
-  openmy-day-view/
-  openmy-correction-apply/
-  openmy-status-review/
-
-app/
-  server.py
-  index.html
+audio
+  -> ingest
+  -> cleaning
+  -> segmentation
+  -> distillation
+  -> extraction
+  -> consolidation
+  -> active_context / corrections
+  -> agent / frontend
 ```

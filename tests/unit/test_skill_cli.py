@@ -292,7 +292,7 @@ class TestSkillCliContract(unittest.TestCase):
             "action": "status.get",
             "version": "v1",
             "data": {"total_days": 2},
-            "human_summary": "共有 2 天数据。",
+            "human_summary": "2 days of data available.",
             "artifacts": {},
             "next_actions": [],
         }
@@ -402,15 +402,85 @@ class TestSkillCliContract(unittest.TestCase):
             self.assertFalse(payload["ok"])
             self.assertEqual(payload["action"], "day.run")
             self.assertEqual(payload["error_code"], "missing_stt_key")
-            self.assertIn("语音转写 KEY", payload["message"])
+            self.assertIn("speech-to-text API key", payload["message"])
             self.assertIn(".env", payload["hint"])
-            self.assertIn("API 转写", payload["hint"])
+            self.assertIn("OPENMY_STT_API_KEY", payload["hint"])
         finally:
             audio_path.unlink(missing_ok=True)
             self.cleanup_day_dir(date_str)
             self.cleanup_context_outputs()
             if backup_path.exists():
                 backup_path.rename(env_path)
+
+    def test_skill_vocab_init_creates_missing_files(self):
+        corrections_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "corrections.json"
+        vocab_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "vocab.txt"
+        original_corrections = self.read_optional_text(corrections_path)
+        original_vocab = self.read_optional_text(vocab_path)
+        corrections_path.unlink(missing_ok=True)
+        vocab_path.unlink(missing_ok=True)
+
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "openmy", "skill", "vocab.init", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertIn("corrections.json", payload["data"]["created"])
+            self.assertIn("vocab.txt", payload["data"]["created"])
+            self.assertTrue(corrections_path.exists())
+            self.assertTrue(vocab_path.exists())
+        finally:
+            self.restore_optional_text(corrections_path, original_corrections)
+            self.restore_optional_text(vocab_path, original_vocab)
+
+    def test_skill_profile_get_and_set_round_trip(self):
+        profile_path = PROJECT_ROOT / "data" / "profile.json"
+        original_profile = self.read_optional_text(profile_path)
+
+        try:
+            set_result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "openmy",
+                    "skill",
+                    "profile.set",
+                    "--name",
+                    "Alice",
+                    "--language",
+                    "en-US",
+                    "--timezone",
+                    "America/Los_Angeles",
+                    "--json",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(set_result.returncode, 0, set_result.stdout + set_result.stderr)
+            set_payload = json.loads(set_result.stdout)
+            self.assertEqual(set_payload["data"]["profile"]["name"], "Alice")
+
+            get_result = subprocess.run(
+                [sys.executable, "-m", "openmy", "skill", "profile.get", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=PROJECT_ROOT,
+            )
+            self.assertEqual(get_result.returncode, 0, get_result.stdout + get_result.stderr)
+            get_payload = json.loads(get_result.stdout)
+            self.assertEqual(get_payload["data"]["profile"]["language"], "en-US")
+            self.assertEqual(get_payload["data"]["profile"]["timezone"], "America/Los_Angeles")
+        finally:
+            self.restore_optional_text(profile_path, original_profile)
 
 
 if __name__ == "__main__":

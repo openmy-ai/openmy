@@ -1189,6 +1189,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_skill.add_argument("--include-evidence", action="store_true", help="给 context.query 返回证据来源")
     p_skill.add_argument("--level", type=int, default=1, choices=[0, 1], help="给 context.get 使用的层级")
     p_skill.add_argument("--compact", action="store_true", help="给 context.get 输出压缩 Markdown")
+    p_skill.add_argument("--name", help="给 profile.set 使用的名字")
+    p_skill.add_argument("--language", help="给 profile.set 使用的语言")
+    p_skill.add_argument("--timezone", help="给 profile.set 使用的时区")
     p_skill.add_argument("--json", action="store_true", help="兼容参数；skill 默认输出 JSON")
 
     return parser

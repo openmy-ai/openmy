@@ -141,20 +141,20 @@ def _require_date(action: str, date_str: str | None) -> str:
         raise SkillDispatchError(
             action=action,
             error_code="missing_date",
-            message="缺少日期参数。",
-            hint="请传入 --date YYYY-MM-DD。",
+            message="Missing date argument.",
+            hint="Pass --date YYYY-MM-DD.",
         )
     return final_date
 
 
 def _format_day_summary(date_str: str, status: dict[str, Any]) -> str:
     if status.get("has_briefing"):
-        return f"{date_str} 已有日报；共 {status.get('scene_count', 0)} 个场景。"
+        return f"Briefing ready for {date_str}; {status.get('scene_count', 0)} scenes available."
     if status.get("has_scenes"):
-        return f"{date_str} 已切好场景；共 {status.get('scene_count', 0)} 个场景。"
+        return f"Scenes ready for {date_str}; {status.get('scene_count', 0)} scenes available."
     if status.get("has_transcript"):
-        return f"{date_str} 已有转写；还没产出日报。"
-    return f"{date_str} 还没有可用数据。"
+        return f"Transcript ready for {date_str}; briefing not generated yet."
+    return f"No usable data found for {date_str}."
 
 
 def handle_status_get(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
@@ -166,7 +166,11 @@ def handle_status_get(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         items.append(item)
 
     latest_date = items[0]["date"] if items else ""
-    human_summary = "还没有任何 OpenMy 数据。" if not items else f"共有 {len(items)} 天数据；最近一天是 {latest_date}。"
+    human_summary = (
+        "No OpenMy data found."
+        if not items
+        else f"{len(items)} days of data available; latest: {latest_date}."
+    )
     payload = build_success_payload(
         action="status.get",
         data={
@@ -176,7 +180,7 @@ def handle_status_get(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         },
         human_summary=human_summary,
         artifacts={"data_root": str(cli.DATA_ROOT)},
-        next_actions=[] if items else ["先处理一天音频，再回来查看整体状态。"],
+        next_actions=[] if items else ["Process one day of audio first, then check status again."],
     )
     return (payload, 0)
 
@@ -201,7 +205,7 @@ def handle_day_get(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         artifacts={key: str(path) for key, path in paths.items()},
         next_actions=[]
         if status.get("has_briefing")
-        else [f"如需补当天产物，请运行 openmy skill day.run --date {date_str} --json。"],
+        else [f"To generate missing outputs, run: openmy skill day.run --date {date_str} --json"],
     )
     return (payload, 0)
 
@@ -232,7 +236,7 @@ def handle_context_get(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     payload = build_success_payload(
         action="context.get",
         data=data,
-        human_summary=ctx.status_line or "活动上下文已更新。",
+        human_summary=ctx.status_line or "Active context updated.",
         artifacts=artifacts,
         next_actions=[],
     )
@@ -253,18 +257,117 @@ def handle_context_query(args: argparse.Namespace) -> tuple[dict[str, Any], int]
             build_error_payload(
                 action="context.query",
                 error_code="query_failed",
-                message=str(result.get("error") or "查询失败。"),
+                message=str(result.get("error") or "Query failed."),
                 data={"result": result},
             ),
             1,
         )
 
+    count = len(result.get("items", []))
+    label_map = {
+        "project": "project",
+        "person": "person",
+        "open": "open item",
+        "closed": "closed item",
+        "evidence": "evidence item",
+    }
+    kind = str(getattr(args, "kind", "") or "").strip()
+    noun = label_map.get(kind, "item")
+    summary = f"Found {count} {noun}{'' if count == 1 else 's'}." if count else f"No {noun}s found."
+
     payload = build_success_payload(
         action="context.query",
         data={"result": result},
-        human_summary="查询已完成。",
+        human_summary=summary,
         artifacts={"active_context": str(cli.DATA_ROOT / "active_context.json")},
         next_actions=[],
+    )
+    return (payload, 0)
+
+
+def handle_vocab_init(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    del args
+    from openmy.services.cleaning.cleaner import (
+        CORRECTIONS_EXAMPLE_FILE,
+        CORRECTIONS_FILE,
+        VOCAB_EXAMPLE_FILE,
+        VOCAB_FILE,
+        resolve_resource_path,
+    )
+
+    created: list[str] = []
+    before_corrections = CORRECTIONS_FILE.exists()
+    before_vocab = VOCAB_FILE.exists()
+    corrections_path = resolve_resource_path(CORRECTIONS_FILE, CORRECTIONS_EXAMPLE_FILE, auto_init=True)
+    vocab_path = resolve_resource_path(VOCAB_FILE, VOCAB_EXAMPLE_FILE, auto_init=True)
+
+    if corrections_path and not before_corrections and corrections_path == CORRECTIONS_FILE:
+        created.append("corrections.json")
+    if vocab_path and not before_vocab and vocab_path == VOCAB_FILE:
+        created.append("vocab.txt")
+
+    payload = build_success_payload(
+        action="vocab.init",
+        data={
+            "created": created,
+            "corrections_exists": bool(corrections_path and corrections_path.exists()),
+            "vocab_exists": bool(vocab_path and vocab_path.exists()),
+        },
+        human_summary=(
+            f"Vocabulary initialized; created {', '.join(created)}."
+            if created
+            else "Vocabulary already initialized."
+        ),
+        artifacts={
+            "corrections": str(CORRECTIONS_FILE),
+            "vocab": str(VOCAB_FILE),
+        },
+        next_actions=["Review the example entries and replace them with your real names, projects, and terms."],
+    )
+    return (payload, 0)
+
+
+def handle_profile_get(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    del args
+    from openmy.services.context.consolidation import load_profile_settings, profile_path
+
+    cli = _cli()
+    profile = load_profile_settings(cli.DATA_ROOT)
+    payload = build_success_payload(
+        action="profile.get",
+        data={"profile": profile},
+        human_summary=f"Profile ready for {profile.get('name', 'user')}.",
+        artifacts={"profile": str(profile_path(cli.DATA_ROOT))},
+        next_actions=[],
+    )
+    return (payload, 0)
+
+
+def handle_profile_set(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from openmy.services.context.consolidation import profile_path, save_profile_settings
+
+    cli = _cli()
+    updates = {
+        "name": str(getattr(args, "name", "") or "").strip(),
+        "language": str(getattr(args, "language", "") or "").strip(),
+        "timezone": str(getattr(args, "timezone", "") or "").strip(),
+    }
+    final_updates = {key: value for key, value in updates.items() if value}
+    if not final_updates:
+        raise SkillDispatchError(
+            action="profile.set",
+            error_code="missing_profile_fields",
+            message="No profile fields provided.",
+            hint="Pass at least one of --name, --language, or --timezone.",
+        )
+
+    profile = save_profile_settings(cli.DATA_ROOT, final_updates)
+    payload = build_success_payload(
+        action="profile.set",
+        data={"profile": profile, "updated_fields": sorted(final_updates.keys())},
+        human_summary=f"Profile updated for {profile.get('name', 'user')}.",
+        artifacts={"profile": str(profile_path(cli.DATA_ROOT))},
+        next_actions=["Run openmy skill context.get --json if you want a fresh context snapshot."],
     )
     return (payload, 0)
 
@@ -281,16 +384,16 @@ def _validate_day_run_inputs(args: argparse.Namespace) -> None:
         raise SkillDispatchError(
             action="day.run",
             error_code="missing_reusable_data",
-            message="要求跳过转写，但当天没有任何可复用数据。",
-            hint="请去掉 --skip-transcribe，或先确认该日期已有 transcript/scenes 数据。",
+            message="Skip-transcribe requested, but no reusable data found for that date.",
+            hint="Remove --skip-transcribe, or make sure transcript/scenes data already exists for that date.",
         )
 
     if not args.audio and not args.skip_transcribe and not (paths["raw"].exists() or paths["transcript"].exists()):
         raise SkillDispatchError(
             action="day.run",
             error_code="missing_audio",
-            message="没有输入音频，也没有现成 transcript 数据。",
-            hint="请提供 --audio，或先确认该日期已有数据。",
+            message="No audio provided and no existing transcript data found.",
+            hint="Pass --audio, or make sure data already exists for that date.",
         )
 
     if args.audio and not args.skip_transcribe:
@@ -305,8 +408,8 @@ def _validate_day_run_inputs(args: argparse.Namespace) -> None:
             raise SkillDispatchError(
                 action="day.run",
                 error_code="missing_stt_key",
-                message=cli.missing_stt_key_message(),
-                hint=cli.missing_stt_key_hint(),
+                message="Missing speech-to-text API key.",
+                hint="If you want API transcription, add GEMINI_API_KEY or OPENMY_STT_API_KEY to the current project .env file.",
                 data={
                     "date": date_str,
                     "audio_files": [str(path) for path in audio_files],
@@ -340,8 +443,8 @@ def handle_day_run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         error_payload = build_error_payload(
             action="day.run",
             error_code="run_failed",
-            message=message or f"{date_str} 的处理失败了。",
-            hint="先看 run_status 里的失败步骤，再决定是否重跑。",
+            message=message or f"Processing failed for {date_str}.",
+            hint="Check the failed step in run_status, then decide whether to re-run it.",
             data={
                 "date": date_str,
                 "exit_code": exit_code,
@@ -350,9 +453,14 @@ def handle_day_run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         )
         return (error_payload, exit_code)
 
-    summary = f"{date_str} 处理完成。"
+    summary = f"Processing complete for {date_str}."
     if final_status == "partial" or exit_code == 2:
-        summary = f"{date_str} 已部分完成；主链产物已落盘，但有后续步骤失败。"
+        summary = f"{date_str} partially complete; main artifacts saved but some later steps failed."
+
+    next_actions: list[str] = [] if final_status == "completed" else ["Check run_status and decide whether to re-run failed steps."]
+    from openmy.services.cleaning.cleaner import CORRECTIONS_FILE
+    if not CORRECTIONS_FILE.exists():
+        next_actions.append("Personal vocab not initialized. Run: openmy skill vocab.init --json")
 
     payload = build_success_payload(
         action="day.run",
@@ -363,7 +471,7 @@ def handle_day_run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         },
         human_summary=summary,
         artifacts=_collect_run_artifacts(run_status, status_path),
-        next_actions=[] if final_status == "completed" else ["查看 run_status 并决定是否补跑失败步骤。"],
+        next_actions=next_actions,
     )
     return (payload, exit_code)
 
@@ -374,16 +482,16 @@ def handle_correction_apply(args: argparse.Namespace) -> tuple[dict[str, Any], i
         raise SkillDispatchError(
             action="correction.apply",
             error_code="missing_operation",
-            message="缺少纠错动作。",
-            hint="请传入 --op 和一个或多个 --arg，或继续使用 --correct-args。",
+            message="Missing correction operation.",
+            hint="Pass --op and one or more --arg values, or keep using --correct-args.",
         )
 
     if tokens[0] in {"typo", "scene-role"} and not str(getattr(args, "date", "") or "").strip():
         raise SkillDispatchError(
             action="correction.apply",
             error_code="missing_date",
-            message=f"{tokens[0]} 纠错动作缺少日期。",
-            hint="请传入 --date YYYY-MM-DD。",
+            message=f"Correction operation {tokens[0]} requires a date.",
+            hint="Pass --date YYYY-MM-DD.",
             data={"op": tokens[0], "args": tokens[1:]},
         )
 
@@ -392,8 +500,8 @@ def handle_correction_apply(args: argparse.Namespace) -> tuple[dict[str, Any], i
         error_payload = build_error_payload(
             action="correction.apply",
             error_code="correction_failed",
-            message=f"纠错动作执行失败：{tokens[0]}",
-            hint="先确认 active_context 已存在，且参数与当前上下文里的标题一致。",
+            message=f"Correction operation failed: {tokens[0]}",
+            hint="Make sure active_context exists and the arguments match titles in the current context.",
             data={"op": tokens[0], "args": tokens[1:], "status": args.status},
         )
         return (error_payload, exit_code)
@@ -401,9 +509,9 @@ def handle_correction_apply(args: argparse.Namespace) -> tuple[dict[str, Any], i
     payload = build_success_payload(
         action="correction.apply",
         data={"op": tokens[0], "args": tokens[1:], "status": args.status},
-        human_summary=f"已记录纠错动作：{tokens[0]}。",
+        human_summary=f"Correction recorded: {tokens[0]}.",
         artifacts={"corrections": str(_cli().DATA_ROOT / "corrections.jsonl")},
-        next_actions=["如需刷新上下文视图，再运行 openmy skill context.get --json。"],
+        next_actions=["To refresh context view, run: openmy skill context.get --json"],
     )
     return (payload, 0)
 
@@ -411,10 +519,13 @@ def handle_correction_apply(args: argparse.Namespace) -> tuple[dict[str, Any], i
 ACTION_HANDLERS: dict[str, Callable[[argparse.Namespace], tuple[dict[str, Any], int]]] = {
     "context.get": handle_context_get,
     "context.query": handle_context_query,
+    "profile.get": handle_profile_get,
+    "profile.set": handle_profile_set,
     "day.get": handle_day_get,
     "day.run": handle_day_run,
     "correction.apply": handle_correction_apply,
     "status.get": handle_status_get,
+    "vocab.init": handle_vocab_init,
 }
 
 
@@ -424,8 +535,8 @@ def dispatch_skill_action(action: str, args: argparse.Namespace) -> tuple[dict[s
         payload = build_error_payload(
             action=action,
             error_code="unknown_action",
-            message=f"不支持的 skill 动作：{action}",
-            hint=f"可用动作：{', '.join(ACTION_HANDLERS.keys())}",
+            message=f"Unsupported skill action: {action}",
+            hint=f"Available actions: {', '.join(ACTION_HANDLERS.keys())}",
         )
         return (payload, 1)
 

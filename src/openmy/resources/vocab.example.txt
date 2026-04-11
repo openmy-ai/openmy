@@ -1,8 +1,8 @@
-# OpenMy 示例词库
-# 每行一个词条，格式：正确写法 | 可选说明
-# 首次使用时可复制为 vocab.txt 后按需追加个人专有词汇
+# OpenMy example vocabulary
+# One entry per line. Format: correct form | optional note
+# On first use, copy this file to vocab.txt and append your own names and terms.
 
-# ── 技术词汇示例 ──────────────────────────────────
-Claude | Anthropic 的 AI 模型
-TED Talk | 技术演讲品牌示例
-Postgres | 常见数据库名称
+# ── Example technical terms ─────────────────────────────────
+Claude | Anthropic AI model
+TED Talk | Example technical talk brand
+Postgres | Common database name
