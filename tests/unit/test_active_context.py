@@ -36,8 +36,8 @@ class TestActiveContextModel(unittest.TestCase):
             status_line="最近主要推进 OpenMy 第四层，总共有 2 个待办没闭环。",
             stable_profile=StableProfile(
                 identity=Identity(
-                    canonical_name="周瑟夫",
-                    preferred_name="周瑟夫",
+                    canonical_name="test_user",
+                    preferred_name="test_user",
                     roles=["solo_founder", "builder"],
                 ),
                 communication_contract=CommunicationContract(
@@ -239,7 +239,7 @@ class TestActiveContextModel(unittest.TestCase):
 
         restored = ActiveContext.from_dict(context)
 
-        self.assertEqual(restored.stable_profile.identity.canonical_name, "周瑟夫")
+        self.assertEqual(restored.stable_profile.identity.canonical_name, "test_user")
         self.assertFalse(hasattr(restored, "unknown_top_level"))
 
     def test_from_dict_backfills_core_memory_for_legacy_payload(self):

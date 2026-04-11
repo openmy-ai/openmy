@@ -23,7 +23,7 @@ class TestContextQuery(unittest.TestCase):
                 "generated_at": "2026-04-10T21:00:00+08:00",
                 "status_line": "最近主要推进 OpenMy；当前有 2 个待办未闭环；高频互动对象是 张总。",
                 "stable_profile": {
-                    "identity": {"canonical_name": "周瑟夫"},
+                    "identity": {"canonical_name": "test_user"},
                     "communication_contract": {},
                     "key_people_registry": [
                         {

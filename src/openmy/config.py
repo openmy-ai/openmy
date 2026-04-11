@@ -66,6 +66,14 @@ def get_llm_model() -> str:
     return _read_env("OPENMY_LLM_MODEL", "GEMINI_MODEL") or GEMINI_MODEL
 
 
+def get_user_canonical_name() -> str:
+    return _read_env("OPENMY_USER_CANONICAL_NAME", "OPENMY_USER_NAME") or "user"
+
+
+def get_user_preferred_name() -> str:
+    return _read_env("OPENMY_USER_PREFERRED_NAME", "OPENMY_USER_CANONICAL_NAME", "OPENMY_USER_NAME") or "user"
+
+
 def get_stage_llm_model(stage: str | None = None) -> str:
     stage_env_map = {
         "distill": "OPENMY_DISTILL_MODEL",

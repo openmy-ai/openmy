@@ -10,7 +10,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from openmy.config import ROLE_RECOGNITION_ENABLED
+from openmy.config import ROLE_RECOGNITION_ENABLED, get_user_canonical_name, get_user_preferred_name
 from openmy.domain.intent import (
     DONE_STATUSES,
     Event,
@@ -668,8 +668,8 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
 
     ctx.stable_profile = StableProfile(
         identity=Identity(
-            canonical_name="周瑟夫",
-            preferred_name="周瑟夫",
+            canonical_name=get_user_canonical_name(),
+            preferred_name=get_user_preferred_name(),
             primary_language="zh-CN",
             timezone="Asia/Shanghai",
             roles=["solo_founder", "builder"],

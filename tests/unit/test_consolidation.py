@@ -104,7 +104,7 @@ class TestConsolidation(unittest.TestCase):
 
             ctx = consolidate(data_root)
 
-            self.assertEqual(ctx.stable_profile.identity.canonical_name, "周瑟夫")
+            self.assertEqual(ctx.stable_profile.identity.canonical_name, "user")
             self.assertEqual(ctx.realtime_context.ingestion_health.last_processed_date, "2026-04-07")
             self.assertTrue(ctx.status_line)
             self.assertTrue(ctx.core_memory.focus_projects)

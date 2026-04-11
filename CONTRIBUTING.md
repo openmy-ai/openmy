@@ -1,8 +1,8 @@
 # Contributing to OpenMy
 
-感谢你对 OpenMy 的关注！
+Thanks for your interest in OpenMy.
 
-## 开发环境
+## Development setup
 
 ```bash
 git clone https://github.com/openmy-ai/openmy.git
@@ -12,38 +12,35 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-## 运行测试
+## Run tests
 
 ```bash
 python3 -m pytest tests/ -v
 ```
 
-测试不依赖真实 API key，在没有 `GEMINI_API_KEY` 的环境也能全绿。
+The test suite does not require live API keys by default.
 
-## 提交规范
+## Commit style
 
-使用 [Conventional Commits](https://www.conventionalcommits.org/)：
+Use Conventional Commits when possible:
 
-- `feat:` 新功能
-- `fix:` 修 bug
-- `refactor:` 重构（不改行为）
-- `docs:` 文档
-- `test:` 测试
-- `chore:` 杂项
+- `feat:` new features
+- `fix:` bug fixes
+- `refactor:` internal restructuring without behavior changes
+- `docs:` documentation updates
+- `test:` test-only changes
+- `chore:` maintenance work
 
-## PR 流程
+## Pull requests
 
-1. Fork → 新分支
-2. 改代码 + 补测试
-3. `pytest tests/` 全绿
-4. 提 PR，描述清楚改了什么、为什么
+1. Create a feature branch from the latest `main`
+2. Add or update tests for the change
+3. Run the full test suite
+4. Open a PR with a clear summary, rationale, and verification notes
 
-## 代码风格
+## Code style
 
 - Python 3.10+
-- 变量名用英文，注释和用户可见文案用中文
-- 每个 service 模块独立，不跨模块直接 import 内部函数
-
-## 有问题？
-
-开 Issue 或直接在 PR 里讨论。
+- English identifiers in code
+- User-facing copy should stay concise and product-oriented
+- Keep service boundaries explicit; avoid importing private internals across modules

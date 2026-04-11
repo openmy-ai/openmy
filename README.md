@@ -9,7 +9,7 @@
 [![Release](https://img.shields.io/github/v/release/openmy-ai/openmy?style=flat-square&color=blue)](https://github.com/openmy-ai/openmy/releases)
 [![MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
-[![Tests](https://img.shields.io/badge/tests-167%20passed-brightgreen?style=flat-square)]()
+[![Tests](https://img.shields.io/badge/tests-313%20passed-brightgreen?style=flat-square)]()
 
 [English](README.en.md)
 
