@@ -224,15 +224,28 @@ def split_long_paragraphs(text: str) -> str:
 #  纠错替换
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CORRECTIONS_FILE = Path(__file__).resolve().parent.parent.parent / 'resources' / 'corrections.json'
+RESOURCES_DIR = Path(__file__).resolve().parent.parent.parent / 'resources'
+CORRECTIONS_FILE = RESOURCES_DIR / 'corrections.json'
+CORRECTIONS_EXAMPLE_FILE = RESOURCES_DIR / 'corrections.example.json'
+VOCAB_FILE = RESOURCES_DIR / 'vocab.txt'
+VOCAB_EXAMPLE_FILE = RESOURCES_DIR / 'vocab.example.txt'
+
+
+def resolve_resource_path(primary: Path, fallback: Path) -> Path | None:
+    if primary.exists():
+        return primary
+    if fallback.exists():
+        return fallback
+    return None
 
 
 def load_corrections() -> list[dict]:
     """加载纠错词典"""
-    if not CORRECTIONS_FILE.exists():
+    final_path = resolve_resource_path(CORRECTIONS_FILE, CORRECTIONS_EXAMPLE_FILE)
+    if not final_path:
         return []
     try:
-        data = json.loads(CORRECTIONS_FILE.read_text(encoding='utf-8'))
+        data = json.loads(final_path.read_text(encoding='utf-8'))
         return data.get('corrections', [])
     except Exception:
         return []
@@ -268,7 +281,7 @@ def apply_corrections(text: str) -> str:
 
 def sync_correction_to_vocab(wrong: str, right: str, context: str = ''):
     """将纠正同步写入 vocab.txt（事前预防层）"""
-    vocab_file = Path(__file__).resolve().parent.parent.parent / 'resources' / 'vocab.txt'
+    vocab_file = VOCAB_FILE
     if not vocab_file.exists():
         return
 

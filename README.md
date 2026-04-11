@@ -29,6 +29,14 @@ openmy quick-start path/to/your-audio.wav
 
 > 依赖：Python 3.10+、FFmpeg、一个可用的 provider key。默认推荐 Gemini，直接填 `GEMINI_API_KEY` 即可。
 
+**首次使用：初始化你的个人词库**
+```bash
+cp src/openmy/resources/corrections.example.json src/openmy/resources/corrections.json
+cp src/openmy/resources/vocab.example.txt src/openmy/resources/vocab.txt
+```
+
+这两个文件已加入 `.gitignore`，你可以自由加入自己的错词纠正和专有名词，不会被提交。
+
 ### Provider 配置
 
 - 默认推荐：`GEMINI_API_KEY`

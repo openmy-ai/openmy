@@ -25,10 +25,10 @@ from openmy.config import (
 )
 from openmy.providers.base import TranscriptionResult, TranscriptionSegment, TranscriptionWord
 from openmy.providers.registry import ProviderRegistry
+from openmy.services.cleaning.cleaner import VOCAB_EXAMPLE_FILE, VOCAB_FILE, resolve_resource_path
 
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
-VOCAB_FILE = ROOT_DIR / "src" / "openmy" / "resources" / "vocab.txt"
 AUDIO_TIME_RE = re.compile(r".*?(\d{8})_(\d{2})(\d{2})(\d{2}).*")
 SILENCE_FILTER = (
     "silenceremove="
@@ -303,7 +303,8 @@ def transcribe_audio_files(
 ) -> Path:
     del gemini_home
     output_dir.mkdir(parents=True, exist_ok=True)
-    vocab_terms = load_vocab_terms(VOCAB_FILE)
+    vocab_path = resolve_resource_path(VOCAB_FILE, VOCAB_EXAMPLE_FILE)
+    vocab_terms = load_vocab_terms(vocab_path) if vocab_path else ""
     persisted_chunk_dir = output_dir / "stt_chunks"
     persisted_chunk_dir.mkdir(parents=True, exist_ok=True)
 

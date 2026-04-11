@@ -1,0 +1,21 @@
+{
+  "_comment": "OpenMy 示例纠错词典（可复制为 corrections.json 后自行维护）",
+  "corrections": [
+    {
+      "wrong": "TedTalk",
+      "right": "TED Talk",
+      "context": "技术演讲品牌示例",
+      "count": 1,
+      "first_seen": "2026-04-11",
+      "last_updated": "2026-04-11T00:00:00+08:00"
+    },
+    {
+      "wrong": "postgress",
+      "right": "Postgres",
+      "context": "数据库名拼写示例",
+      "count": 1,
+      "first_seen": "2026-04-11",
+      "last_updated": "2026-04-11T00:00:00+08:00"
+    }
+  ]
+}

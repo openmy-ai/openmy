@@ -4,7 +4,10 @@ test_clean.py — 清洗模块测试
 
 cleaner 现在用规则引擎（不调 API），测试验证每条规则的行为。
 """
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from openmy.services.cleaning import cleaner as clean
@@ -105,6 +108,23 @@ class LongParagraphSplitTest(unittest.TestCase):
 
 class CorrectionTest(unittest.TestCase):
     """纠错替换"""
+
+    def test_load_corrections_falls_back_to_example_file(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            example = tmp / "corrections.example.json"
+            example.write_text(
+                json.dumps({"corrections": [{"wrong": "TedTalk", "right": "TED Talk"}]}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            with (
+                patch.object(clean, "CORRECTIONS_FILE", tmp / "corrections.json"),
+                patch.object(clean, "CORRECTIONS_EXAMPLE_FILE", example),
+            ):
+                payload = clean.load_corrections()
+
+        self.assertEqual(payload, [{"wrong": "TedTalk", "right": "TED Talk"}])
 
     @patch('openmy.services.cleaning.cleaner.load_corrections')
     def test_corrections_applied(self, mock_load):

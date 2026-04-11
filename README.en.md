@@ -29,6 +29,14 @@ openmy quick-start path/to/your-audio.wav
 
 > Requirements: Python 3.10+, FFmpeg, and a usable provider key. The default path is still Gemini via `GEMINI_API_KEY`.
 
+**First use: initialize your private vocabulary files**
+```bash
+cp src/openmy/resources/corrections.example.json src/openmy/resources/corrections.json
+cp src/openmy/resources/vocab.example.txt src/openmy/resources/vocab.txt
+```
+
+These files are ignored by git so you can safely store personal typo fixes and proper nouns locally.
+
 ### Provider Config
 
 - Default shortcut: `GEMINI_API_KEY`

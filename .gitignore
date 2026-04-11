@@ -9,6 +9,8 @@ nohup.out
 *.mp3
 .DS_Store
 .env
+src/openmy/resources/corrections.json
+src/openmy/resources/vocab.txt
 
 # 个人数据不进仓库
 data/

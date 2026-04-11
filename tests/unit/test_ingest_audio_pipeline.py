@@ -68,6 +68,43 @@ class PrepareAudioChunksTest(unittest.TestCase):
 
 
 class TranscribeAudioFilesTest(unittest.TestCase):
+    def test_uses_vocab_example_when_private_vocab_missing(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            audio_one = tmp_path / "sample.wav"
+            sidecar = tmp_path / "sample.transcript.txt"
+            audio_one.write_bytes(b"wav")
+            sidecar.write_text("老婆，今天晚上吃火锅。", encoding="utf-8")
+            vocab_example = tmp_path / "vocab.example.txt"
+            vocab_example.write_text("Claude | Anthropic 的 AI 模型", encoding="utf-8")
+
+            with (
+                mock.patch.dict(
+                    "os.environ",
+                    {"OPENMY_STT_PROVIDER": "gemini"},
+                    clear=True,
+                ),
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.load_vocab_terms",
+                    return_value="Claude | Anthropic 的 AI 模型",
+                ) as load_vocab_mock,
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.VOCAB_FILE",
+                    tmp_path / "vocab.txt",
+                ),
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.VOCAB_EXAMPLE_FILE",
+                    vocab_example,
+                ),
+            ):
+                transcribe_audio_files(
+                    date_str="2026-04-10",
+                    audio_files=[str(audio_one)],
+                    output_dir=tmp_path,
+                )
+
+            load_vocab_mock.assert_called_once_with(vocab_example)
+
     def test_uses_sidecar_transcript_when_api_key_missing(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
