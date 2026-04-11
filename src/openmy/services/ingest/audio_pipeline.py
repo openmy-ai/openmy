@@ -416,15 +416,16 @@ def transcribe_audio_files(
                     )
                 )
 
-            transcribe_fn = lambda job: _transcribe_chunk_with_retry(
-                job,
-                provider_name=final_provider_name,
-                api_key=api_key,
-                model=final_model,
-                vocab_terms=vocab_terms,
-                vad_filter=final_vad_filter,
-                word_timestamps=final_word_timestamps,
-            )
+            def transcribe_fn(job: ChunkJob) -> tuple[ChunkJob, TranscriptionResult]:
+                return _transcribe_chunk_with_retry(
+                    job,
+                    provider_name=final_provider_name,
+                    api_key=api_key,
+                    model=final_model,
+                    vocab_terms=vocab_terms,
+                    vad_filter=final_vad_filter,
+                    word_timestamps=final_word_timestamps,
+                )
 
             if stt_provider_requires_api_key(final_provider_name):
                 with ThreadPoolExecutor(max_workers=5) as executor:
