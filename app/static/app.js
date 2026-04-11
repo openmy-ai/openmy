@@ -17,18 +17,18 @@ const PIPELINE_STATUS_LABELS = {
 const state = {
   allDates: [],
   stats: null,
+  route: 'home',
   currentDate: '',
   currentData: null,
   currentMeta: null,
   currentBriefing: null,
-  currentView: 'briefing',
-  activeFilters: new Set(),
   context: {},
   loops: [],
   projects: [],
   decisions: [],
   corrections: [],
   searchResults: [],
+  spotlightIndex: -1,
   jobs: [],
   selectedJobId: '',
   selectedJobDetail: null,
@@ -152,7 +152,6 @@ function renderContextQueryResult() {
   return `
     <div id="contextQueryResults" class="search-stack">
       <div class="callout" style="margin-bottom:16px">
-        <span class="callout-icon">🧭</span>
         <div class="callout-body">${escapeHtml(result.summary || '暂无结果')}</div>
       </div>
 
@@ -208,6 +207,120 @@ function formatPipelineStep(value) {
   return PIPELINE_KIND_LABELS[value] || value;
 }
 
+function renderPipelineJobDetail() {
+  const detail = state.selectedJobDetail;
+  if (!detail) {
+    return renderEmptyState('选择一条运行记录查看详情。');
+  }
+  return `
+    <div class="event-item"><strong>流程</strong><br>${escapeHtml(formatPipelineKind(detail.kind))}</div>
+    <div class="event-item"><strong>状态</strong><br>${escapeHtml(formatPipelineStatus(detail.status))}</div>
+    <div class="event-item"><strong>当前步骤</strong><br>${escapeHtml(formatPipelineStep(detail.current_step))}</div>
+    <div class="event-item"><strong>结果文件</strong><br>${escapeHtml((detail.artifacts || []).join(' / ') || '暂无')}</div>
+    <pre class="job-log">${escapeHtml((detail.log_lines || []).join('\n') || '暂无日志')}</pre>
+  `;
+}
+
+function parseIsoDate(dateStr) {
+  const [year, month, day] = String(dateStr || '').split('-').map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+}
+
+function formatShortDate(dateStr) {
+  const date = parseIsoDate(dateStr);
+  return `${date.getMonth() + 1}.${date.getDate()}`;
+}
+
+function formatRangeLabel(start, end) {
+  return `${formatShortDate(start)}–${formatShortDate(end)}`;
+}
+
+function truncateSummary(text, maxLength = 20) {
+  const summary = plainText(text || '');
+  if (!summary) return '暂无摘要';
+  return summary.length > maxLength ? `${summary.slice(0, maxLength)}…` : summary;
+}
+
+function latestDateInfo() {
+  return [...state.allDates].sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+}
+
+function filterDateRange(startDate, endDate) {
+  return [...state.allDates]
+    .filter((item) => item.date >= startDate && item.date <= endDate)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function latestWeekDates() {
+  const latest = latestDateInfo();
+  if (!latest) return [];
+  const anchor = parseIsoDate(latest.date);
+  const day = anchor.getDay() || 7;
+  const start = new Date(anchor);
+  start.setDate(anchor.getDate() - day + 1);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  const startLabel = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+  const endLabel = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+  return filterDateRange(startLabel, endLabel);
+}
+
+function latestMonthDates() {
+  const latest = latestDateInfo();
+  if (!latest) return [];
+  const anchor = parseIsoDate(latest.date);
+  const startLabel = `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, '0')}-01`;
+  return filterDateRange(startLabel, latest.date);
+}
+
+function countKeywordDays(keyword, dates) {
+  if (!keyword) return 0;
+  const pattern = keyword.toLowerCase();
+  return dates.filter((item) => {
+    const haystacks = [
+      item.summary,
+      ...(item.events || []).map((event) => event.what || event.summary || ''),
+      ...(item.decisions || []).map((decision) => decision.decision || decision.what || ''),
+      ...(item.todos || []).map((todo) => todo.task || todo.what || ''),
+    ];
+    return haystacks.some((entry) => String(entry || '').toLowerCase().includes(pattern));
+  }).length;
+}
+
+function uniqueTextItems(items, limit = 4) {
+  const values = [];
+  const seen = new Set();
+  items.forEach((item) => {
+    const normalized = plainText(item || '');
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    values.push(normalized);
+  });
+  return values.slice(0, limit);
+}
+
+function setRoute(route) {
+  state.route = route;
+  document.getElementById('settingsBtn')?.classList.remove('active');
+  renderSidebar();
+}
+
+function renderChipList(items, emptyText) {
+  if (!items.length) {
+    return `<div class="empty-state">${escapeHtml(emptyText)}</div>`;
+  }
+  return `<div class="summary-chip-list">${items.map((item) => `<span class="summary-chip">${escapeHtml(item)}</span>`).join('')}</div>`;
+}
+
+function rerenderSettingsOverlay() {
+  const overlay = document.getElementById('settingsOverlay');
+  if (!overlay?.classList.contains('active')) return;
+  const content = document.getElementById('settingsContent');
+  if (!content) return;
+  content.innerHTML = renderSettingsHTML();
+  applySettingsUI();
+}
+
 async function fetchJson(url, fallback = undefined) {
   try {
     const response = await fetch(url);
@@ -237,10 +350,12 @@ async function postJson(url, payload) {
 }
 
 async function init() {
-  document.getElementById('spotlightInput').addEventListener('input', (event) => {
+  const spotlightInput = document.getElementById('spotlightInput');
+  spotlightInput.addEventListener('input', (event) => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => runSearchSpotlight(event.target.value.trim()), 200);
   });
+  spotlightInput.addEventListener('keydown', handleSpotlightKeydown);
 
   applySettings();
   await loadSidebar();
@@ -250,10 +365,7 @@ async function init() {
     refreshCorrectionsFeed(),
     refreshPipelineJobs(),
   ]);
-
-  if (state.currentData) {
-    renderDayLayout();
-  }
+  renderHomePage();
 
   setInterval(refreshPipelineJobs, 5000);
 }
@@ -266,9 +378,7 @@ async function loadScreenContextSettings() {
     exclude_domains: [],
     exclude_window_keywords: [],
   });
-  if (document.getElementById('view-overview')) {
-    renderOverviewView();
-  }
+  rerenderSettingsOverlay();
 }
 
 async function loadSidebar() {
@@ -280,34 +390,19 @@ async function loadSidebar() {
   state.allDates = dates || [];
   state.stats = stats || {};
   renderSidebar();
-
-  const defaultDate = state.allDates.find((item) => item.is_default)?.date || state.allDates[0]?.date || '';
-  if (defaultDate) {
-    await loadDate(defaultDate);
-  } else {
-    document.getElementById('main').innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:75vh;text-align:center;color:var(--text-secondary);padding:40px;">
-        <div style="font-size:72px;margin-bottom:24px;filter:drop-shadow(0 10px 15px rgba(0,0,0,0.1));"></div>
-        <h2 style="font-size:32px;color:var(--text);margin-bottom:16px;font-family:var(--font-body);font-weight:800;letter-spacing:-0.03em;">这是你的主场</h2>
-        <p style="font-size:1.1rem;max-width:500px;line-height:1.6;margin-bottom:48px">上下文引擎已启动，但目前记忆库是空的。</p>
-        <div style="background:var(--bg-hover);padding:32px;border-radius:16px;text-align:left;border:1px solid var(--border);max-width:600px;width:100%;box-shadow:var(--shadow-sm);">
-          <div style="font-weight:700;color:var(--text);margin-bottom:16px;font-size:1.1rem;display:flex;align-items:center;gap:8px;">准备给 AI 喂点数据</div>
-          <p style="font-size:1rem;margin-bottom:16px;line-height:1.6;">打开本机终端，使用你的某段开会录音或日常语音，运行以下命令：</p>
-          <code style="display:block;background:var(--bg);color:var(--text);padding:16px 20px;border-radius:8px;font-family:monospace;font-size:14px;border:1px solid var(--border);">openmy quick-start path/to/your-audio.wav</code>
-          <p style="font-size:0.95rem;margin-top:20px;opacity:0.8;display:flex;align-items:center;gap:6px;">处理大约需要几分钟。完成后，刷新本页面即可查看所有的上下文流。</p>
-        </div>
-      </div>
-    `;
-  }
 }
 
 function renderSidebar() {
   const stats = state.stats || {};
   document.getElementById('stats').innerHTML = `
     <span class="stat-item"><span class="stat-num">${stats.total_dates || 0}</span>天</span>
-    <span class="stat-item"><span class="stat-num">${stats.total_segments || 0}</span>段</span>
+    <span class="stat-item"><span class="stat-num">${stats.total_segments || 0}</span>条</span>
     <span class="stat-item"><span class="stat-num">${fmtNum(stats.total_words || 0)}</span>字</span>
   `;
+
+  document.getElementById('homeBtn')?.classList.toggle('active', state.route === 'home');
+  document.getElementById('weeklyBtn')?.classList.toggle('active', state.route === 'weekly');
+  document.getElementById('monthlyBtn')?.classList.toggle('active', state.route === 'monthly');
 
   const dateList = document.getElementById('dateList');
   if (!state.allDates.length) {
@@ -316,12 +411,153 @@ function renderSidebar() {
   }
 
   dateList.innerHTML = state.allDates.map((item) => `
-    <button class="date-item ${item.date === state.currentDate ? 'active' : ''}" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
-      <span class="icon">📄</span>
-      ${escapeHtml(item.date)}
-      <span class="meta">${item.segments}段</span>
+    <button class="date-item ${state.route === 'date' && item.date === state.currentDate ? 'active' : ''}" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
+      <span>${escapeHtml(item.date)}</span>
+      <span class="meta">${item.segments}条</span>
     </button>
   `).join('');
+}
+
+function renderHomePage() {
+  closeSidebar();
+  setRoute('home');
+  state.currentDate = '';
+  const main = document.getElementById('main');
+  if (!state.allDates.length) {
+    main.innerHTML = `
+      <div class="home-page">
+        <h1>OpenMy</h1>
+        <div class="home-meta">还没有可读数据。先跑一次 quick-start（快速开始）把录音喂进来。</div>
+      </div>
+    `;
+    return;
+  }
+
+  const weekDates = latestWeekDates();
+  const latest = latestDateInfo();
+  const activeProjects = (state.context.active_projects || []).map((item) => item.title || item.project_id).filter(Boolean);
+  const projectItems = activeProjects.slice(0, 3).map((name) => `${name}(${countKeywordDays(name, weekDates)}d)`);
+  const decisionItems = (state.context.recent_decisions || []).slice(0, 3).map((item) => plainText(item.decision || item.summary || ''));
+  const loopItems = (state.context.open_loops || []).slice(0, 3).map((item) => plainText(item.title || item.loop_id || ''));
+
+  main.innerHTML = `
+    <div class="home-page">
+      <h1>OpenMy</h1>
+      <div class="home-meta">本周 ${formatRangeLabel(weekDates[weekDates.length - 1]?.date || latest.date, weekDates[0]?.date || latest.date)} · ${weekDates.length}天 · ${weekDates.reduce((sum, item) => sum + (item.segments || 0), 0)}条记录</div>
+
+      <div class="home-block">
+        <div class="section-kicker">待办</div>
+        ${renderChipList(loopItems, '当前没有待办')}
+      </div>
+      <div class="home-block">
+        <div class="section-kicker">项目</div>
+        ${renderChipList(projectItems, '当前没有项目')}
+      </div>
+      <div class="home-block">
+        <div class="section-kicker">决策</div>
+        ${renderChipList(decisionItems, '当前没有决策')}
+      </div>
+      <div class="home-block">
+        <div class="section-kicker">每日记录</div>
+        <div class="daily-link-list">
+          ${weekDates.map((item) => `
+            <button class="daily-link-item" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
+              <span class="daily-link-date">${escapeHtml(formatShortDate(item.date))}</span>
+              <span class="daily-link-summary">${escapeHtml(truncateSummary(item.summary || item.timeline?.[0]?.preview || ''))}</span>
+              <span class="daily-link-count">${item.segments || 0}条</span>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderReportPage(title, dates, extraMeta = '') {
+  const main = document.getElementById('main');
+  if (!dates.length) {
+    main.innerHTML = `<div class="report-page"><h1>${escapeHtml(title)}</h1><div class="report-meta">当前没有可汇总的数据。</div></div>`;
+    return;
+  }
+
+  const activeProjects = (state.context.active_projects || []).map((item) => item.title || item.project_id).filter(Boolean);
+  const projectItems = activeProjects.slice(0, 4).map((name) => `${name}(${countKeywordDays(name, dates)}d)`);
+  const decisionItems = uniqueTextItems(
+    dates.flatMap((item) => (item.decisions || []).map((decision) => decision.decision || decision.what || '')),
+    4,
+  );
+  const loopItems = uniqueTextItems(
+    dates.flatMap((item) => (item.todos || []).map((todo) => todo.task || todo.what || '')),
+    4,
+  );
+  const summaryText = uniqueTextItems(dates.map((item) => item.summary || ''), 3).join(' ');
+
+  main.innerHTML = `
+    <div class="report-page">
+      <h1>${escapeHtml(title)}</h1>
+      <div class="report-meta">${escapeHtml(extraMeta)}</div>
+      ${summaryText ? `<section class="summary-callout"><p>${escapeHtml(summaryText)}</p></section>` : ''}
+
+      <div class="report-block">
+        <div class="section-kicker">项目</div>
+        ${renderChipList(projectItems, '当前没有项目')}
+      </div>
+      <div class="report-block">
+        <div class="section-kicker">决策</div>
+        ${renderChipList(decisionItems, '当前没有决策')}
+      </div>
+      <div class="report-block">
+        <div class="section-kicker">待跟进</div>
+        ${renderChipList(loopItems, '当前没有待跟进')}
+      </div>
+      <div class="report-block">
+        <div class="section-kicker">每日概要</div>
+        <div class="daily-link-list">
+          ${dates.map((item) => `
+            <button class="daily-link-item" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
+              <span class="daily-link-date">${escapeHtml(formatShortDate(item.date))}</span>
+              <span class="daily-link-summary">${escapeHtml(truncateSummary(item.summary || item.timeline?.[0]?.preview || ''))}</span>
+              <span class="daily-link-count">${item.segments || 0}条</span>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderWeeklyReport() {
+  closeSidebar();
+  setRoute('weekly');
+  state.currentDate = '';
+  const dates = latestWeekDates();
+  if (!dates.length) {
+    renderReportPage('周报', [], '');
+    return;
+  }
+  const totalSegments = dates.reduce((sum, item) => sum + (item.segments || 0), 0);
+  renderReportPage(
+    `周报 ${formatRangeLabel(dates[dates.length - 1].date, dates[0].date)}`,
+    dates,
+    `${dates.length}天 · ${totalSegments}条记录`,
+  );
+}
+
+function renderMonthlyReport() {
+  closeSidebar();
+  setRoute('monthly');
+  state.currentDate = '';
+  const dates = latestMonthDates();
+  if (!dates.length) {
+    renderReportPage('月报', [], '');
+    return;
+  }
+  const totalSegments = dates.reduce((sum, item) => sum + (item.segments || 0), 0);
+  renderReportPage(
+    `月报 ${dates[0].date.slice(0, 7)}`,
+    dates,
+    `本月 ${dates.length}天有记录 · ${totalSegments}条记录`,
+  );
 }
 
 async function loadContext() {
@@ -337,11 +573,13 @@ async function loadContext() {
   state.projects = projects || [];
   state.decisions = decisions || [];
 
-  if (document.getElementById('view-overview')) {
-    renderOverviewView();
-  }
-  if (document.getElementById('view-corrections')) {
-    renderCorrectionsView();
+  rerenderSettingsOverlay();
+  if (state.route === 'home') {
+    renderHomePage();
+  } else if (state.route === 'weekly') {
+    renderWeeklyReport();
+  } else if (state.route === 'monthly') {
+    renderMonthlyReport();
   }
 }
 
@@ -354,7 +592,7 @@ async function runContextQuery(kind = '', query = '') {
   state.contextQuery.kind = finalKind;
   state.contextQuery.query = finalQuery;
   state.contextQuery.loading = true;
-  renderOverviewView();
+  rerenderSettingsOverlay();
 
   const params = new URLSearchParams({
     kind: finalKind,
@@ -377,7 +615,7 @@ async function runContextQuery(kind = '', query = '') {
     });
   } finally {
     state.contextQuery.loading = false;
-    renderOverviewView();
+    rerenderSettingsOverlay();
   }
 }
 
@@ -390,6 +628,7 @@ async function jumpToEvidence(date, timeRange = '', query = '') {
 }
 
 async function loadDate(date, focusTime = '', focusQuery = '') {
+  closeSidebar();
   // Template routes: /api/date/${date}/meta and /api/date/${date}/briefing
   const [detail, meta, briefing] = await Promise.all([
     fetchJson(`/api/date/${date}`, null),
@@ -402,15 +641,16 @@ async function loadDate(date, focusTime = '', focusQuery = '') {
     return;
   }
 
+  setRoute('date');
   state.currentDate = date;
   state.currentData = detail;
   state.currentMeta = meta || detail.meta || {};
   state.currentBriefing = briefing || null;
   renderSidebar();
   renderDayLayout();
+  window.scrollTo({ top: 0, behavior: 'auto' });
 
   if (focusTime) {
-    switchView('timeline');
     requestAnimationFrame(() => scrollToSegment(focusTime, focusQuery));
   }
 }
@@ -420,49 +660,49 @@ function renderDayLayout() {
   const meta = state.currentMeta || {};
   if (!detail) return;
 
-  let html = '';
-  html += `<div class="page-header">
-    
-    <div class="page-title">${escapeHtml(detail.date)}</div>
-    <div class="page-meta">
-      <span>${detail.segments.length} 条记录</span>
-      <span>${fmtNum(detail.word_count || 0)} 字</span>
-      <span>上下文 ${state.context.generated_at ? '已就绪' : '待生成'}</span>
-    </div>
-  </div>`;
+  const summaryText = plainText(state.currentBriefing?.summary || meta.daily_summary || state.context.status_line || '');
+  const headerMeta = [
+    detail.date,
+    `${detail.segments.length}条记录`,
+    `${fmtNum(detail.word_count || 0)}字`,
+  ];
 
-  const calloutText = meta.daily_summary || state.context.status_line || '';
-  if (calloutText) {
-    html += `<div class="callout">
-      
-      <div class="callout-body">${escapeHtml(plainText(calloutText))}</div>
-    </div>`;
-  }
-
-  html += renderMetaPanels(meta);
-
-  html += `<div class="view-tabs">
-    <button class="view-tab" id="tab-overview" onclick="switchView('overview')">概览 / 全局记忆库</button>
-    <button class="view-tab" id="tab-briefing" onclick="switchView('briefing')">今日日报</button>
-    <button class="view-tab" id="tab-timeline" onclick="switchView('timeline')">摘要时间线</button>
-    <button class="view-tab" id="tab-table" onclick="switchView('table')">完整逐字稿</button>
-    <button class="view-tab" id="tab-charts" onclick="switchView('charts')">数据图表</button>
-  </div>`;
-
-  html += '<div id="view-overview" class="view-content"></div>';
-  html += '<div id="view-briefing" class="view-content"></div>';
-  html += '<div id="view-timeline" class="view-content"></div>';
-  html += '<div id="view-table" class="view-content"></div>';
-  html += '<div id="view-charts" class="view-content"></div>';
-
-  document.getElementById('main').innerHTML = html;
+  document.getElementById('main').innerHTML = `
+    <article class="daily-article">
+      <header class="page-header">
+        <div class="page-title">${escapeHtml(detail.date)}</div>
+        <div class="page-meta">${headerMeta.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>
+      </header>
+      ${summaryText ? `<section class="summary-callout"><p>${escapeHtml(summaryText)}</p></section>` : ''}
+      ${renderMetaPanels(meta)}
+      <section class="article-section">
+        <h2>详细记录</h2>
+        <div class="record-list">
+          ${detail.segments.map((segment) => `
+            <div class="record-item" data-segment-time="${escapeHtml(segment.time)}">
+              <div class="record-time">${escapeHtml(segment.time)}</div>
+              <div class="record-body">
+                <span class="record-dot"></span>
+                <div class="record-card">
+                  <div class="record-summary seg-distilled">${getSegmentDistillation(segment, meta)}</div>
+                  <div class="record-toggle"><button class="raw-btn" type="button" onclick="toggleRawText(this)">显示原文</button></div>
+                  <div class="record-raw seg-raw">${fmtText(segment.text || '')}</div>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </section>
+      <section class="article-section">
+        <h2>数据图表</h2>
+        <div class="charts-grid">
+          <div class="chart-card"><h3>时段热度</h3><canvas id="chartTime"></canvas></div>
+        </div>
+      </section>
+    </article>
+  `;
   document.getElementById('settingsBtn')?.classList.remove('active');
-  renderOverviewView();
-  renderBriefingView();
-  renderTimelineView();
-  renderTableView();
-  renderChartsView();
-  switchView(state.currentView);
+  setTimeout(initCharts, 0);
 }
 
 function renderMetaPanels(meta) {
@@ -475,7 +715,8 @@ function renderMetaPanels(meta) {
 
   const cards = groups.map((group) => {
     const items = meta?.[group.key] || [];
-    return `<div class="prop-card">
+    return `<section class="meta-section" style="--section-color:${group.dot}">
+      <div class="prop-card">
       <div class="prop-card-title"><span class="dot" style="background:${group.dot}"></span>${group.title} <span class="prop-count">${items.length}</span></div>
       ${items.length ? items.map((item) => {
         const time = escapeHtml(item.time || '');
@@ -487,117 +728,17 @@ function renderMetaPanels(meta) {
           ${summary}
         </div>`;
       }).join('') : '<div class="empty-state">暂无</div>'}
-    </div>`;
+      </div>
+    </section>`;
   }).filter(Boolean);
 
-  if (!cards.length) return '';
-  return `<div class="props-grid">${cards.join('')}</div>`;
-}
-
-function renderOverviewView() {
-  const node = document.getElementById('view-overview');
-  if (!node) return;
-
-  const context = state.context || {};
-  const screenMode = state.screenSettings?.participation_mode || 'summary_only';
-  const modeLabel = screenMode === 'off' ? '关闭' : screenMode === 'full' ? '参与上下文' : '只保留摘要';
-
-  node.innerHTML = `
-    <div class="briefing-banner" style="background:linear-gradient(135deg,#0f766e 0%,#1d4ed8 100%)">
-      <h2>全局记忆库</h2>
-      <div class="briefing-summary">${escapeHtml(plainText(context.status_line || '最近的上下文还在整理中。'))}</div>
-      <div class="briefing-stats-row">
-        <div class="briefing-stat"><span class="briefing-stat-num">${state.projects.length}</span><span class="briefing-stat-label">项目</span></div>
-        <div class="briefing-stat"><span class="briefing-stat-num">${state.loops.length}</span><span class="briefing-stat-label">待跟进</span></div>
-        <div class="briefing-stat"><span class="briefing-stat-num">${state.decisions.length}</span><span class="briefing-stat-label">决策</span></div>
-        <div class="briefing-stat"><span class="briefing-stat-num">${(context.today_focus || []).length}</span><span class="briefing-stat-label">今日焦点</span></div>
-      </div>
-    </div>
-
-    <div class="briefing-grid">
-      <div class="briefing-card briefing-card-full">
-        <div class="briefing-card-title" onclick="this.parentElement.classList.toggle('collapsed')" style="cursor:pointer">项目 · 跟进 · 决策 <span style="float:right;color:var(--text-light);font-size:12px">▼ 点击展开</span></div>
-        <div class="collapsible-body" style="display:none">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:8px">
-            <div>
-              <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:6px">项目 (${state.projects.length})</div>
-              ${state.projects.map(p => `<div class="event-item">${escapeHtml(p.title || p.project_id)}</div>`).join('') || '<div class="empty-state">暂无</div>'}
-            </div>
-            <div>
-              <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:6px">待跟进 (${state.loops.length})</div>
-              ${state.loops.map(l => `<div class="event-item">${escapeHtml(l.title || l.loop_id)}</div>`).join('') || '<div class="empty-state">暂无</div>'}
-            </div>
-            <div>
-              <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:6px">决策 (${state.decisions.length})</div>
-              ${state.decisions.slice(0, 5).map(d => `<div class="event-item">${escapeHtml(plainText(d.decision || d.topic || ''))}</div>`).join('') || '<div class="empty-state">暂无</div>'}
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="briefing-card briefing-card-full">
-        <div class="briefing-card-title">🔎 Agent Query 工作台</div>
-        <div class="form-stack" style="margin-top:12px">
-          <div style="display:grid;grid-template-columns:180px 1fr auto;gap:12px;align-items:center">
-            <select id="contextQueryKind" class="field-select">
-              <option value="project" ${(state.contextQuery.kind || 'project') === 'project' ? 'selected' : ''}>项目</option>
-              <option value="person" ${state.contextQuery.kind === 'person' ? 'selected' : ''}>人物</option>
-              <option value="open" ${state.contextQuery.kind === 'open' ? 'selected' : ''}>未关闭待办</option>
-              <option value="closed" ${state.contextQuery.kind === 'closed' ? 'selected' : ''}>已关闭事项</option>
-              <option value="evidence" ${state.contextQuery.kind === 'evidence' ? 'selected' : ''}>证据</option>
-            </select>
-            <input id="contextQueryInput" class="field-input" type="text" value="${escapeHtml(state.contextQuery.query || '')}" placeholder="查 OpenMy / 张总 / 某条待办 / 某个证据" onkeydown="if(event.key==='Enter') runContextQuery()">
-            <button class="action-btn primary" type="button" onclick="runContextQuery()">查询</button>
-          </div>
-          ${renderContextQueryResult()}
-        </div>
-      </div>
-      <div class="briefing-card briefing-card-full">
-        <div class="briefing-card-title">屏幕上下文</div>
-        <div class="event-item">当前模式：${escapeHtml(modeLabel)}。关闭后系统退回纯语音；摘要模式默认保守；参与模式会让屏幕证据进入日报、提取和上下文闭环。</div>
-        <div class="inline-actions" style="margin-top:12px;flex-wrap:wrap">
-          <button class="action-btn ${screenMode === 'off' ? 'primary' : ''}" type="button" onclick="updateScreenContextMode('off')">关闭</button>
-          <button class="action-btn ${screenMode === 'summary_only' ? 'primary' : ''}" type="button" onclick="updateScreenContextMode('summary_only')">只保留摘要</button>
-          <button class="action-btn ${screenMode === 'full' ? 'primary' : ''}" type="button" onclick="updateScreenContextMode('full')">参与上下文</button>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:16px">
-          <div>
-            <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:6px">按应用排除</div>
-            <input id="screenExcludeApps" class="field-input" type="text" value="${escapeHtml((state.screenSettings.exclude_apps || []).join(', '))}" placeholder="例如：微信, 支付宝">
-          </div>
-          <div>
-            <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:6px">按域名排除</div>
-            <input id="screenExcludeDomains" class="field-input" type="text" value="${escapeHtml((state.screenSettings.exclude_domains || []).join(', '))}" placeholder="例如：taobao.com, bank.example.com">
-          </div>
-          <div>
-            <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:6px">按窗口标题排除</div>
-            <input id="screenExcludeWindows" class="field-input" type="text" value="${escapeHtml((state.screenSettings.exclude_window_keywords || []).join(', '))}" placeholder="例如：支付, 验证码, 钥匙串">
-          </div>
-        </div>
-        <div class="inline-actions" style="margin-top:12px">
-          <button class="action-btn primary" type="button" onclick="saveScreenContextExclusions()">保存屏幕上下文规则</button>
-        </div>
-        <div class="muted" style="margin-top:12px">会记录：时间、应用、窗口、域名、活动标签和过滤后的屏幕摘要。不会把密码、支付页、验证码、地址手机号等敏感内容直接送进主链。</div>
-      </div>
-    </div>
-  `;
-
-  // 展开/折叠逻辑
-  node.querySelectorAll('.briefing-card-title[onclick]').forEach(title => {
-    title.addEventListener('click', () => {
-      const body = title.nextElementSibling;
-      if (body) {
-        const isHidden = body.style.display === 'none';
-        body.style.display = isHidden ? 'block' : 'none';
-        title.querySelector('span').textContent = isHidden ? '▲ 收起' : '▼ 点击展开';
-      }
-    });
-  });
+  return cards.length ? `<div class="props-grid">${cards.join('')}</div>` : '';
 }
 
 function getSegmentDistillation(segment, meta) {
   const highlights = [];
   (meta.events || []).filter((item) => item.time === segment.time).forEach((item) => {
-    highlights.push(`<strong>${escapeHtml(item.project || '事件')}</strong> ${escapeHtml(plainText(item.summary || ''))}`);
+    highlights.push(`<strong>${escapeHtml(item.project || '事件')}</strong> ${escapeHtml(plainText(item.summary || item.what || ''))}`);
   });
   (meta.decisions || []).filter((item) => item.time === segment.time).forEach((item) => {
     highlights.push(`<strong>${escapeHtml(item.project || '决策')}</strong> ${escapeHtml(plainText(item.what || item.decision || ''))}`);
@@ -605,165 +746,12 @@ function getSegmentDistillation(segment, meta) {
   (meta.todos || []).filter((item) => item.time === segment.time).forEach((item) => {
     highlights.push(`<strong>${escapeHtml(item.project || '待办')}</strong> ${escapeHtml(plainText(item.task || ''))}`);
   });
-  if (highlights.length > 0) return highlights.join('<br>');
+  const preview = escapeHtml(plainText(segment.summary || segment.preview || segment.text || ''));
+  if (highlights.length > 0) {
+    return `${preview ? `<div>${preview}</div>` : ''}<div class="muted" style="margin-top:8px;font-size:14px;line-height:1.7">${highlights.join('<br>')}</div>`;
+  }
   if (segment.summary) return escapeHtml(plainText(segment.summary));
   return escapeHtml(plainText(segment.preview || ''));
-}
-
-function renderBriefingView() {
-  const node = document.getElementById('view-briefing');
-  if (!node) return;
-
-  const briefing = state.currentBriefing;
-  if (!briefing || briefing.error) {
-    node.innerHTML = `<div class="briefing-banner" style="background:linear-gradient(135deg,#94a3b8,#64748b)">
-      <h2>暂无日报</h2>
-      <div class="briefing-summary">${escapeHtml(state.currentDate)} 的日报还没生成。你可以去流程里重做日报，或直接重新运行。</div>
-    </div>`;
-    return;
-  }
-
-  let html = `<div class="briefing-banner">
-    <h2>今日日报</h2>
-    <div class="briefing-summary">${escapeHtml(plainText(briefing.summary || ''))}</div>
-    <div class="briefing-stats-row">
-      <div class="briefing-stat"><span class="briefing-stat-num">${briefing.total_scenes || 0}</span><span class="briefing-stat-label">记录</span></div>
-      <div class="briefing-stat"><span class="briefing-stat-num">${fmtNum(briefing.total_words || 0)}</span><span class="briefing-stat-label">字数</span></div>
-      <div class="briefing-stat"><span class="briefing-stat-num">${briefing.voice_hours || 0}h</span><span class="briefing-stat-label">语音时长</span></div>
-      <div class="briefing-stat"><span class="briefing-stat-num">${briefing.screen_recognition_available ? '已开' : '未开'}</span><span class="briefing-stat-label">屏幕上下文</span></div>
-    </div>
-  </div>`;
-
-  html += '<div class="briefing-grid">';
-
-  if (briefing.screen_highlights?.length) {
-    html += `<div class="briefing-card">
-      <div class="briefing-card-title">屏幕上下文 <span class="prop-count">${briefing.screen_highlights.length}</span></div>
-      ${briefing.screen_highlights.map((item) => `<div class="event-item">${escapeHtml(plainText(item))}</div>`).join('')}
-    </div>`;
-  }
-
-  if (briefing.completion_candidates?.length) {
-    html += `<div class="briefing-card">
-      <div class="briefing-card-title">完成候选 <span class="prop-count">${briefing.completion_candidates.length}</span></div>
-      ${briefing.completion_candidates.map((item) => `<div class="event-item">${escapeHtml(plainText(item))}</div>`).join('')}
-    </div>`;
-  }
-
-
-  if (briefing.work_sessions && Object.keys(briefing.work_sessions).length) {
-    const maxValue = Math.max(...Object.values(briefing.work_sessions).map((value) => parseInt(value, 10) || 1));
-    html += `<div class="briefing-card">
-      <div class="briefing-card-title">应用使用</div>
-      ${Object.entries(briefing.work_sessions).map(([app, duration]) => {
-        const width = Math.max(6, ((parseInt(duration, 10) || 1) / maxValue) * 100);
-        return `<div class="app-bar-row">
-          <span class="app-bar-name">${escapeHtml(app)}</span>
-          <div class="app-bar-track"><div class="app-bar-fill" style="width:${width}%"></div></div>
-          <span class="app-bar-duration">${escapeHtml(duration)}</span>
-        </div>`;
-      }).join('')}
-    </div>`;
-  }
-
-  if (briefing.decisions?.length) {
-    html += `<div class="briefing-card">
-      <div class="briefing-card-title">今日决策 <span class="prop-count">${briefing.decisions.length}</span></div>
-      ${briefing.decisions.map((decision) => `<div class="event-item">${escapeHtml(plainText(decision))}</div>`).join('')}
-    </div>`;
-  }
-
-  if (briefing.todos_open?.length) {
-    html += `<div class="briefing-card">
-      <div class="briefing-card-title">遗留待办 <span class="prop-count">${briefing.todos_open.length}</span></div>
-      ${briefing.todos_open.map((todo) => `<div class="event-item">${escapeHtml(plainText(todo))}</div>`).join('')}
-    </div>`;
-  }
-
-  if (briefing.key_events?.length) {
-    html += `<div class="briefing-card briefing-card-full">
-      <div class="briefing-card-title">关键事件 <span class="prop-count">${briefing.key_events.length}</span></div>
-      ${briefing.key_events.map((event) => `<div class="event-item">${escapeHtml(plainText(event))}</div>`).join('')}
-    </div>`;
-  }
-
-  if (briefing.time_blocks?.length) {
-    html += `<div class="briefing-card briefing-card-full">
-      <div class="briefing-card-title">时段追踪</div>
-      ${briefing.time_blocks.map((block) => {
-        const fullText = plainText(block.summary || '');
-        const truncated = fullText.length > 80 ? fullText.slice(0, 80) + '…' : fullText;
-        const needsTruncate = fullText.length > 80;
-        return `<div class="time-block">
-        <div class="tb-period">${escapeHtml((block.period || '').split(' ')[0])}</div>
-        <div class="tb-body">
-          <div class="tb-summary">
-            <span class="tb-short">${escapeHtml(truncated)}</span>
-            ${needsTruncate ? `<span class="tb-full" style="display:none">${escapeHtml(fullText)}</span>
-            <button class="raw-btn" style="margin-left:4px;font-size:11px" onclick="const p=this.parentElement;const s=p.querySelector('.tb-short');const f=p.querySelector('.tb-full');const v=f.style.display==='none';f.style.display=v?'inline':'none';s.style.display=v?'none':'inline';this.textContent=v?'收起':'展开'">展开</button>` : ''}
-          </div>
-          <div class="tb-tags">
-            ${(block.apps_used || []).map((app) => `<span class="tb-tag tb-tag-app">${escapeHtml(app)}</span>`).join('')}
-          </div>
-        </div>
-      </div>`;
-      }).join('')}
-    </div>`;
-  }
-
-  html += '</div>';
-  node.innerHTML = html;
-}
-
-function renderTimelineView() {
-  const node = document.getElementById('view-timeline');
-  if (!node) return;
-
-  const detail = state.currentData;
-  const meta = state.currentMeta || {};
-  let html = '<div class="timeline">';
-  detail.segments.forEach((segment) => {
-    const distilled = getSegmentDistillation(segment, meta);
-
-    html += `<div class="tl-node" data-segment-time="${escapeHtml(segment.time)}">
-      <span class="tl-time">${escapeHtml(segment.time)}</span>
-      <div class="tl-dot" style="border-color:var(--accent);background:var(--bg)"></div>
-      <div class="tl-card">
-
-        <div class="seg-distilled">${distilled}</div>
-        <div class="raw-controls"><button class="raw-btn" type="button" onclick="toggleRawText(this)">显示原文</button></div>
-        <div class="seg-raw">${fmtText(segment.text || '')}</div>
-      </div>
-    </div>`;
-  });
-  html += '</div>';
-  node.innerHTML = html;
-}
-
-function renderTableView() {
-  const node = document.getElementById('view-table');
-  if (!node) return;
-
-  const detail = state.currentData;
-  let html = '<div class="table-view"><table class="data-table">';
-  html += '<thead><tr><th width="80">时间</th><th>内容预览</th><th width="100">操作</th></tr></thead><tbody>';
-  detail.segments.forEach((segment) => {
-    html += `<tr>
-      <td class="td-time">${escapeHtml(segment.time)}</td>
-      <td class="td-summary">${escapeHtml(plainText(segment.preview || segment.text || ''))}</td>
-      <td><button class="raw-btn" type="button" onclick="switchView('timeline'); scrollToSegment('${escapeHtml(segment.time)}')">👉 跳转</button></td>
-    </tr>`;
-  });
-  html += '</tbody></table></div>';
-  node.innerHTML = html;
-}
-
-function renderChartsView() {
-  const node = document.getElementById('view-charts');
-  if (!node) return;
-  node.innerHTML = `<div class="charts-grid">
-    <div class="chart-card"><h3>时段热度</h3><canvas id="chartTime"></canvas></div>
-  </div>`;
 }
 
 function initCharts() {
@@ -808,128 +796,6 @@ function optionMarkup(items, getter) {
   }).join('');
 }
 
-function renderCorrectionsView() {
-  const node = document.getElementById('view-corrections');
-  if (!node) return;
-
-  node.innerHTML = `
-    <div class="briefing-grid">
-      <div class="briefing-card briefing-card-full">
-        <div class="briefing-card-title" style="cursor:pointer" onclick="toggleAccordion(this)">高级操作（跟进 · 项目 · 决策） <span style="float:right;color:var(--text-light);font-size:12px">▼ 展开</span></div>
-        <div class="accordion-body" style="display:none">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:12px">
-            <div>
-              <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:8px">跟进处理</div>
-              <select id="closeLoopSelect" class="field-select" style="margin-bottom:8px">${optionMarkup(state.loops, (item) => item.title || item.loop_id)}</select>
-              <div class="inline-actions">
-                <button class="action-btn" type="button" onclick="submitContextAction('/api/context/loops/close', { query: document.getElementById('closeLoopSelect').value, status: 'done' }, '已标记完成')">完成</button>
-                <button class="action-btn" type="button" onclick="submitContextAction('/api/context/loops/reject', { query: document.getElementById('closeLoopSelect').value }, '已设为不再跟进')">移除</button>
-              </div>
-            </div>
-            <div>
-              <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:8px">项目整理</div>
-              <select id="mergeProjectSource" class="field-select" style="margin-bottom:4px">${optionMarkup(state.projects, (item) => item.title || item.project_id)}</select>
-              <select id="mergeProjectTarget" class="field-select" style="margin-bottom:8px">${optionMarkup(state.projects, (item) => item.title || item.project_id)}</select>
-              <div class="inline-actions">
-                <button class="action-btn" type="button" onclick="submitContextAction('/api/context/projects/merge', { source: document.getElementById('mergeProjectSource').value, target: document.getElementById('mergeProjectTarget').value }, '已合并')">合并</button>
-                <button class="action-btn" type="button" onclick="submitContextAction('/api/context/projects/reject', { query: document.getElementById('mergeProjectSource').value }, '已移出')">移出</button>
-              </div>
-            </div>
-            <div>
-              <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:8px">决策整理</div>
-              <select id="rejectDecisionSelect" class="field-select" style="margin-bottom:8px">${optionMarkup(state.decisions, (item) => item.decision || item.topic || item.decision_id)}</select>
-              <div class="inline-actions">
-                <button class="action-btn" type="button" onclick="submitContextAction('/api/context/decisions/reject', { query: document.getElementById('rejectDecisionSelect').value }, '已移出')">移出决策</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function renderPipelineView() {
-  const node = document.getElementById('view-pipeline');
-  if (!node) return;
-
-  const detail = state.selectedJobDetail;
-  node.innerHTML = `
-    <div class="briefing-grid">
-      <div class="briefing-card">
-        <div class="briefing-card-title">流程操作</div>
-        <div class="form-stack">
-          <div>
-            <label class="form-label" for="pipelineDateInput">目标日期</label>
-            <input id="pipelineDateInput" class="field-input" type="text" value="${escapeHtml(state.currentDate || '')}" placeholder="YYYY-MM-DD（默认当前日期）">
-          </div>
-          <div class="inline-actions">
-            <button class="action-btn primary" type="button" onclick="createPipelineJob('context')">刷新上下文</button>
-            <button class="action-btn" type="button" onclick="createPipelineJob('clean')">清理文本</button>
-            <button class="action-btn" type="button" onclick="createPipelineJob('roles')">识别对象</button>
-            <button class="action-btn" type="button" onclick="createPipelineJob('distill')">整理摘要</button>
-            <button class="action-btn" type="button" onclick="createPipelineJob('briefing')">生成日报</button>
-            <button class="action-btn" type="button" onclick="createPipelineJob('run')">重新运行</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="briefing-card">
-        <div class="briefing-card-title">流程说明</div>
-        <div class="event-item"><code>刷新上下文</code> 不需要日期，其它流程默认使用当前选中的日期。</div>
-        <div class="event-item">任务完成后会自动轮询，并刷新当前日期的数据。</div>
-        <div class="event-item"><button class="action-btn" type="button" onclick="refreshPipelineJobs()">刷新列表</button></div>
-      </div>
-    </div>
-
-    <div class="pipeline-layout">
-      <div class="job-card">
-        <div class="briefing-card-title">最近运行</div>
-        <div id="pipelineJobsList" class="search-stack">
-          ${renderEventList(
-            state.jobs,
-            (job) => `<button class="job-item ${job.job_id === state.selectedJobId ? 'active' : ''}" type="button" onclick="loadPipelineJobDetail('${escapeHtml(job.job_id)}')">
-              <strong>${escapeHtml(formatPipelineKind(job.kind))}</strong>
-              <div class="muted">${escapeHtml(job.target_date || '全局')} · ${escapeHtml(formatPipelineStatus(job.status))}</div>
-            </button>`,
-            '还没有运行记录。'
-          )}
-        </div>
-      </div>
-
-      <div class="job-card">
-        <div class="briefing-card-title">运行详情</div>
-        <div id="pipelineJobDetail">
-          ${detail ? `
-            <div class="event-item"><strong>流程</strong><br>${escapeHtml(formatPipelineKind(detail.kind))}</div>
-            <div class="event-item"><strong>状态</strong><br>${escapeHtml(formatPipelineStatus(detail.status))}</div>
-            <div class="event-item"><strong>当前步骤</strong><br>${escapeHtml(formatPipelineStep(detail.current_step))}</div>
-            <div class="event-item"><strong>结果文件</strong><br>${escapeHtml((detail.artifacts || []).join(' / ') || '暂无')}</div>
-            <pre class="job-log">${escapeHtml((detail.log_lines || []).join('\n') || '暂无日志')}</pre>
-          ` : renderEmptyState('选择一条运行记录查看详情。')}
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function switchView(viewName) {
-  state.currentView = viewName;
-  document.querySelectorAll('.view-tab').forEach((node) => {
-    node.classList.toggle('active', node.id === `tab-${viewName}`);
-  });
-  document.querySelectorAll('.view-content').forEach((node) => {
-    node.classList.toggle('active', node.id === `view-${viewName}`);
-  });
-  const filterBar = document.getElementById('filter-bar');
-  if (filterBar) {
-    filterBar.style.display = viewName === 'timeline' ? 'flex' : 'none';
-  }
-  if (viewName === 'charts') {
-    setTimeout(initCharts, 50);
-  }
-}
-
 function toggleRawText(button) {
   const rawNode = button.parentElement.nextElementSibling;
   const visible = !rawNode.classList.contains('visible');
@@ -937,35 +803,6 @@ function toggleRawText(button) {
   button.innerHTML = visible ? '隐藏原文' : '显示原文';
   button.style.color = visible ? '#fff' : 'var(--text-secondary)';
   button.style.background = visible ? 'var(--text)' : 'var(--bg-sidebar)';
-}
-
-function filterRole(role) {
-  if (role === 'all') {
-    state.activeFilters.clear();
-  } else if (state.activeFilters.has(role)) {
-    state.activeFilters.delete(role);
-  } else {
-    state.activeFilters.add(role);
-  }
-
-  document.querySelectorAll('.role-tag').forEach((button) => {
-    if (button.dataset.role === 'all') {
-      button.classList.toggle('active', state.activeFilters.size === 0);
-    } else {
-      button.classList.toggle('active', state.activeFilters.has(button.dataset.role));
-    }
-  });
-
-  document.querySelectorAll('#view-timeline .tl-node').forEach((node) => {
-    if (state.activeFilters.size === 0) {
-      node.classList.remove('hidden');
-      return;
-    }
-    let matched = false;
-    if (state.activeFilters.has('needs_review') && node.dataset.needsReview === 'true') matched = true;
-    if (state.activeFilters.has(node.dataset.role)) matched = true;
-    node.classList.toggle('hidden', !matched);
-  });
 }
 
 function scrollToSegment(time, query = '') {
@@ -1008,9 +845,7 @@ async function refreshCorrectionsFeed() {
   const payload = await fetchJson('/api/corrections', { corrections: [] });
   state.corrections = payload.corrections || [];
   renderSidebarDict();
-  if (document.getElementById('view-corrections')) {
-    renderCorrectionsView();
-  }
+  rerenderSettingsOverlay();
 }
 
 async function submitTypoCorrection() {
@@ -1053,8 +888,7 @@ async function submitContextAction(url, payload, successMessage) {
     await postJson(url, payload);
     showToast(successMessage);
     await loadContext();
-    renderCorrectionsView();
-    renderOverviewView();
+    rerenderSettingsOverlay();
   } catch (error) {
     showToast(error.message);
   }
@@ -1074,7 +908,7 @@ async function updateScreenContextMode(mode) {
       participation_mode: mode,
     });
     showToast(`屏幕上下文已切换为：${mode === 'off' ? '关闭' : mode === 'full' ? '参与上下文' : '只保留摘要'}`);
-    renderOverviewView();
+    rerenderSettingsOverlay();
   } catch (error) {
     showToast(error.message);
   }
@@ -1088,20 +922,102 @@ async function saveScreenContextExclusions() {
       exclude_window_keywords: splitSettingList(document.getElementById('screenExcludeWindows')?.value),
     });
     showToast('屏幕上下文规则已保存');
-    renderOverviewView();
+    rerenderSettingsOverlay();
   } catch (error) {
     showToast(error.message);
   }
 }
 
+function toggleSidebar() {
+  document.querySelector('.app')?.classList.toggle('sidebar-open');
+}
+
+function closeSidebar() {
+  document.querySelector('.app')?.classList.remove('sidebar-open');
+}
+
+function highlightQuerySnippet(text, query) {
+  const safe = escapeHtml(plainText(text || ''));
+  if (!query) return safe;
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return safe.replace(new RegExp(`(${escapedQuery})`, 'gi'), '<mark class="search-highlight">$1</mark>');
+}
+
+function recentSpotlightResults() {
+  return state.allDates.slice(0, 5).map((item) => ({
+    date: item.date,
+    time: item.timeline?.[0]?.time || '',
+    context: truncateSummary(item.summary || item.timeline?.[0]?.preview || ''),
+  }));
+}
+
+function renderSpotlightResults(items, query = '') {
+  const container = document.getElementById('spotlightResults');
+  if (!items.length) {
+    container.innerHTML = '<div class="spotlight-empty">找不到相关的上下文</div>';
+    return;
+  }
+
+  const grouped = items.reduce((acc, item) => {
+    acc[item.date] = acc[item.date] || [];
+    acc[item.date].push(item);
+    return acc;
+  }, {});
+  let index = 0;
+  container.innerHTML = Object.entries(grouped).map(([date, entries]) => `
+    <div class="spotlight-group-label">${escapeHtml(date)}</div>
+    ${entries.map((item) => {
+      const itemIndex = index++;
+      return `
+        <button class="spotlight-result-item ${itemIndex === state.spotlightIndex ? 'active' : ''}" data-spotlight-index="${itemIndex}" onclick="jumpToSearchResult('${escapeHtml(item.date)}', '${escapeHtml(item.time || '')}', '${escapeHtml(query)}')">
+          <strong style="display:block;margin-bottom:4px;color:var(--text);font-size:13px">${escapeHtml(item.date)}${item.time ? ` · ${escapeHtml(item.time)}` : ''}</strong>
+          <div class="muted" style="font-size:12px;line-height:1.5">${highlightQuerySnippet(item.context || item.raw_context || '', query)}</div>
+        </button>
+      `;
+    }).join('')}
+  `).join('');
+}
+
+function setSpotlightSelection(nextIndex) {
+  state.spotlightIndex = nextIndex;
+  document.querySelectorAll('.spotlight-result-item').forEach((node) => {
+    node.classList.toggle('active', Number(node.dataset.spotlightIndex) === state.spotlightIndex);
+  });
+}
+
+function handleSpotlightKeydown(event) {
+  if (!document.getElementById('spotlightOverlay').classList.contains('active')) return;
+  const items = Array.from(document.querySelectorAll('.spotlight-result-item'));
+  if (!items.length) return;
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    setSpotlightSelection((state.spotlightIndex + 1) % items.length);
+    items[state.spotlightIndex]?.scrollIntoView({ block: 'nearest' });
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    setSpotlightSelection((state.spotlightIndex - 1 + items.length) % items.length);
+    items[state.spotlightIndex]?.scrollIntoView({ block: 'nearest' });
+  } else if (event.key === 'Enter' && state.spotlightIndex >= 0) {
+    event.preventDefault();
+    items[state.spotlightIndex]?.click();
+  }
+}
+
 function openSpotlight() {
-  document.getElementById('spotlightOverlay').classList.add('active');
-  document.getElementById('spotlightInput').focus();
+  const overlay = document.getElementById('spotlightOverlay');
+  const input = document.getElementById('spotlightInput');
+  overlay.classList.add('active');
+  input.value = '';
+  input.focus();
+  runSearchSpotlight('');
 }
 
 function closeSpotlight(e) {
   if (e && e.target !== document.getElementById('spotlightOverlay')) return;
   document.getElementById('spotlightOverlay').classList.remove('active');
+  state.searchResults = [];
+  state.spotlightIndex = -1;
 }
 
 document.addEventListener('keydown', (e) => {
@@ -1121,26 +1037,27 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeSpotlight();
     closeSettingsOverlay();
+    closeSidebar();
   }
 });
 
 async function runSearchSpotlight(query) {
-  const container = document.getElementById('spotlightResults');
-  if (!query) {
-    container.innerHTML = '';
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    state.searchResults = recentSpotlightResults();
+    state.spotlightIndex = state.searchResults.length ? 0 : -1;
+    renderSpotlightResults(state.searchResults, '');
     return;
   }
-  const results = await fetchJson(`/api/search?q=${encodeURIComponent(query)}`, []);
-  if (!results.length) {
-    container.innerHTML = '<div class="spotlight-empty">找不到相关的上下文</div>';
+
+  state.searchResults = await fetchJson(`/api/search?q=${encodeURIComponent(normalizedQuery)}`, []);
+  if (!state.searchResults.length) {
+    state.spotlightIndex = -1;
+    renderSpotlightResults([], normalizedQuery);
     return;
   }
-  container.innerHTML = results.map(item => `
-    <button class="spotlight-result-item" onclick="jumpToSearchResult('${escapeHtml(item.date)}', '${escapeHtml(item.time)}', '${escapeHtml(query)}')">
-      <strong style="display:block;margin-bottom:4px;color:var(--text);font-size:13px">${escapeHtml(item.date)} · ${escapeHtml(item.time)}</strong>
-      <div class="muted" style="font-size:12px;line-height:1.5">${item.context || escapeHtml(plainText(item.raw_context || ''))}</div>
-    </button>
-  `).join('');
+  state.spotlightIndex = 0;
+  renderSpotlightResults(state.searchResults, normalizedQuery);
 }
 
 async function jumpToSearchResult(date, time, query = '') {
@@ -1148,7 +1065,6 @@ async function jumpToSearchResult(date, time, query = '') {
   if (state.currentDate !== date) {
     await loadDate(date, time, query);
   } else {
-    switchView('timeline');
     requestAnimationFrame(() => scrollToSegment(time, query));
   }
 }
@@ -1191,6 +1107,10 @@ async function refreshPipelineJobs() {
       <div class="muted">${escapeHtml(job.target_date||'全局')} · ${escapeHtml(formatPipelineStatus(job.status))}</div>
     </button>`, '还没有运行记录。');
   }
+  const detailNode = document.getElementById('pipelineJobDetail');
+  if (detailNode) {
+    detailNode.innerHTML = renderPipelineJobDetail();
+  }
 
   // Global Indicator Logic
   const activeJobs = state.jobs.filter(j => j.status === 'pending' || j.status === 'running');
@@ -1216,8 +1136,10 @@ async function loadPipelineJobDetail(jobId, rerender = true) {
     await handleJobCompletion(detail);
   }
 
-  if (rerender && document.getElementById('view-pipeline')) {
-    renderPipelineView();
+  if (rerender) rerenderSettingsOverlay();
+  const detailNode = document.getElementById('pipelineJobDetail');
+  if (detailNode) {
+    detailNode.innerHTML = renderPipelineJobDetail();
   }
 }
 
@@ -1255,7 +1177,7 @@ function renderSettingsHTML() {
   <div class="settings-page" style="padding:0">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
       <h2 style="margin:0;font-size:20px;">设置</h2>
-      <button class="cp-close" onclick="closeSettingsOverlay()" style="background:none;border:none;font-size:18px;color:var(--text-secondary);cursor:pointer;line-height:1">✕</button>
+      <button class="cp-close" onclick="closeSettingsOverlay()" style="background:none;border:none;font-size:14px;color:var(--text-secondary);cursor:pointer;line-height:1">关闭</button>
     </div>
 
     <div class="settings-section">
@@ -1307,9 +1229,27 @@ function renderSettingsHTML() {
       </div>
     </div>
 
+    <details class="settings-section">
+      <summary class="settings-section-title" style="cursor:pointer">Agent Query 工作台</summary>
+      <div class="form-stack" style="margin-top:16px">
+        <div class="settings-query-grid">
+          <select id="contextQueryKind" class="field-select">
+            <option value="project" ${(state.contextQuery.kind || 'project') === 'project' ? 'selected' : ''}>项目</option>
+            <option value="person" ${state.contextQuery.kind === 'person' ? 'selected' : ''}>人物</option>
+            <option value="open" ${state.contextQuery.kind === 'open' ? 'selected' : ''}>未关闭待办</option>
+            <option value="closed" ${state.contextQuery.kind === 'closed' ? 'selected' : ''}>已关闭事项</option>
+            <option value="evidence" ${state.contextQuery.kind === 'evidence' ? 'selected' : ''}>证据</option>
+          </select>
+          <input id="contextQueryInput" class="field-input" type="text" value="${escapeHtml(state.contextQuery.query || '')}" placeholder="查项目、人物、待办或证据" onkeydown="if(event.key==='Enter') runContextQuery()">
+          <button class="action-btn primary" type="button" onclick="runContextQuery()">查询</button>
+        </div>
+        ${renderContextQueryResult()}
+      </div>
+    </details>
+
     <div class="settings-section">
       <div class="settings-section-title">记忆库修整：纠正 AI 归档错误</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+      <div class="settings-memory-grid">
         <div>
           <div style="font-weight:600;font-size:12px;color:var(--text-secondary);margin-bottom:8px">待办事项</div>
           <select id="closeLoopSelect" class="field-select" style="margin-bottom:8px">${optionMarkup(state.loops, (item) => item.title || item.loop_id)}</select>
@@ -1340,6 +1280,13 @@ function renderSettingsHTML() {
     <div class="settings-section">
       <div class="settings-section-title">数据重制与分析引擎</div>
       <div class="form-stack">
+        <div class="pipeline-stepbar">
+          <span>清理</span>
+          <span>识别</span>
+          <span>摘要</span>
+          <span>日报</span>
+          <span>重跑</span>
+        </div>
         <div>
           <label class="form-label" for="pipelineDateInput">指定处理日期</label>
           <input id="pipelineDateInput" class="field-input" type="text" value="${escapeHtml(state.currentDate || '')}" placeholder="格式: YYYY-MM-DD（留空则为当前日）">
@@ -1361,7 +1308,7 @@ function renderSettingsHTML() {
           <strong>${escapeHtml(formatPipelineKind(job.kind))}</strong>
           <div class="muted">${escapeHtml(job.target_date||'全局')} · ${escapeHtml(formatPipelineStatus(job.status))}</div>
         </button>`, '还没有运行记录。')}</div>
-        <div id="pipelineJobDetail" style="margin-top:12px"></div>
+        <div id="pipelineJobDetail" style="margin-top:12px">${renderPipelineJobDetail()}</div>
       </div>
     </div>
   </div>`;
@@ -1436,7 +1383,7 @@ document.addEventListener('mouseup', (e) => {
   if (!selectedText || selectedText.length < 2 || selectedText.length > 50) return;
   const targetEl = e.target;
   if (targetEl.closest('input, textarea, button, select, .correction-popover, .spotlight-modal')) return;
-  if (!targetEl.closest('.seg-raw, .seg-distilled, .tl-card, .briefing-card, .spotlight-result-item, .event-item, .prop-item, .time-block')) return;
+  if (!targetEl.closest('.seg-raw, .seg-distilled, .record-card, .briefing-card, .spotlight-result-item, .event-item, .prop-item, .time-block')) return;
   openCorrectionPopover(selectedText, e.clientX, e.clientY);
 });
 

@@ -27,17 +27,21 @@ class TestFrontendShell(unittest.TestCase):
         )
 
     def test_index_preserves_reading_first_shell(self):
-        self.assertIn('class="view-tabs"', self.content)
-        self.assertIn('id="tab-briefing"', self.content)
-        self.assertIn('id="tab-timeline"', self.content)
-        self.assertIn('id="tab-table"', self.content)
-        self.assertIn('id="tab-charts"', self.content)
+        self.assertIn("renderDayLayout()", self.content)
+        self.assertIn("record-list", self.content)
+        self.assertIn("summary-callout", self.content)
+        self.assertIn("详细记录", self.content)
+        self.assertIn("数据图表", self.content)
         self.assertIn("props-grid", self.content)
-        self.assertIn("briefing-grid", self.content)
+        self.assertIn("meta-section", self.content)
 
     def test_index_adds_context_tabs_without_replacing_reader_views(self):
-        self.assertIn('id="tab-overview"', self.content)
-        self.assertIn("概览", self.content)
+        self.assertIn("renderHomePage()", self.content)
+        self.assertIn("renderWeeklyReport()", self.content)
+        self.assertIn("renderMonthlyReport()", self.content)
+        self.assertIn("首页", self.content)
+        self.assertIn("周报", self.content)
+        self.assertIn("月报", self.content)
 
     def test_index_fetches_context_and_day_payloads(self):
         self.assertIn("/api/context", self.content)
@@ -50,7 +54,7 @@ class TestFrontendShell(unittest.TestCase):
 
     def test_index_renders_meta_panels_inside_day_view(self):
         self.assertIn("renderMetaPanels", self.content)
-        self.assertIn("view-overview", self.content)
+        self.assertIn("meta-section", self.content)
         self.assertIn("打算做什么", self.content)
         self.assertIn("记住了什么", self.content)
         self.assertIn("决定了什么", self.content)
@@ -73,15 +77,15 @@ class TestFrontendShell(unittest.TestCase):
 
     def test_timeline_distillation_uses_plain_summary_fallback(self):
         match = re.search(
-            r"function getSegmentDistillation\(segment, meta\) \{(?P<body>.*?)\n\}\n\nfunction renderBriefingView",
+            r"function getSegmentDistillation\(segment, meta\) \{(?P<body>.*?)\n\}\n\nfunction initCharts",
             self.content,
             re.S,
         )
         self.assertIsNotNone(match)
         body = match.group("body")
+        self.assertIn("const preview = escapeHtml(plainText(segment.summary || segment.preview || segment.text || ''));", body)
         self.assertIn("if (segment.summary) return escapeHtml(plainText(segment.summary));", body)
         self.assertIn("return escapeHtml(plainText(segment.preview || ''));", body)
-        self.assertNotIn("seg-distilled-placeholder", body)
 
     def test_mobile_layout_has_single_column_breakpoint(self):
         self.assertRegex(
