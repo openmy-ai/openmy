@@ -15,6 +15,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class TestOpenMyCli(unittest.TestCase):
+    def read_optional_text(self, path: Path) -> str | None:
+        return path.read_text(encoding="utf-8") if path.exists() else None
+
+    def restore_optional_text(self, path: Path, original: str | None) -> None:
+        if original is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(original, encoding="utf-8")
+
     def make_day_dir(self, date_str: str) -> Path:
         day_dir = PROJECT_ROOT / "data" / date_str
         day_dir.mkdir(parents=True, exist_ok=True)
@@ -606,27 +616,30 @@ class TestOpenMyCli(unittest.TestCase):
         date_str = "2099-01-06"
         day_dir = self.make_day_dir(date_str)
         transcript_path = day_dir / "transcript.md"
-        transcript_path.write_text("## 10:00\n\n青维今天去散步。", encoding="utf-8")
+        transcript_path.write_text("## 10:00\n\n示例错名今天去散步。", encoding="utf-8")
 
         corrections_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "corrections.json"
         vocab_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "vocab.txt"
-        original_corrections = corrections_path.read_text(encoding="utf-8")
-        original_vocab = vocab_path.read_text(encoding="utf-8")
+        original_corrections = self.read_optional_text(corrections_path)
+        original_vocab = self.read_optional_text(vocab_path)
+        corrections_path.parent.mkdir(parents=True, exist_ok=True)
+        corrections_path.write_text(json.dumps({"corrections": []}, ensure_ascii=False), encoding="utf-8")
+        vocab_path.write_text("示例正名 | 示例说明\n", encoding="utf-8")
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "openmy", "correct", date_str, "青维", "青梅"],
+                [sys.executable, "-m", "openmy", "correct", date_str, "示例错名", "示例正名"],
                 capture_output=True,
                 text=True,
                 timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("青梅", transcript_path.read_text(encoding="utf-8"))
-            self.assertNotIn("青维今天", transcript_path.read_text(encoding="utf-8"))
+            self.assertIn("示例正名", transcript_path.read_text(encoding="utf-8"))
+            self.assertNotIn("示例错名今天", transcript_path.read_text(encoding="utf-8"))
         finally:
-            corrections_path.write_text(original_corrections, encoding="utf-8")
-            vocab_path.write_text(original_vocab, encoding="utf-8")
+            self.restore_optional_text(corrections_path, original_corrections)
+            self.restore_optional_text(vocab_path, original_vocab)
             self.cleanup_day_dir(date_str)
 
     def test_correct_typo_subcommand(self):
@@ -634,26 +647,29 @@ class TestOpenMyCli(unittest.TestCase):
         date_str = "2099-01-08"
         day_dir = self.make_day_dir(date_str)
         transcript_path = day_dir / "transcript.md"
-        transcript_path.write_text("## 10:00\n\n青维今天去散步。", encoding="utf-8")
+        transcript_path.write_text("## 10:00\n\n示例错名今天去散步。", encoding="utf-8")
 
         corrections_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "corrections.json"
         vocab_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "vocab.txt"
-        original_corrections = corrections_path.read_text(encoding="utf-8")
-        original_vocab = vocab_path.read_text(encoding="utf-8")
+        original_corrections = self.read_optional_text(corrections_path)
+        original_vocab = self.read_optional_text(vocab_path)
+        corrections_path.parent.mkdir(parents=True, exist_ok=True)
+        corrections_path.write_text(json.dumps({"corrections": []}, ensure_ascii=False), encoding="utf-8")
+        vocab_path.write_text("示例正名 | 示例说明\n", encoding="utf-8")
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "openmy", "correct", "typo", date_str, "青维", "青梅"],
+                [sys.executable, "-m", "openmy", "correct", "typo", date_str, "示例错名", "示例正名"],
                 capture_output=True,
                 text=True,
                 timeout=60,
                 cwd=PROJECT_ROOT,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("青梅", transcript_path.read_text(encoding="utf-8"))
+            self.assertIn("示例正名", transcript_path.read_text(encoding="utf-8"))
         finally:
-            corrections_path.write_text(original_corrections, encoding="utf-8")
-            vocab_path.write_text(original_vocab, encoding="utf-8")
+            self.restore_optional_text(corrections_path, original_corrections)
+            self.restore_optional_text(vocab_path, original_vocab)
             self.cleanup_day_dir(date_str)
 
     def test_correct_close_loop(self):

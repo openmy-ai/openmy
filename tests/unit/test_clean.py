@@ -129,22 +129,22 @@ class CorrectionTest(unittest.TestCase):
     @patch('openmy.services.cleaning.cleaner.load_corrections')
     def test_corrections_applied(self, mock_load):
         mock_load.return_value = [
-            {"wrong": "青维", "right": "青梅"},
+            {"wrong": "示例错名", "right": "示例正名"},
             {"wrong": "理想电机", "right": "理想电竞"},
         ]
-        result = clean.apply_corrections("青维今天去散步，讨论理想电机的问题。")
-        self.assertIn("青梅", result)
-        self.assertNotIn("青维", result)
+        result = clean.apply_corrections("示例错名今天去散步，讨论理想电机的问题。")
+        self.assertIn("示例正名", result)
+        self.assertNotIn("示例错名", result)
         self.assertIn("理想电竞", result)
 
     @patch('openmy.services.cleaning.cleaner.load_corrections')
     def test_correction_skips_explanatory_line(self, mock_load):
         """如果一行同时有错词和正词（解释句），不替换"""
-        mock_load.return_value = [{"wrong": "青维", "right": "青梅"}]
-        text = "青维其实应该是青梅"
+        mock_load.return_value = [{"wrong": "示例错名", "right": "示例正名"}]
+        text = "示例错名其实应该是示例正名"
         result = clean.apply_corrections(text)
         # 同时出现了错词和正词，应该跳过
-        self.assertIn("青维", result)
+        self.assertIn("示例错名", result)
 
 
 class FullPipelineTest(unittest.TestCase):
@@ -152,15 +152,15 @@ class FullPipelineTest(unittest.TestCase):
 
     @patch('openmy.services.cleaning.cleaner.load_corrections')
     def test_full_pipeline(self, mock_corrections):
-        mock_corrections.return_value = [{"wrong": "青维", "right": "青梅"}]
+        mock_corrections.return_value = [{"wrong": "示例错名", "right": "示例正名"}]
 
         raw = (
             "我这就为您转写这段音频\n"
             "## 10:00\n\n"
             "嗯。\n"
             "嗯\n"
-            "青维今天去散步了，[音乐] 开心得很。\n"
-            "青维今天去散步了，[音乐] 开心得很。\n"  # 重复行
+            "示例错名今天去散步了，[音乐] 开心得很。\n"
+            "示例错名今天去散步了，[音乐] 开心得很。\n"  # 重复行
             "\n## 11:00\n\n"
             "好的内容在这里\n"
         )
@@ -171,8 +171,8 @@ class FullPipelineTest(unittest.TestCase):
         self.assertIn("## 11:00", result)           # 时间头保留
         self.assertNotIn("为您转写", result)         # AI 前缀删除
         self.assertNotIn("[音乐]", result)           # 音乐标记删除
-        self.assertIn("青梅", result)                # 纠错生效
-        self.assertNotIn("青维", result)             # 错词被替换
+        self.assertIn("示例正名", result)            # 纠错生效
+        self.assertNotIn("示例错名", result)         # 错词被替换
         self.assertEqual(result.count("开心得很"), 1) # 重复行去重
         self.assertIn("好的内容在这里", result)       # 正常内容保留
 

@@ -71,7 +71,7 @@ class TestCorrections(unittest.TestCase):
             OpenLoop(
                 id="loop_liutao",
                 loop_id="loop_liutao",
-                title="聊刘涛婚姻，感慨择偶比结婚本身更重要",
+                title="聊某位朋友婚姻，感慨择偶比结婚本身更重要",
                 loop_type="todo",
                 status="open",
                 confidence=0.7,
@@ -146,7 +146,7 @@ class TestCorrections(unittest.TestCase):
                 "summary": "主要推进 OpenMy 和 AI思维。",
                 "key_events": ["继续设计第四层"],
                 "decisions": ["中午改吃河南蒸菜"],
-                "todos_open": ["聊刘涛婚姻，感慨择偶比结婚本身更重要"],
+                "todos_open": ["聊某位朋友婚姻，感慨择偶比结婚本身更重要"],
             },
         )
         self.write_json(
@@ -161,7 +161,7 @@ class TestCorrections(unittest.TestCase):
                     {"project": "OpenMy", "what": "中午改吃河南蒸菜", "why": "临时改主意"}
                 ],
                 "todos": [
-                    {"task": "聊刘涛婚姻，感慨择偶比结婚本身更重要", "priority": "medium", "project": "OpenMy"}
+                    {"task": "聊某位朋友婚姻，感慨择偶比结婚本身更重要", "priority": "medium", "project": "OpenMy"}
                 ],
             },
         )
@@ -229,7 +229,7 @@ class TestCorrections(unittest.TestCase):
         )
 
         titles = {item.title for item in corrected.rolling_context.open_loops}
-        self.assertNotIn("聊刘涛婚姻，感慨择偶比结婚本身更重要", titles)
+        self.assertNotIn("聊某位朋友婚姻，感慨择偶比结婚本身更重要", titles)
         self.assertEqual(len(corrected.rolling_context.open_loops), 2)
 
     def test_close_loop(self):
@@ -385,7 +385,7 @@ class TestCorrections(unittest.TestCase):
                     actor="user",
                     op="reject_loop",
                     target_type="loop",
-                    target_id="聊刘涛婚姻，感慨择偶比结婚本身更重要",
+                    target_id="聊某位朋友婚姻，感慨择偶比结婚本身更重要",
                     payload={},
                 ),
             )
@@ -420,7 +420,7 @@ class TestCorrections(unittest.TestCase):
         project_titles = {item.title for item in ctx.rolling_context.active_projects}
         decision_texts = {item.decision for item in ctx.rolling_context.recent_decisions}
 
-        self.assertNotIn("聊刘涛婚姻，感慨择偶比结婚本身更重要", loop_titles)
+        self.assertNotIn("聊某位朋友婚姻，感慨择偶比结婚本身更重要", loop_titles)
         self.assertIn("OpenMy", project_titles)
         self.assertNotIn("AI思维", project_titles)
         self.assertNotIn("中午改吃河南蒸菜", decision_texts)

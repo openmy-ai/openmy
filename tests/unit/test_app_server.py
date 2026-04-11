@@ -286,7 +286,7 @@ class TestAppServer(unittest.TestCase):
             day_dir.mkdir(parents=True, exist_ok=True)
 
             (day_dir / "transcript.md").write_text(
-                "# sample\n\n---\n\n## 10:00\n\n青维今天把 OpenMy 写完了。",
+                "# sample\n\n---\n\n## 10:00\n\n示例错名今天把 OpenMy 写完了。",
                 encoding="utf-8",
             )
             (day_dir / "scenes.json").write_text(
@@ -297,8 +297,8 @@ class TestAppServer(unittest.TestCase):
                                 "scene_id": "scene_001",
                                 "time_start": "10:00",
                                 "time_end": "10:05",
-                                "text": "青维今天把 OpenMy 写完了。",
-                                "summary": "青维正在收尾。",
+                                "text": "示例错名今天把 OpenMy 写完了。",
+                                "summary": "示例错名正在收尾。",
                             }
                         ]
                     },
@@ -310,8 +310,8 @@ class TestAppServer(unittest.TestCase):
             (day_dir / "daily_briefing.json").write_text(
                 json.dumps(
                     {
-                        "summary": "青维今天把 OpenMy 写完了。",
-                        "key_events": ["青维完成第一版。"],
+                        "summary": "示例错名今天把 OpenMy 写完了。",
+                        "key_events": ["示例错名完成第一版。"],
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -330,10 +330,10 @@ class TestAppServer(unittest.TestCase):
             ):
                 payload = app_server.handle_correction(
                     {
-                        "wrong": "青维",
-                        "right": "青梅",
+                        "wrong": "示例错名",
+                        "right": "示例正名",
                         "date": date_str,
-                        "context": "狗的名字",
+                        "context": "示例昵称",
                         "sync_vocab": True,
                     }
                 )
@@ -344,12 +344,12 @@ class TestAppServer(unittest.TestCase):
 
             self.assertTrue(payload["success"])
             self.assertEqual(payload["replaced_in_file"], 1)
-            self.assertIn("青梅", transcript)
-            self.assertNotIn("青维", transcript)
-            self.assertIn("青梅", scenes["scenes"][0]["text"])
-            self.assertIn("青梅", scenes["scenes"][0]["summary"])
-            self.assertIn("青梅", briefing["summary"])
-            self.assertIn("青梅", briefing["key_events"][0])
+            self.assertIn("示例正名", transcript)
+            self.assertNotIn("示例错名", transcript)
+            self.assertIn("示例正名", scenes["scenes"][0]["text"])
+            self.assertIn("示例正名", scenes["scenes"][0]["summary"])
+            self.assertIn("示例正名", briefing["summary"])
+            self.assertIn("示例正名", briefing["key_events"][0])
 
     def test_close_loop_endpoint_appends_correction_and_refreshes_context(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

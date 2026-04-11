@@ -31,6 +31,16 @@ class TestSkillCliContract(unittest.TestCase):
         ]:
             path.unlink(missing_ok=True)
 
+    def read_optional_text(self, path: Path) -> str | None:
+        return path.read_text(encoding="utf-8") if path.exists() else None
+
+    def restore_optional_text(self, path: Path, original: str | None) -> None:
+        if original is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(original, encoding="utf-8")
+
     def make_context_snapshot(self) -> dict:
         return {
             "schema_version": "active_context.v1",
@@ -211,12 +221,15 @@ class TestSkillCliContract(unittest.TestCase):
         date_str = "2099-02-02"
         day_dir = self.make_day_dir(date_str)
         transcript_path = day_dir / "transcript.md"
-        transcript_path.write_text("## 10:00\n\n青维今天去散步。", encoding="utf-8")
+        transcript_path.write_text("## 10:00\n\n示例错名今天去散步。", encoding="utf-8")
 
         corrections_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "corrections.json"
         vocab_path = PROJECT_ROOT / "src" / "openmy" / "resources" / "vocab.txt"
-        original_corrections = corrections_path.read_text(encoding="utf-8")
-        original_vocab = vocab_path.read_text(encoding="utf-8")
+        original_corrections = self.read_optional_text(corrections_path)
+        original_vocab = self.read_optional_text(vocab_path)
+        corrections_path.parent.mkdir(parents=True, exist_ok=True)
+        corrections_path.write_text(json.dumps({"corrections": []}, ensure_ascii=False), encoding="utf-8")
+        vocab_path.write_text("示例正名 | 示例说明\n", encoding="utf-8")
 
         try:
             result = subprocess.run(
@@ -229,9 +242,9 @@ class TestSkillCliContract(unittest.TestCase):
                     "--op",
                     "typo",
                     "--arg",
-                    "青维",
+                    "示例错名",
                     "--arg",
-                    "青梅",
+                    "示例正名",
                     "--date",
                     date_str,
                     "--json",
@@ -247,11 +260,11 @@ class TestSkillCliContract(unittest.TestCase):
             self.assertEqual(payload["action"], "correction.apply")
             self.assertEqual(payload["version"], "v1")
             self.assertEqual(payload["data"]["op"], "typo")
-            self.assertEqual(payload["data"]["args"], [date_str, "青维", "青梅"])
-            self.assertIn("青梅", transcript_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["data"]["args"], [date_str, "示例错名", "示例正名"])
+            self.assertIn("示例正名", transcript_path.read_text(encoding="utf-8"))
         finally:
-            corrections_path.write_text(original_corrections, encoding="utf-8")
-            vocab_path.write_text(original_vocab, encoding="utf-8")
+            self.restore_optional_text(corrections_path, original_corrections)
+            self.restore_optional_text(vocab_path, original_vocab)
             self.cleanup_day_dir(date_str)
 
     def test_agent_recent_is_compat_alias_over_skill_contract(self):
