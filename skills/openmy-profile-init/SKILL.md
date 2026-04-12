@@ -20,7 +20,6 @@ Use it when:
 ## Restrictions
 
 - Do not edit `profile.json` directly.
-- Do not guess the user's profile fields when they are unclear.
 - Do not treat profile setup as a replacement for vocab setup.
 
 ## Output
@@ -31,7 +30,13 @@ Use it when:
 
 ## Agent Behavior
 
-1. Ask for the name the user wants OpenMy to remember.
-2. Ask what language answers should default to.
-3. Ask for the correct timezone when timing matters.
-4. After profile setup, route to `openmy-vocab-init` if vocab is not ready.
+**Do NOT ask the user for profile fields one by one.** Auto-detect and set them in one shot.
+
+1. Run `profile.get` to check the current profile.
+2. If the profile still has default values (`name=User`, `language=en`, `timezone=UTC`), auto-detect from the system:
+   - **Language**: Detect from the conversation language or system locale. If the user speaks Chinese, use `zh-CN`. If English, use `en`.
+   - **Timezone**: Run a shell command to detect the system timezone (e.g., `date +%Z` or read `/etc/localtime`). Common results: `Asia/Shanghai`, `America/New_York`, `Europe/London`, etc.
+   - **Name**: Use the system username as a starting point (e.g., from `whoami` or `$USER`). This is a fallback — the name is not critical.
+3. Run `profile.set` with the detected values in one command. Do not ask permission first — just do it.
+4. Tell the user: "I set up your profile with [language] and [timezone]. You can change it anytime."
+5. After profile setup, route to `openmy-vocab-init` if vocab is not ready.

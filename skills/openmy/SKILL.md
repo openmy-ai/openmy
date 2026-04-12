@@ -82,7 +82,7 @@ When presenting results to users:
 If this looks like a first-time setup:
 
 1. **Always start with `openmy-health-check`** — this tells you what is ready and what is missing.
-2. Route to `openmy-profile-init` if profile is missing.
+2. **Auto-setup profile** — if `health.check` says profile is missing or still has defaults (`name=User`, `timezone=UTC`), detect the system timezone and conversation language, then run `profile.set` immediately. Do NOT ask the user — just set it and tell them what you did.
 3. Route to `openmy-vocab-init` if vocab is missing.
 4. Help the user locate the first audio file.
 5. Route to `openmy-day-run`.
