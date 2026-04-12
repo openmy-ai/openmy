@@ -39,6 +39,22 @@ class TestOpenMyCli(unittest.TestCase):
         path = PROJECT_ROOT / "data" / "2026-04-08" / "transcript.md"
         self.assertEqual(openmy_cli.infer_date_from_path(path), "2026-04-08")
 
+    def test_openmy_without_args_shows_main_menu(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "openmy"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=PROJECT_ROOT,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("OpenMy — 你的个人上下文引擎", result.stdout)
+        self.assertIn("openmy weekly", result.stdout)
+        self.assertIn("openmy monthly", result.stdout)
+        self.assertIn("openmy watch", result.stdout)
+        self.assertIn("openmy screen on/off", result.stdout)
+
     def seed_view_day(self, date_str: str) -> Path:
         day_dir = self.make_day_dir(date_str)
         (day_dir / "transcript.md").write_text(
@@ -1594,6 +1610,99 @@ class TestOpenMyCli(unittest.TestCase):
             self.assertTrue((day_dir / "daily_briefing.json").exists())
         finally:
             self.cleanup_day_dir(date_str)
+
+    def test_cmd_weekly_prints_review(self):
+        from openmy import cli as openmy_cli
+
+        buffer = io.StringIO()
+        with patch.object(openmy_cli, "console", openmy_cli.Console(file=buffer)), patch(
+            "openmy.services.aggregation.weekly.generate_weekly_review",
+            return_value={
+                "week": "2026-W15",
+                "summary": "这周主要推进 OpenMy。",
+                "projects": ["OpenMy"],
+                "wins": ["补好主链"],
+                "open_items": ["补细节"],
+                "next_week_focus": "继续补细节",
+            },
+        ):
+            result = openmy_cli.cmd_weekly(argparse.Namespace(week="2026-W15"))
+
+        self.assertEqual(result, 0)
+        output = buffer.getvalue()
+        self.assertIn("本周回顾", output)
+        self.assertIn("OpenMy", output)
+
+    def test_cmd_monthly_prints_review(self):
+        from openmy import cli as openmy_cli
+
+        buffer = io.StringIO()
+        with patch.object(openmy_cli, "console", openmy_cli.Console(file=buffer)), patch(
+            "openmy.services.aggregation.monthly.generate_monthly_review",
+            return_value={
+                "month": "2026-04",
+                "summary": "本月主要推进 OpenMy。",
+                "projects": ["OpenMy"],
+                "key_decisions": ["先做主链"],
+                "open_items": ["补菜单"],
+                "direction": "继续补菜单",
+            },
+        ):
+            result = openmy_cli.cmd_monthly(argparse.Namespace(month="2026-04"))
+
+        self.assertEqual(result, 0)
+        output = buffer.getvalue()
+        self.assertIn("本月回顾", output)
+        self.assertIn("OpenMy", output)
+
+    def test_cmd_watch_delegates_to_watcher_service(self):
+        from openmy import cli as openmy_cli
+
+        with patch("openmy.services.watcher.watch") as watch_mock:
+            result = openmy_cli.cmd_watch(argparse.Namespace(directory=None))
+
+        self.assertEqual(result, 0)
+        watch_mock.assert_called_once_with(None)
+
+    def test_cmd_screen_updates_env_and_runtime_settings(self):
+        from openmy import cli as openmy_cli
+        from openmy.services.screen_recognition.settings import ScreenContextSettings
+
+        original_env = self.read_optional_text(openmy_cli.PROJECT_ENV_PATH)
+        runtime_path = PROJECT_ROOT / "data" / "runtime" / "screen_context_settings.json"
+        original_runtime = runtime_path.read_text(encoding="utf-8") if runtime_path.exists() else None
+
+        settings = ScreenContextSettings(enabled=False, participation_mode="off")
+        buffer = io.StringIO()
+        try:
+            temp_env = PROJECT_ROOT / ".env.test-screen"
+            with patch.object(openmy_cli, "console", openmy_cli.Console(file=buffer)), patch.object(
+                openmy_cli,
+                "PROJECT_ENV_PATH",
+                temp_env,
+            ), patch("openmy.services.screen_recognition.settings.load_screen_context_settings", return_value=settings), patch(
+                "openmy.services.screen_recognition.settings.save_screen_context_settings"
+            ) as save_mock:
+                result = openmy_cli.cmd_screen(argparse.Namespace(action="on"))
+
+            self.assertEqual(result, 0)
+            self.assertIn("屏幕识别已开启", buffer.getvalue())
+            self.assertEqual(settings.enabled, True)
+            self.assertEqual(settings.participation_mode, "summary_only")
+            save_mock.assert_called_once()
+            self.assertIn("SCREEN_RECOGNITION_ENABLED=true", temp_env.read_text(encoding="utf-8"))
+        finally:
+            temp_env = PROJECT_ROOT / ".env.test-screen"
+            temp_env.unlink(missing_ok=True)
+            if original_env is None and openmy_cli.PROJECT_ENV_PATH.exists():
+                openmy_cli.PROJECT_ENV_PATH.unlink(missing_ok=True)
+            elif original_env is not None:
+                openmy_cli.PROJECT_ENV_PATH.write_text(original_env, encoding="utf-8")
+
+            if original_runtime is None:
+                runtime_path.unlink(missing_ok=True)
+            else:
+                runtime_path.write_text(original_runtime, encoding="utf-8")
 
 
 if __name__ == "__main__":

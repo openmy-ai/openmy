@@ -13,6 +13,7 @@ import socket
 import subprocess
 import sys
 import time
+import tomllib
 import webbrowser
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import date, datetime
@@ -68,6 +69,107 @@ DATE_IN_FILENAME_RE = re.compile(r"(?P<iso>\d{4}-\d{2}-\d{2})|(?P<compact>\d{8})
 
 class FriendlyCliError(RuntimeError):
     """给最终用户看的中文错误。"""
+
+
+def project_version() -> str:
+    try:
+        payload = tomllib.loads((ROOT_DIR / "pyproject.toml").read_text(encoding="utf-8"))
+    except Exception:
+        return "0.x.x"
+    return str(payload.get("project", {}).get("version", "0.x.x") or "0.x.x")
+
+
+def _show_main_menu() -> None:
+    sections = [
+        (
+            "快速开始",
+            [
+                ("openmy quick-start", "首次使用，自动引导"),
+                ("openmy run 2026-04-12", "处理某天的录音"),
+            ],
+        ),
+        (
+            "处理流程",
+            [
+                ("openmy status", "查看所有日期的处理状态"),
+                ("openmy view 2026-04-12", "查看某天的概览"),
+                ("openmy run", "全流程处理"),
+            ],
+        ),
+        (
+            "单步操作",
+            [
+                ("openmy clean", "清洗转写文本"),
+                ("openmy roles", "场景切分 + 角色归因"),
+                ("openmy distill", "蒸馏摘要"),
+                ("openmy briefing", "生成日报"),
+                ("openmy extract", "提取意图 / 事实"),
+            ],
+        ),
+        (
+            "上下文",
+            [
+                ("openmy context", "生成/查看活动上下文"),
+                ("openmy query", "查询项目/人物/待办"),
+                ("openmy weekly", "查看本周回顾"),
+                ("openmy monthly", "查看本月回顾"),
+            ],
+        ),
+        (
+            "工具",
+            [
+                ("openmy correct", "纠正转写错误"),
+                ("openmy watch", "监控录音文件夹"),
+                ("openmy screen on/off", "开关屏幕识别"),
+            ],
+        ),
+        (
+            "Agent 接口",
+            [
+                ("openmy skill ...", "稳定 JSON 动作入口"),
+            ],
+        ),
+    ]
+
+    grid = Table.grid(expand=True)
+    grid.add_column(justify="left", ratio=1)
+    grid.add_column(justify="left", ratio=2)
+
+    for title, rows in sections:
+        grid.add_row(f"[bold cyan]{title}[/bold cyan]", "")
+        for command, description in rows:
+            grid.add_row(f"  [green]{command}[/green]", f"[white]{description}[/white]")
+        grid.add_row("", "")
+
+    footer = f"v{project_version()} · https://github.com/openmy-ai/openmy"
+    grid.add_row(f"[dim]{footer}[/dim]", "")
+    console.print(Panel(grid, title="OpenMy — 你的个人上下文引擎", border_style="bright_blue"))
+
+
+def _upsert_project_env(key: str, value: str) -> Path:
+    lines: list[str] = []
+    if PROJECT_ENV_PATH.exists():
+        lines = PROJECT_ENV_PATH.read_text(encoding="utf-8").splitlines()
+
+    replaced = False
+    for index, raw_line in enumerate(lines):
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        existing_key = stripped.split("=", 1)[0].strip()
+        if existing_key != key:
+            continue
+        lines[index] = f"{key}={value}"
+        replaced = True
+        break
+
+    if not replaced:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append(f"{key}={value}")
+
+    PROJECT_ENV_PATH.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return PROJECT_ENV_PATH
 
 
 def find_all_dates() -> list[str]:
@@ -1107,6 +1209,85 @@ def cmd_quick_start(args: argparse.Namespace) -> int:
     return _cmd_quick_start(args)
 
 
+def _render_review(title: str, payload: dict[str, Any], field_pairs: list[tuple[str, str]]) -> None:
+    lines: list[str] = []
+    summary = str(payload.get("summary", "") or "").strip()
+    if summary:
+        lines.append(summary)
+        lines.append("")
+    for field_name, label in field_pairs:
+        value = payload.get(field_name)
+        if isinstance(value, list) and value:
+            lines.append(f"[bold]{label}[/bold]")
+            lines.extend([f"- {item}" for item in value[:6]])
+            lines.append("")
+        elif isinstance(value, str) and value.strip():
+            lines.append(f"[bold]{label}[/bold]")
+            lines.append(value.strip())
+            lines.append("")
+    console.print(Panel(Markdown("\n".join(lines).strip() or "暂无内容"), title=title, border_style="cyan"))
+
+
+def cmd_weekly(args: argparse.Namespace) -> int:
+    from openmy.services.aggregation.weekly import current_week_str, generate_weekly_review
+
+    week = getattr(args, "week", None) or current_week_str()
+    review = generate_weekly_review(DATA_ROOT, week)
+    _render_review(
+        f"📅 本周回顾 · {review['week']}",
+        review,
+        [("projects", "主要项目"), ("wins", "推进了什么"), ("open_items", "还没收完"), ("next_week_focus", "下周先盯")],
+    )
+    return 0
+
+
+def cmd_monthly(args: argparse.Namespace) -> int:
+    from openmy.services.aggregation.monthly import generate_monthly_review
+    from openmy.services.aggregation.weekly import current_month_str
+
+    month = getattr(args, "month", None) or current_month_str()
+    review = generate_monthly_review(DATA_ROOT, month)
+    _render_review(
+        f"🗓️ 本月回顾 · {review['month']}",
+        review,
+        [("projects", "主要项目"), ("key_decisions", "关键决定"), ("open_items", "还没收完"), ("direction", "接下来")],
+    )
+    return 0
+
+
+def cmd_watch(args: argparse.Namespace) -> int:
+    from openmy.services.watcher import watch
+
+    watch(getattr(args, "directory", None))
+    return 0
+
+
+def cmd_screen(args: argparse.Namespace) -> int:
+    from openmy.services.screen_recognition.settings import (
+        load_screen_context_settings,
+        save_screen_context_settings,
+    )
+
+    action = str(getattr(args, "action", "") or "").strip().lower()
+    settings = load_screen_context_settings(data_root=DATA_ROOT)
+    if action == "on":
+        settings.enabled = True
+        if settings.participation_mode == "off":
+            settings.participation_mode = "summary_only"
+        _upsert_project_env("SCREEN_RECOGNITION_ENABLED", "true")
+        message = "屏幕识别已开启"
+    elif action == "off":
+        settings.enabled = False
+        settings.participation_mode = "off"
+        _upsert_project_env("SCREEN_RECOGNITION_ENABLED", "false")
+        message = "屏幕识别已关闭"
+    else:
+        raise FriendlyCliError("screen 只支持 on 或 off")
+    save_screen_context_settings(settings, data_root=DATA_ROOT)
+    console.print(f"[green]✅ {message}[/green]")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="openmy",
@@ -1164,6 +1345,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_context = sub.add_parser("context", help="生成/查看活动上下文")
     p_context.add_argument("--compact", action="store_true", help="输出 Markdown 压缩版")
     p_context.add_argument("--level", type=int, default=1, choices=[0, 1], help="输出层级 (0=极简, 1=完整)")
+
+    p_weekly = sub.add_parser("weekly", help="查看本周回顾")
+    p_weekly.add_argument("--week", help="指定周，例如 2026-W15")
+
+    p_monthly = sub.add_parser("monthly", help="查看本月回顾")
+    p_monthly.add_argument("--month", help="指定月，例如 2026-04")
+
+    p_watch = sub.add_parser("watch", help="监控录音文件夹")
+    p_watch.add_argument("directory", nargs="?", help="监控目录；不传就用已配置的录音固定目录")
+
+    p_screen = sub.add_parser("screen", help="开关屏幕识别")
+    p_screen.add_argument("action", choices=["on", "off"], help="on=开启，off=关闭")
 
     p_query = sub.add_parser("query", help="基于结构化上下文查询项目/人物/待办/证据")
     p_query.add_argument("--kind", required=True, choices=["project", "person", "open", "closed", "evidence"])
@@ -1229,7 +1422,7 @@ def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | N
     parser = parser or build_parser()
     prepare_project_runtime_env()
     if not args.command:
-        parser.print_help()
+        _show_main_menu()
         return 0
 
     commands = {
@@ -1244,9 +1437,13 @@ def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | N
         "quick-start": cmd_quick_start,
         "roles": cmd_roles,
         "run": cmd_run,
+        "screen": cmd_screen,
         "skill": cmd_skill,
         "status": cmd_status,
         "view": cmd_view,
+        "watch": cmd_watch,
+        "weekly": cmd_weekly,
+        "monthly": cmd_monthly,
     }
 
     handler = commands.get(args.command)
