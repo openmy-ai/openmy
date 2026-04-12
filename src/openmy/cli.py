@@ -1143,11 +1143,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("date", help="日期 YYYY-MM-DD")
     p_run.add_argument("--audio", nargs="+", help="音频文件路径")
     p_run.add_argument("--skip-transcribe", action="store_true", help="跳过转写（使用已有数据）")
+    p_run.add_argument("--skip-aggregate", action="store_true", help="跳过周/月聚合")
     add_stt_runtime_args(p_run)
 
     p_quick = sub.add_parser("quick-start", help="第一次使用：自动处理音频并打开本地日报")
     p_quick.add_argument("audio_path", nargs="?", help="音频文件路径；传 --demo 时可不填")
     p_quick.add_argument("--demo", action="store_true", help="使用内置示例音频跑一遍主链")
+    p_quick.add_argument("--skip-aggregate", action="store_true", help="跳过周/月聚合")
     add_stt_runtime_args(p_quick)
 
     p_correct = sub.add_parser("correct", help="纠正转写或活动上下文")
@@ -1182,6 +1184,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_agent.add_argument("--include-evidence", action="store_true", help="给 --query 使用：带上证据来源")
     p_agent.add_argument("--audio", nargs="+", help="给 --ingest 使用的音频文件路径")
     p_agent.add_argument("--skip-transcribe", action="store_true", help="给 --ingest 使用：复用已有数据")
+    p_agent.add_argument("--skip-aggregate", action="store_true", help="给 --ingest 使用：跳过周/月聚合")
     add_stt_runtime_args(p_agent)
 
     p_skill = sub.add_parser("skill", help="稳定 JSON 动作入口")
@@ -1192,6 +1195,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_skill.add_argument("--date", help="给 day.get / day.run 使用的日期 YYYY-MM-DD")
     p_skill.add_argument("--audio", nargs="+", help="给 day.run 使用的音频文件路径")
     p_skill.add_argument("--skip-transcribe", action="store_true", help="给 day.run 使用：复用已有数据")
+    p_skill.add_argument("--skip-aggregate", action="store_true", help="给 day.run 使用：跳过周/月聚合")
     add_stt_runtime_args(p_skill)
     p_skill.add_argument("--correct-args", nargs="*", help="给 correction.apply 透传的参数")
     p_skill.add_argument("--op", help="给 correction.apply 使用的动作名，如 close-loop")

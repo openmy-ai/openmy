@@ -4,6 +4,7 @@ import argparse
 import os
 import tempfile
 import wave
+from calendar import monthrange
 from datetime import datetime
 from pathlib import Path
 from dataclasses import asdict, is_dataclass
@@ -30,6 +31,7 @@ RUN_STEPS = (
     "extract_core",
     "consolidate",
     "extract_enrich",
+    "aggregate",
 )
 
 
@@ -162,6 +164,93 @@ def _export_outputs(date_str: str, *, briefing_path: Path, context_snapshot: dic
             provider.export_context_snapshot(context_snapshot)
     except Exception as exc:
         cli.console.print(f"[yellow]⚠️ 导出失败，继续主链[/yellow]: {exc}")
+
+
+def _count_week_briefings(data_root: Path, date_str: str) -> tuple[str, int]:
+    from openmy.services.aggregation.weekly import list_week_dates, parse_week_str
+    from openmy.services.aggregation import current_week_str
+
+    target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    week_str = current_week_str(target_date)
+    _, week_start, week_end = parse_week_str(week_str)
+    count = 0
+    for day in list_week_dates(week_start, week_end):
+        if (data_root / day.isoformat() / "daily_briefing.json").exists():
+            count += 1
+    return week_str, count
+
+
+def _is_last_week_of_month(date_str: str) -> bool:
+    target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    last_day = target_date.replace(day=monthrange(target_date.year, target_date.month)[1])
+    return target_date.isocalendar()[:2] == last_day.isocalendar()[:2]
+
+
+def _run_aggregation(date_str: str, run_status: dict, *, skip_aggregate: bool) -> None:
+    cli = _cli()
+    data_root = cli.ensure_day_dir(date_str).parent
+    if skip_aggregate:
+        _mark_step(
+            date_str,
+            run_status,
+            "aggregate",
+            "skipped",
+            message="按参数跳过周/月聚合",
+            skip_reason="disabled_by_flag",
+        )
+        return
+
+    target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    week_str, briefing_count = _count_week_briefings(data_root, date_str)
+    should_generate_weekly = target_date.isoweekday() == 7 or briefing_count >= 7
+    should_generate_monthly = _is_last_week_of_month(date_str)
+
+    if not should_generate_weekly and not should_generate_monthly:
+        _mark_step(
+            date_str,
+            run_status,
+            "aggregate",
+            "skipped",
+            message="本次未触发周/月聚合",
+            skip_reason="not_due",
+        )
+        return
+
+    labels = []
+    if should_generate_weekly:
+        labels.append("周回顾")
+    if should_generate_monthly:
+        labels.append("月回顾")
+    _mark_step(
+        date_str,
+        run_status,
+        "aggregate",
+        "running",
+        message=f"正在生成{' + '.join(labels)}",
+    )
+    try:
+        from openmy.services.aggregation import current_month_str, generate_monthly_review, generate_weekly_review
+
+        artifacts: list[str] = []
+        if should_generate_weekly:
+            weekly_review = generate_weekly_review(data_root, week_str)
+            artifacts.append(str(data_root / "weekly" / f"{weekly_review['week']}.json"))
+        if should_generate_monthly:
+            month_str = current_month_str(target_date)
+            monthly_review = generate_monthly_review(data_root, month_str)
+            artifacts.append(str(data_root / "monthly" / f"{monthly_review['month']}.json"))
+        _mark_step(
+            date_str,
+            run_status,
+            "aggregate",
+            "completed",
+            message=f"已生成{' + '.join(labels)}",
+        )
+        for artifact in artifacts:
+            _mark_step(date_str, run_status, "aggregate", run_status["steps"]["aggregate"]["status"], artifact=artifact)
+    except Exception as exc:
+        cli.console.print(f"[yellow]⚠️ 周/月聚合失败，继续主链[/yellow]: {exc}")
+        _mark_step(date_str, run_status, "aggregate", "failed", message=str(exc))
 
 
 def _mark_step(
@@ -683,13 +772,21 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         context_snapshot=asdict(consolidated) if is_dataclass(consolidated) else None,
     )
 
+    _run_aggregation(
+        date_str,
+        run_status,
+        skip_aggregate=bool(getattr(args, "skip_aggregate", False)),
+    )
+
     cli.console.print(
         cli.Panel(
             f"[green]✅ {date_str} 处理完成！[/green]\n运行 [bold]openmy view {date_str}[/bold] 查看结果",
             border_style="green",
         )
     )
-    final_step = "extract_enrich" if run_status["steps"]["extract_enrich"]["status"] != "pending" else "consolidate"
+    final_step = "aggregate" if run_status["steps"]["aggregate"]["status"] != "pending" else (
+        "extract_enrich" if run_status["steps"]["extract_enrich"]["status"] != "pending" else "consolidate"
+    )
     _cleanup_downstream_backups(downstream_backups)
     _finish_run(date_str, run_status, "completed", final_step)
     return 0
@@ -731,6 +828,7 @@ def cmd_quick_start(args: argparse.Namespace) -> int:
         date=target_date,
         audio=None if getattr(args, "demo", False) else [str(audio_path)],
         skip_transcribe=bool(getattr(args, "demo", False)),
+        skip_aggregate=bool(getattr(args, "skip_aggregate", False)),
         stt_provider=getattr(args, "stt_provider", None),
         stt_model=getattr(args, "stt_model", None),
         stt_vad=bool(getattr(args, "stt_vad", False)),

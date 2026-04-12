@@ -115,6 +115,7 @@ def _run_existing_command(command: str, args: argparse.Namespace) -> int:
                     date=args.date,
                     audio=args.audio,
                     skip_transcribe=args.skip_transcribe,
+                    skip_aggregate=bool(getattr(args, "skip_aggregate", False)),
                     stt_provider=final_stt_provider,
                     stt_model=getattr(args, "stt_model", None),
                     stt_vad=bool(getattr(args, "stt_vad", False)),
