@@ -35,6 +35,14 @@ class TestSceneQuality(unittest.TestCase):
         self.assertTrue(quality["suspicious_content"])
         self.assertIn("technical_crosstalk", quality["quality_flags"])
 
+    def test_detects_assistant_reply_tail(self):
+        quality = inspect_scene_text(
+            "你把它这个用户门槛，为什么我今天我真的累了，我去审核的时候发现有这么多的问题。"
+            "请提供您需要转写的音频文件。目前我无法直接接收或播放音频文件，请您将音频的内容粘贴在这里。"
+        )
+        self.assertTrue(quality["suspicious_content"])
+        self.assertIn("assistant_reply", quality["quality_flags"])
+
     def test_detects_low_signal_fragment(self):
         quality = inspect_scene_text("Claude")
         self.assertFalse(quality["suspicious_content"])

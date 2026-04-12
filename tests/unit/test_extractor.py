@@ -311,6 +311,29 @@ class TestExtractorCallGemini(unittest.TestCase):
         self.assertNotIn("TED Talk", model_input)
         self.assertNotIn("两个数据源", model_input)
 
+    @patch("openmy.services.extraction.extractor.call_gemini")
+    def test_run_extraction_filters_assistant_reply_tail_fixture(self, call_gemini):
+        call_gemini.return_value = {
+            "daily_summary": "ok",
+            "events": [],
+            "intents": [],
+            "facts": [],
+            "role_hints": [],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            input_path = Path(tmp_dir) / "cleaned.md"
+            input_path.write_text("原始稿里有很多内容。", encoding="utf-8")
+            scenes = load_fixture_json("assistant_tail_sample.scenes.json")
+            (Path(tmp_dir) / "scenes.json").write_text(json.dumps(scenes, ensure_ascii=False), encoding="utf-8")
+
+            result = extractor.run_extraction(input_path, date="2026-04-08", dry_run=True, api_key="test-key")
+
+        self.assertIsNotNone(result)
+        model_input = call_gemini.call_args.args[0]
+        self.assertIn("用户门槛", model_input)
+        self.assertNotIn("请提供您需要转写的音频文件", model_input)
+
     @patch("openmy.services.extraction.extractor.ProviderRegistry.from_env")
     def test_call_gemini_uses_provider_and_parses_json(self, registry_factory):
         provider = registry_factory.return_value.get_llm_provider.return_value

@@ -180,6 +180,39 @@ class TestDistillerScreenContext(unittest.TestCase):
         self.assertEqual(payload["scenes"][1]["summary"], "")
         self.assertEqual(payload["scenes"][2]["summary"], "")
 
+    @patch("openmy.services.distillation.distiller.ThreadPoolExecutor")
+    def test_distill_scenes_skips_assistant_reply_tail_fixture(self, executor_cls):
+        from openmy.services.distillation import distiller
+
+        class FakeExecutor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def map(self, fn, jobs):
+                return [fn(job) for job in jobs]
+
+        executor_cls.return_value = FakeExecutor()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scenes_path = Path(tmp_dir) / "scenes.json"
+            scenes = load_fixture_json("assistant_tail_sample.scenes.json")
+            trimmed = []
+            for scene in scenes["scenes"]:
+                item = dict(scene)
+                item["summary"] = ""
+                trimmed.append(item)
+            scenes_path.write_text(json.dumps({"scenes": trimmed}, ensure_ascii=False), encoding="utf-8")
+
+            with patch("openmy.services.distillation.distiller.summarize_scene", return_value="正常摘要") as summarize:
+                payload = distiller.distill_scenes(scenes_path, "test-key", "gemini-test")
+
+        summarize.assert_called_once()
+        self.assertEqual(payload["scenes"][0]["summary"], "正常摘要")
+        self.assertEqual(payload["scenes"][1]["summary"], "")
+
 
 if __name__ == "__main__":
     unittest.main()

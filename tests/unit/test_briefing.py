@@ -149,6 +149,21 @@ class TestGenerateBriefing(unittest.TestCase):
         finally:
             os.unlink(tmp_path)
 
+    def test_briefing_skips_assistant_reply_tail_fixture(self):
+        scenes = load_fixture_json("assistant_tail_sample.scenes.json")
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as fh:
+            json.dump(scenes, fh, ensure_ascii=False)
+            tmp_path = Path(fh.name)
+
+        try:
+            briefing = generate_briefing(tmp_path, "2026-04-07")
+            payload = json.dumps(asdict(briefing), ensure_ascii=False)
+            self.assertEqual(len(briefing.time_blocks), 1)
+            self.assertIn("继续吐槽审核里发现的问题", payload)
+            self.assertNotIn("请提供您需要转写的音频文件", payload)
+        finally:
+            os.unlink(tmp_path)
+
     def test_briefing_consumes_human_confirmed_roles_even_when_auto_role_is_off(self):
         scenes = {
             "scenes": [
