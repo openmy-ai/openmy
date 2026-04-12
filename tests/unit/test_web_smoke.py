@@ -191,6 +191,24 @@ class TestWebSmoke(unittest.TestCase):
         self.assertEqual(script_type, "text/javascript")
         self.assertIn("function init()", script_body)
 
+    def test_server_serves_nested_static_vendor_asset(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner(job_dir=project_root / "jobs")
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                with urlopen(f"{base_url}/static/vendor/chart.umd.js", timeout=2) as response:
+                    body = response.read().decode("utf-8")
+                    content_type = response.headers.get_content_type()
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertEqual(content_type, "text/javascript")
+        self.assertIn("Chart.js", body)
+
     def test_invalid_date_path_returns_400(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_root = Path(tmp_dir)

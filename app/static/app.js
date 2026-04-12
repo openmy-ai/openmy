@@ -764,6 +764,7 @@ function toggleSection(header) {
 
 function initCharts() {
   if (!state.currentData) return;
+  if (typeof Chart === 'undefined') return;
   state.chartInstances.forEach((chart) => chart.destroy());
   state.chartInstances = [];
 

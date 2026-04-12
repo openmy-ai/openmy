@@ -51,6 +51,8 @@ class TestFrontendShell(unittest.TestCase):
         self.assertIn("/api/pipeline/jobs", self.content)
         self.assertRegex(self.content, r"/api/date/\$\{[^}]+\}/meta")
         self.assertRegex(self.content, r"/api/date/\$\{[^}]+\}/briefing")
+        self.assertIn('/static/vendor/chart.umd.js', self.content)
+        self.assertNotIn('cdn.jsdelivr.net/npm/chart.js', self.content)
 
     def test_index_renders_meta_panels_inside_day_view(self):
         self.assertIn("renderMetaPanels", self.content)
@@ -85,6 +87,9 @@ class TestFrontendShell(unittest.TestCase):
         body = match.group("body")
         self.assertIn("if (segment.summary) return escapeHtml(plainText(segment.summary));", body)
         self.assertIn("return escapeHtml(plainText(segment.preview || segment.text || '').slice(0, 200));", body)
+
+    def test_chart_init_has_missing_script_guard(self):
+        self.assertIn("if (typeof Chart === 'undefined') return;", self.content)
 
     def test_plain_text_cleans_markdown_separator(self):
         self.assertIn(".replace(/^---+$/gm, '')", self.content)
