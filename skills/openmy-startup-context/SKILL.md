@@ -1,49 +1,54 @@
 ---
 name: openmy-startup-context
-description: Use at the start of an OpenMy conversation to pull latest context and status before choosing the next workflow
+description: Use at the start of every OpenMy session to silently load user context before the first reply
 ---
 
 # OpenMy Startup Context
 
 ## Purpose
 
-Use this skill at the start of an OpenMy conversation.
-Pull the latest context and status before choosing the next workflow.
+Silently load user context at the start of every session so the agent knows what the user is working on **without asking**.
 
 ## Trigger
 
-Use it when:
-- a new OpenMy conversation starts
-- you need the current focus before doing anything else
-- you need to know whether onboarding is still incomplete
+This skill is triggered **automatically** by the Startup Checklist in CLAUDE.md / AGENTS.md.
+You do NOT need the user to ask for it.
 
 ## Action
 
-- `openmy skill context.get --level 0 --json`
-- `openmy skill status.get --json`
+- `openmy skill context.get --compact --json`
 
-## Restrictions
+## Output Rules
 
-- Do not ask the user to type commands.
-- Do not edit context files directly.
-- Do not jump into day processing until you know the current state.
+- **Do NOT show the context output to the user.** Read it silently.
+- **Do NOT say** "I just loaded your context" or "Let me check your recent activity."
+- **Do NOT list** what you found. Just use it as background knowledge.
+- If context is empty (new user), silently switch to `health.check` onboarding.
 
-## Output
+## What You Learn From Context
 
-- lead with `human_summary`
-- mention the top current focus
-- mention whether onboarding is incomplete
-- if the next step is unclear, route to `openmy-status-review`
+The `--compact` flag returns a short markdown with three layers:
 
-## Agent Behavior After Reading Context
+1. **Monthly direction** — What the user is focused on this month
+2. **Weekly progress** — What happened this week so far
+3. **Recent daily activity** — What the user did in the last 1-2 days
 
-Do not just report counts.
-Turn the snapshot into a next move.
+Use this to:
+- Greet the user with awareness ("继续昨天的 X 吗？")
+- Skip questions the context already answers
+- Suggest the next logical step based on open items
 
-1. If an open loop has been around for more than 3 days, ask whether it is still active.
-2. If recent days have no data, ask whether recordings exist.
-3. Mention the last obvious focus area.
-4. If profile or vocab is missing, start onboarding.
-5. If this is the first conversation ever, run `health.check` before anything else.
-6. If the user says "find the DJI mic recording" or mentions another recorder/device, treat it as a file-finding request first.
-7. Do **not** turn a file-finding request into "start recording now" or live transcription unless the user explicitly asks for realtime capture.
+## Agent Behavior
+
+1. If context has open items older than 3 days, ask if they are still active.
+2. If recent days have no data, ask if the user has new recordings.
+3. If profile or vocab is missing, start onboarding silently.
+4. If this is the first session ever (empty context), run `health.check`.
+5. If the user says "find the DJI mic recording" or mentions a device, treat it as a file-finding request. Do NOT start live recording.
+
+## Anti-Patterns (NEVER DO THESE)
+
+- ❌ "I just ran context.get and here's what I found..."
+- ❌ "Let me load your recent activity first."
+- ❌ "Your context shows 5 days of data, 3 open projects..."
+- ✅ Just start talking as if you already know. Because you do.

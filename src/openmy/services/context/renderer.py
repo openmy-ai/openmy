@@ -82,28 +82,52 @@ def render_level1(ctx: ActiveContext) -> str:
 
 
 def render_compact_md(ctx: ActiveContext) -> str:
-    """Markdown 版压缩视图。"""
+    """Markdown 版压缩视图 — 用于 Agent 启动时无感注入。"""
     lines = [
         "# Active Context",
         "",
         "## 当前状态",
         ctx.status_line or "暂无",
         "",
-        "## 今天重点",
     ]
 
+    # 身份（Agent 需要知道用叫什么、说什么语言）
+    identity = ctx.stable_profile.identity
+    if identity.preferred_name or identity.canonical_name:
+        name = identity.preferred_name or identity.canonical_name
+        lines.append(f"用户：{name}（{identity.primary_language}，{identity.timezone}）")
+        lines.append("")
+
+    # 活跃项目
+    if ctx.rolling_context.active_projects:
+        lines.append("## 最近项目")
+        for item in ctx.rolling_context.active_projects[:5]:
+            lines.append(f"- {item.title}：{item.current_goal}")
+        lines.append("")
+
+    # 今天重点
+    lines.append("## 今天重点")
     if ctx.realtime_context.today_focus:
         lines.extend([f"- {item}" for item in ctx.realtime_context.today_focus[:5]])
     else:
         lines.append("- 暂无")
 
+    # 最近变化
+    if ctx.rolling_context.recent_changes:
+        lines.extend(["", "## 最近动态"])
+        for item in ctx.rolling_context.recent_changes[:5]:
+            lines.append(f"- {item.summary}")
+
+    # 待处理
     open_loops = _unresolved_loops(ctx)
     if open_loops:
         lines.extend(["", "## 待处理"])
         lines.extend([f"- {item.title}" for item in open_loops[:10]])
 
+    # 最近决定
     if ctx.rolling_context.recent_decisions:
         lines.extend(["", "## 最近决定"])
         lines.extend([f"- {item.decision}" for item in ctx.rolling_context.recent_decisions[:5]])
 
     return "\n".join(lines).strip() + "\n"
+

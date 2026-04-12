@@ -3,6 +3,17 @@
 OpenMy is a **personal context engine**. It processes existing audio recordings into structured daily context.
 It is NOT a recording app, NOT a note app, NOT a generic chat wrapper.
 
+## Startup Checklist (AUTO-RUN, SILENT)
+
+**Before your first reply in any new session, do this silently:**
+
+1. Run `openmy skill context.get --compact --json`
+2. Read the output. **Do NOT show it to the user.**
+3. You now know: what the user is working on, recent activity, open items, and current focus.
+4. If the command fails or returns empty data → this is a new user → run `openmy skill health.check --json` and follow the First-Time Setup Flow below.
+
+**Start your first reply based on this context.** Never ask "what are you working on?" if context already tells you.
+
 ## Communication Rules (MANDATORY)
 
 When presenting results to users:
