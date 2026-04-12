@@ -37,36 +37,49 @@ Use it when:
 
 ## Agent Behavior
 
-1. If `data.healthy` is true, say the environment is ready.
-2. If profile is missing, suggest `profile.set` first.
-3. If vocab is missing, suggest `vocab.init` next.
-4. If the active engine needs a key, explain which key name is missing.
-5. **First-time STT engine selection (CRITICAL):**
-   - On first setup, **always ask the user which speech-to-text engine they want to use.** Do NOT silently default to any engine.
-   - **You MUST present ALL available engines from `stt_providers`.** Never hide or omit any. Show them grouped:
-     - **Local engines (no API key needed, works immediately):**
-       - `funasr` — Best for Chinese. Runs locally. Free.
-       - `faster-whisper` — Best for English/multilingual. Runs locally. Free.
-     - **Cloud engines (needs API key, better accuracy):**
-       - `dashscope` (阿里百炼/通义千问) — Excellent Chinese accuracy. Free tier available. Key: `DASHSCOPE_API_KEY`
-       - `gemini` (Google) — Good all-around. Key: `GEMINI_API_KEY`
-       - `groq` (Groq Whisper) — Very fast. Key: `GROQ_API_KEY`
-       - `deepgram` (Deepgram Nova) — Enterprise grade. Key: `DEEPGRAM_API_KEY`
-   - Recommend based on the user's language: Chinese speakers → suggest `funasr` (local) or `dashscope` (cloud); English speakers → suggest `faster-whisper` (local) or `gemini` (cloud).
-   - Once the user chooses, set `OPENMY_STT_PROVIDER=<chosen>` in the project `.env` file.
-   - **If the chosen engine needs an API key, follow this flow:**
-     1. Tell the user where to get the key. Use these links:
-        - dashscope: https://bailian.console.aliyun.com/ (阿里云百炼控制台)
-        - gemini: https://aistudio.google.com/apikey
-        - groq: https://console.groq.com/keys
-        - deepgram: https://console.deepgram.com/
-     2. Say: "你把 key 发给我，我帮你配好。" (or in English: "Paste your API key here, I'll set it up for you.")
-     3. When the user provides the key, write it to `.env` with the correct variable name (e.g., `DASHSCOPE_API_KEY=sk-xxx`).
-     4. Confirm: "配好了，现在可以开始处理音频了。"
-6. **Always highlight that local engines work without any key.** If the user has no API keys configured, say: "You can already process audio with the built-in local engine. API keys are optional — they unlock cloud-based engines with better accuracy."
-7. When recommending an engine, start with the one that is already `ready: true`.
-8. If `llm_available` is false, explain that an agent can still finish distillation and extraction through `distill.pending -> distill.submit` and `extract.core.pending -> extract.core.submit`.
-9. When `llm_available` is false, do **not** stop at "missing key". Say it in user language:
-   - "先别管 Gemini key。音频可以先跑。"
-   - "后面两步整理我也可以直接替你做。"
-   - "你现在只需要先选转写引擎。"
+### Output Format (STRICT)
+
+Your reply to the user MUST follow this exact structure. No extra paragraphs, no "顺手提醒", no filler.
+
+```
+[一句话状态]
+
+选一个转写引擎：
+
+🏠 本地（不需要 key，直接用）
+- funasr — 中文推荐 ✅
+- faster-whisper — 英文推荐
+
+☁️ 云端（需要 API key）
+- dashscope（阿里百炼）— 中文精度最高
+- gemini（Google）— 全能型
+- groq — 最快
+- deepgram — 企业级
+
+选哪个？
+```
+
+- If the user's language is Chinese, mark `funasr` with ✅. If English, mark `faster-whisper` with ✅.
+- Do NOT explain what LLM keys are, what vocab is, or what screen recognition does. The user did not ask.
+- Do NOT say "顺手提醒" or add disclaimers about incomplete setup. If something is missing, fix it silently or save it for later.
+
+### After the User Chooses
+
+1. Set `OPENMY_STT_PROVIDER=<chosen>` in `.env` immediately.
+2. If the engine needs an API key:
+   - Tell the user where to get it (one link, one line):
+     - dashscope → https://bailian.console.aliyun.com/
+     - gemini → https://aistudio.google.com/apikey
+     - groq → https://console.groq.com/keys
+     - deepgram → https://console.deepgram.com/
+   - Say: "把 key 发给我，我帮你配好。"
+   - User pastes key → write to `.env` → confirm: "配好了。"
+3. If the engine is local, just confirm and move on.
+
+### Other Rules
+
+- If `data.healthy` is true, say the environment is ready in one line.
+- If profile is missing, run `profile.set` silently (auto-detect timezone/language). Do NOT ask the user.
+- If vocab is missing, run `vocab.init` silently. Do NOT tell the user.
+- If `llm_available` is false, do NOT mention it unless the user asks. Audio processing works without it.
+
