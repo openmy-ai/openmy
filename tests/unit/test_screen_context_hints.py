@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from openmy.domain.models import RoleTag, SceneBlock, ScreenSession
 from openmy.services.roles.resolver import resolve_roles
+from openmy.services.screen_recognition.capture import screen_events_path
 from openmy.services.screen_recognition.hints import (
     APP_ROLE_HINTS,
     apply_hints,
@@ -15,44 +18,33 @@ from openmy.services.screen_recognition.hints import (
 from openmy.adapters.screen_recognition.client import ScreenEvent, ScreenRecognitionClient
 
 
-class FakeResponse:
-    def __init__(self, status=200, payload=None):
-        self.status = status
-        self._payload = payload or {}
-
-    def read(self):
-        return json.dumps(self._payload).encode("utf-8")
-
-
 class TestScreenRecognitionClient(unittest.TestCase):
-    def test_is_available_returns_true_on_200(self):
-        client = ScreenRecognitionClient(base_url="http://localhost:3030", timeout=1)
-        with patch("urllib.request.urlopen", return_value=FakeResponse(status=200)) as mocked:
-            self.assertTrue(client.is_available())
-        self.assertIn("/health", mocked.call_args.args[0].full_url)
-
-    def test_is_available_returns_false_on_error(self):
-        client = ScreenRecognitionClient(base_url="http://localhost:3030", timeout=1)
-        with patch("urllib.request.urlopen", side_effect=OSError("boom")):
+    def test_is_available_returns_false_without_running_daemon(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            client = ScreenRecognitionClient(data_root=Path(tmp_dir) / "data")
             self.assertFalse(client.is_available())
 
-    def test_search_ocr_maps_response_and_truncates_text(self):
-        client = ScreenRecognitionClient(base_url="http://localhost:3030", timeout=1)
-        payload = {
-            "data": [
-                {
-                    "content": {
-                        "app_name": "Claude",
-                        "window_name": "Chat Window",
-                        "timestamp": "2026-04-07T12:00:00+08:00",
-                        "frame_id": 42,
-                        "text": "x" * 250,
-                        "browser_url": "https://claude.ai/chat",
-                    }
-                }
-            ]
-        }
-        with patch("urllib.request.urlopen", return_value=FakeResponse(payload=payload)) as mocked:
+    def test_search_ocr_maps_local_events_and_truncates_text(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            event_path = screen_events_path("2026-04-07", data_root)
+            event_path.parent.mkdir(parents=True, exist_ok=True)
+            event_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "app_name": "Claude",
+                            "window_name": "Chat Window",
+                            "timestamp": "2026-04-07T12:00:00+08:00",
+                            "frame_id": 42,
+                            "text": "x" * 250,
+                            "browser_url": "https://claude.ai/chat",
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            client = ScreenRecognitionClient(data_root=data_root)
             events = client.search_ocr(
                 start_time="2026-04-07T12:00:00+08:00",
                 end_time="2026-04-07T12:00:59+08:00",
@@ -62,12 +54,10 @@ class TestScreenRecognitionClient(unittest.TestCase):
         self.assertEqual(events[0].app_name, "Claude")
         self.assertEqual(events[0].frame_id, 42)
         self.assertEqual(len(events[0].text), 200)
-        self.assertIn("content_type=ocr", mocked.call_args.args[0].full_url)
-        self.assertIn("app_name=Claude", mocked.call_args.args[0].full_url)
 
-    def test_search_ocr_returns_empty_on_error(self):
-        client = ScreenRecognitionClient(base_url="http://localhost:3030", timeout=1)
-        with patch("urllib.request.urlopen", side_effect=OSError("boom")):
+    def test_search_ocr_returns_empty_when_local_data_missing(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            client = ScreenRecognitionClient(data_root=Path(tmp_dir) / "data")
             self.assertEqual(
                 client.search_ocr(
                     start_time="2026-04-07T12:00:00+08:00",

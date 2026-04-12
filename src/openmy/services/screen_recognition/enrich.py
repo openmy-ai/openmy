@@ -45,7 +45,7 @@ def enrich_scenes_with_screen_context(
     if not provider or not date_str:
         return scenes
 
-    current_settings = settings or load_screen_context_settings()
+    current_settings = settings or ScreenContextSettings()
     if not provider.is_available():
         return scenes
 

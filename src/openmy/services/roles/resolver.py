@@ -375,11 +375,11 @@ def resolve_roles(
         try:
             from openmy.services.screen_recognition.enrich import enrich_scenes_with_screen_context
             from openmy.services.screen_recognition.provider import ScreenContextProvider
-            from openmy.services.screen_recognition.settings import load_screen_context_settings
+            from openmy.services.screen_recognition.settings import ScreenContextSettings
 
             provider = ScreenContextProvider(
                 client=screen_client,
-                settings=load_screen_context_settings(),
+                settings=ScreenContextSettings(),
             )
             scenes = enrich_scenes_with_screen_context(scenes, provider, date_str)
             scenes = [apply_screen_context_role_adjustments(scene) for scene in scenes]

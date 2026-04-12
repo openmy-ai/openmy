@@ -1111,13 +1111,17 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
     screen_settings = load_screen_context_settings(data_root=cli.DATA_ROOT)
     screen_service_available = False
+    screen_daemon_running = False
     if screen_settings.enabled:
         try:
             from openmy.adapters.screen_recognition.client import ScreenRecognitionClient
 
-            screen_service_available = ScreenRecognitionClient(base_url=screen_settings.provider_base_url).is_available()
+            screen_client = ScreenRecognitionClient(data_root=cli.DATA_ROOT)
+            screen_service_available = screen_client.is_available()
+            screen_daemon_running = screen_client.daemon_running()
         except Exception:
             screen_service_available = False
+            screen_daemon_running = False
 
     # Build issues list
     issues: list[str] = []
@@ -1139,8 +1143,8 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         issues.append("Vocabulary not initialized. Run: openmy skill vocab.init --json")
     if export_provider and not export_ready:
         issues.append(f"Export provider '{export_provider}' is configured but not ready.")
-    if screen_settings.enabled and not screen_service_available:
-        issues.append("Screen recognition is enabled, but the local screen service is not reachable.")
+    if screen_settings.enabled and not screen_daemon_running:
+        issues.append("Screen recognition is enabled, but the built-in capture loop is not running.")
 
     all_ok = len(issues) == 0
     summary_parts = []
@@ -1168,8 +1172,8 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             next_actions.append("Set OPENMY_OBSIDIAN_VAULT_PATH to your vault folder, then run health.check again.")
         elif export_provider == "notion":
             next_actions.append("Add NOTION_API_KEY and NOTION_DATABASE_ID, then run health.check again.")
-    if screen_settings.enabled and not screen_service_available:
-        next_actions.append("Start your local screen recognition service, or set SCREEN_RECOGNITION_ENABLED=false if you do not want it.")
+    if screen_settings.enabled and not screen_daemon_running:
+        next_actions.append("Run openmy screen on to start the built-in screen capture loop, or set SCREEN_RECOGNITION_ENABLED=false if you do not want it.")
 
     payload = build_success_payload(
         action="health.check",
@@ -1192,8 +1196,10 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "screen_recognition": {
                 "enabled": bool(screen_settings.enabled),
                 "mode": screen_settings.participation_mode,
-                "provider_base_url": screen_settings.provider_base_url,
                 "service_available": screen_service_available,
+                "daemon_running": screen_daemon_running,
+                "capture_interval_seconds": screen_settings.capture_interval_seconds,
+                "screenshot_retention_hours": screen_settings.screenshot_retention_hours,
             },
             "data_root": str(cli.DATA_ROOT),
             "issues": issues,

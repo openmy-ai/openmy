@@ -6,7 +6,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from openmy.config import SCREEN_RECOGNITION_API, SCREEN_RECOGNITION_ENABLED
+from openmy.services.screen_recognition.capture import (
+    DEFAULT_CAPTURE_INTERVAL_SECONDS,
+    DEFAULT_EVENT_RETENTION_DAYS,
+    DEFAULT_SCREENSHOT_RETENTION_HOURS,
+)
 from openmy.utils.io import safe_write_json
 
 
@@ -25,14 +29,15 @@ def settings_path(data_root: Path | None = None) -> Path:
 
 @dataclass
 class ScreenContextSettings:
-    enabled: bool = bool(SCREEN_RECOGNITION_ENABLED)
+    enabled: bool = True
     participation_mode: str = "summary_only"
-    provider_base_url: str = SCREEN_RECOGNITION_API
+    capture_interval_seconds: int = DEFAULT_CAPTURE_INTERVAL_SECONDS
+    screenshot_retention_hours: int = DEFAULT_SCREENSHOT_RETENTION_HOURS
     exclude_apps: list[str] = field(default_factory=list)
     exclude_domains: list[str] = field(default_factory=list)
     exclude_window_keywords: list[str] = field(default_factory=list)
     summary_only_apps: list[str] = field(default_factory=lambda: ["微信", "企业微信", "飞书", "钉钉", "支付宝"])
-    retention_days: int = 14
+    retention_days: int = DEFAULT_EVENT_RETENTION_DAYS
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any] | None) -> "ScreenContextSettings":
@@ -40,13 +45,20 @@ class ScreenContextSettings:
         mode = str(payload.get("participation_mode", "summary_only") or "summary_only").strip().lower()
         if mode not in {"off", "summary_only", "full"}:
             mode = "summary_only"
-        enabled = bool(payload.get("enabled", SCREEN_RECOGNITION_ENABLED))
+        enabled = bool(payload.get("enabled", True))
         if mode == "off":
             enabled = False
         return cls(
             enabled=enabled,
             participation_mode=mode,
-            provider_base_url=str(payload.get("provider_base_url", SCREEN_RECOGNITION_API) or SCREEN_RECOGNITION_API),
+            capture_interval_seconds=int(
+                payload.get("capture_interval_seconds", DEFAULT_CAPTURE_INTERVAL_SECONDS)
+                or DEFAULT_CAPTURE_INTERVAL_SECONDS
+            ),
+            screenshot_retention_hours=int(
+                payload.get("screenshot_retention_hours", DEFAULT_SCREENSHOT_RETENTION_HOURS)
+                or DEFAULT_SCREENSHOT_RETENTION_HOURS
+            ),
             exclude_apps=[str(item) for item in payload.get("exclude_apps", []) if item is not None],
             exclude_domains=[str(item) for item in payload.get("exclude_domains", []) if item is not None],
             exclude_window_keywords=[
@@ -54,7 +66,7 @@ class ScreenContextSettings:
             ],
             summary_only_apps=[str(item) for item in payload.get("summary_only_apps", []) if item is not None]
             or ["微信", "企业微信", "飞书", "钉钉", "支付宝"],
-            retention_days=int(payload.get("retention_days", 14) or 14),
+            retention_days=int(payload.get("retention_days", DEFAULT_EVENT_RETENTION_DAYS) or DEFAULT_EVENT_RETENTION_DAYS),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -74,21 +86,21 @@ def load_screen_context_settings(
         except Exception:
             loaded = {}
 
-    env_map = env or os.environ
+    env_map = env if env is not None else os.environ
     if "OPENMY_SCREEN_CONTEXT_ENABLED" in env_map:
         loaded["enabled"] = env_map["OPENMY_SCREEN_CONTEXT_ENABLED"].strip().lower() in {"1", "true", "yes", "on"}
-    elif "SCREEN_RECOGNITION_ENABLED" in env_map:
+    elif env is not None and "SCREEN_RECOGNITION_ENABLED" in env_map:
         loaded["enabled"] = env_map["SCREEN_RECOGNITION_ENABLED"].strip().lower() in {"1", "true", "yes", "on"}
 
     if "OPENMY_SCREEN_CONTEXT_MODE" in env_map:
         loaded["participation_mode"] = env_map["OPENMY_SCREEN_CONTEXT_MODE"]
-    elif "SCREEN_RECOGNITION_ENABLED" in env_map and env_map["SCREEN_RECOGNITION_ENABLED"].strip().lower() in {"0", "false", "no", "off"}:
+    elif env is not None and "SCREEN_RECOGNITION_ENABLED" in env_map and env_map["SCREEN_RECOGNITION_ENABLED"].strip().lower() in {"0", "false", "no", "off"}:
         loaded["participation_mode"] = "off"
 
-    if "OPENMY_SCREEN_CONTEXT_API" in env_map:
-        loaded["provider_base_url"] = env_map["OPENMY_SCREEN_CONTEXT_API"]
-    elif "SCREEN_RECOGNITION_API" in env_map:
-        loaded["provider_base_url"] = env_map["SCREEN_RECOGNITION_API"]
+    if "OPENMY_SCREEN_CAPTURE_INTERVAL_SECONDS" in env_map:
+        loaded["capture_interval_seconds"] = env_map["OPENMY_SCREEN_CAPTURE_INTERVAL_SECONDS"]
+    if "OPENMY_SCREENSHOT_RETENTION_HOURS" in env_map:
+        loaded["screenshot_retention_hours"] = env_map["OPENMY_SCREENSHOT_RETENTION_HOURS"]
     return ScreenContextSettings.from_dict(loaded)
 
 

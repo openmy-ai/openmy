@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -12,9 +13,11 @@ from typing import Any
 
 from openmy.config import ROLE_RECOGNITION_ENABLED
 from openmy.services.screen_recognition.settings import (
+    ScreenContextSettings,
     load_screen_context_settings,
     screen_context_participation_enabled,
 )
+from openmy.services.scene_quality import annotate_scene_payload, scene_is_usable_for_downstream
 from openmy.utils.time import iso_at, iso_now
 
 
@@ -186,7 +189,16 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
         data_root = scenes_path.parent.parent
 
     briefing = DailyBriefing(date=date_str, generated_at=iso_now(data_root=data_root))
-    screen_settings = load_screen_context_settings(data_root=data_root)
+    if data_root:
+        screen_settings = load_screen_context_settings(data_root=data_root)
+    else:
+        screen_settings = ScreenContextSettings()
+        if "OPENMY_SCREEN_CONTEXT_ENABLED" in os.environ:
+            screen_settings.enabled = os.environ["OPENMY_SCREEN_CONTEXT_ENABLED"].strip().lower() in {"1", "true", "yes", "on"}
+        if "OPENMY_SCREEN_CONTEXT_MODE" in os.environ:
+            screen_settings.participation_mode = os.environ["OPENMY_SCREEN_CONTEXT_MODE"].strip().lower() or screen_settings.participation_mode
+            if screen_settings.participation_mode == "off":
+                screen_settings.enabled = False
     screen_participation_enabled = screen_context_participation_enabled(screen_settings)
 
     if not scenes_path.exists():
@@ -194,11 +206,12 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
         return briefing
 
     data = json.loads(scenes_path.read_text(encoding="utf-8"))
-    scenes = data.get("scenes", [])
+    scenes = [annotate_scene_payload(scene) for scene in data.get("scenes", []) if isinstance(scene, dict)]
+    usable_scenes = [scene for scene in scenes if scene_is_usable_for_downstream(scene)]
     briefing.total_scenes = len(scenes)
-    briefing.total_words = sum(len(scene.get("text", "")) for scene in scenes)
+    briefing.total_words = sum(len(scene.get("text", "")) for scene in usable_scenes)
     briefing.voice_hours = round(
-        sum(_minutes_between(scene.get("time_start", ""), scene.get("time_end", "")) for scene in scenes) / 60,
+        sum(_minutes_between(scene.get("time_start", ""), scene.get("time_end", "")) for scene in usable_scenes) / 60,
         1,
     )
 
@@ -206,20 +219,24 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
         isinstance(scene.get("screen_context"), dict) and (
             scene.get("screen_context", {}).get("summary") or scene.get("screen_context", {}).get("primary_app")
         )
-        for scene in scenes
+        for scene in usable_scenes
     )
 
     if scene_has_screen_context and screen_participation_enabled:
         briefing.screen_recognition_available = True
 
-    if screen_participation_enabled and screen_client:
+    if screen_client and screen_settings.participation_mode != "off":
         try:
             briefing.screen_recognition_available = screen_client.is_available()
+            if briefing.screen_recognition_available:
+                screen_participation_enabled = True
         except Exception:
             pass
+    elif screen_settings.participation_mode == "off":
+        briefing.screen_recognition_available = False
 
     period_scenes: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for scene in scenes:
+    for scene in usable_scenes:
         period_scenes[_time_to_period(scene.get("time_start", ""))].append(scene)
 
     people: dict[str, PersonInteraction] = {}
@@ -311,7 +328,7 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
     # 避免和 time_blocks 里的 summary 重复
     time_block_texts = {block.summary for block in briefing.time_blocks}
     seen_events: set[str] = set()
-    for scene in scenes:
+    for scene in usable_scenes:
         summary = _sanitize_briefing_text(scene.get("summary", ""))
         if not summary or summary in seen_events:
             continue
@@ -339,7 +356,7 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
 
     if screen_participation_enabled and not briefing.work_sessions and briefing.screen_highlights:
         app_counts: Counter[str] = Counter()
-        for scene in scenes:
+        for scene in usable_scenes:
             screen_context = scene.get("screen_context", {}) if isinstance(scene.get("screen_context", {}), dict) else {}
             app_name = str(screen_context.get("primary_app", "")).strip()
             if app_name:

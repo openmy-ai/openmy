@@ -285,7 +285,8 @@ class TestSkillDispatch(unittest.TestCase):
             fake_screen_settings = SimpleNamespace(
                 enabled=False,
                 participation_mode="off",
-                provider_base_url="http://127.0.0.1:0",
+                capture_interval_seconds=5,
+                screenshot_retention_hours=24,
             )
 
             with (
@@ -326,7 +327,8 @@ class TestSkillDispatch(unittest.TestCase):
             fake_screen_settings = SimpleNamespace(
                 enabled=False,
                 participation_mode="off",
-                provider_base_url="http://127.0.0.1:0",
+                capture_interval_seconds=5,
+                screenshot_retention_hours=24,
             )
 
             with (

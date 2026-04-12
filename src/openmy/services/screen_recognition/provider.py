@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from openmy.adapters.screen_recognition.client import ScreenRecognitionClient
 from openmy.services.screen_recognition.settings import ScreenContextSettings
 
 
 class ScreenContextProvider:
     def __init__(self, client=None, settings: ScreenContextSettings | None = None):
-        self.client = client
+        self.client = client or ScreenRecognitionClient()
         self.settings = settings or ScreenContextSettings()
 
     def is_enabled(self) -> bool:

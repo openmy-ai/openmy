@@ -1263,6 +1263,15 @@ def cmd_watch(args: argparse.Namespace) -> int:
 
 
 def cmd_screen(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from openmy.services.screen_recognition.capture import (
+        is_capture_supported,
+        read_status,
+        run_capture_loop,
+        start_capture_daemon,
+        stop_capture_daemon,
+    )
     from openmy.services.screen_recognition.settings import (
         load_screen_context_settings,
         save_screen_context_settings,
@@ -1270,22 +1279,48 @@ def cmd_screen(args: argparse.Namespace) -> int:
 
     action = str(getattr(args, "action", "") or "").strip().lower()
     settings = load_screen_context_settings(data_root=DATA_ROOT)
+
     if action == "on":
         settings.enabled = True
         if settings.participation_mode == "off":
             settings.participation_mode = "summary_only"
+        save_screen_context_settings(settings, data_root=DATA_ROOT)
         _upsert_project_env("SCREEN_RECOGNITION_ENABLED", "true")
-        message = "屏幕识别已开启"
-    elif action == "off":
+        if not is_capture_supported():
+            raise FriendlyCliError("当前机器不支持内置屏幕识别，只支持 macOS + 系统自带截屏")
+        status = start_capture_daemon(
+            data_root=DATA_ROOT,
+            interval_seconds=settings.capture_interval_seconds,
+            retention_hours=settings.screenshot_retention_hours,
+        )
+        console.print(f"[green]✅ 屏幕识别已开启（后台进程 {status.pid}）[/green]")
+        return 0
+
+    if action == "off":
         settings.enabled = False
         settings.participation_mode = "off"
+        save_screen_context_settings(settings, data_root=DATA_ROOT)
         _upsert_project_env("SCREEN_RECOGNITION_ENABLED", "false")
-        message = "屏幕识别已关闭"
-    else:
-        raise FriendlyCliError("screen 只支持 on 或 off")
-    save_screen_context_settings(settings, data_root=DATA_ROOT)
-    console.print(f"[green]✅ {message}[/green]")
-    return 0
+        stop_capture_daemon(data_root=DATA_ROOT)
+        console.print("[green]✅ 屏幕识别已关闭[/green]")
+        return 0
+
+    if action == "status":
+        status = read_status(DATA_ROOT)
+        running = "运行中" if status.running else "未运行"
+        console.print(f"[cyan]ℹ️ 屏幕识别状态：{running}[/cyan]")
+        return 0
+
+    if action == "daemon":
+        loop_data_root = Path(getattr(args, "data_root", DATA_ROOT) or DATA_ROOT)
+        run_capture_loop(
+            data_root=loop_data_root,
+            interval_seconds=max(1, int(getattr(args, "interval", settings.capture_interval_seconds) or 1)),
+            retention_hours=max(1, int(getattr(args, "retention_hours", settings.screenshot_retention_hours) or 1)),
+        )
+        return 0
+
+    raise FriendlyCliError("screen 只支持 on / off / status")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1356,7 +1391,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_watch.add_argument("directory", nargs="?", help="监控目录；不传就用已配置的录音固定目录")
 
     p_screen = sub.add_parser("screen", help="开关屏幕识别")
-    p_screen.add_argument("action", choices=["on", "off"], help="on=开启，off=关闭")
+    p_screen.add_argument("action", choices=["on", "off", "status"], help="on=开启，off=关闭，status=查看状态")
+
+    p_screen_loop = sub.add_parser("_screen-capture-loop", help=argparse.SUPPRESS)
+    p_screen_loop.add_argument("action", nargs="?", default="daemon", help=argparse.SUPPRESS)
+    p_screen_loop.add_argument("--interval", type=int, default=5, help=argparse.SUPPRESS)
+    p_screen_loop.add_argument("--retention-hours", type=int, default=24, help=argparse.SUPPRESS)
+    p_screen_loop.add_argument("--data-root", default=str(DATA_ROOT), help=argparse.SUPPRESS)
 
     p_query = sub.add_parser("query", help="基于结构化上下文查询项目/人物/待办/证据")
     p_query.add_argument("--kind", required=True, choices=["project", "person", "open", "closed", "evidence"])
@@ -1438,6 +1479,7 @@ def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | N
         "roles": cmd_roles,
         "run": cmd_run,
         "screen": cmd_screen,
+        "_screen-capture-loop": cmd_screen,
         "skill": cmd_skill,
         "status": cmd_status,
         "view": cmd_view,

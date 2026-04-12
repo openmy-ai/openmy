@@ -14,11 +14,15 @@ from openmy.services.screen_recognition.settings import (
 
 class TestScreenSettings(unittest.TestCase):
     def test_defaults_are_conservative(self):
-        settings = load_screen_context_settings()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            settings = load_screen_context_settings(data_root=data_root)
 
         self.assertTrue(settings.enabled)
         self.assertEqual(settings.participation_mode, "summary_only")
-        self.assertEqual(settings.provider_base_url, "http://localhost:3030")
+        self.assertEqual(settings.capture_interval_seconds, 5)
+        self.assertEqual(settings.screenshot_retention_hours, 24)
 
     def test_round_trip_file_persists_exclusions(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -30,6 +34,8 @@ class TestScreenSettings(unittest.TestCase):
                 exclude_apps=["微信"],
                 exclude_domains=["taobao.com"],
                 exclude_window_keywords=["支付"],
+                capture_interval_seconds=7,
+                screenshot_retention_hours=48,
             )
             save_screen_context_settings(settings, data_root=data_root)
 
@@ -39,6 +45,8 @@ class TestScreenSettings(unittest.TestCase):
         self.assertEqual(loaded.exclude_apps, ["微信"])
         self.assertEqual(loaded.exclude_domains, ["taobao.com"])
         self.assertEqual(loaded.exclude_window_keywords, ["支付"])
+        self.assertEqual(loaded.capture_interval_seconds, 7)
+        self.assertEqual(loaded.screenshot_retention_hours, 48)
 
     def test_off_mode_is_loaded_from_disk(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
