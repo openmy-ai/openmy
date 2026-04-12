@@ -241,7 +241,7 @@ def get_stt_enrich_mode() -> str:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 # 是否启用屏幕识别
-SCREEN_RECOGNITION_ENABLED = True
+SCREEN_RECOGNITION_ENABLED = False
 
 # 屏幕识别服务 API 地址
 SCREEN_RECOGNITION_API = "http://localhost:3030"
