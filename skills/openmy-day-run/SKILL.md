@@ -139,6 +139,7 @@ Use these status icons:
 7. If vocab is not initialized, suggest `vocab.init`.
 8. Summarize what the user talked about that day in 2-3 sentences.
 9. If the run pauses at distillation or extraction, present the two options (cheap Gemini API key vs agent token) and let the user choose.
+10. **ALWAYS tell the user about the frontend page.** After the run finishes, say: "结果已经可以看了：http://127.0.0.1:8420" and try to open the browser with `open http://127.0.0.1:8420` (macOS) or `xdg-open` (Linux). If the server is not running, start it first with `openmy quick-start`.
 
 ## Required Reply When The Run Stops Midway
 
