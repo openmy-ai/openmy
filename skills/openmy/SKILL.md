@@ -1,6 +1,10 @@
 ---
 name: openmy
-description: Router skill for OpenMy tasks. Use it to choose the right sub-skill, enforce command boundaries, and apply onboarding or follow-up patterns.
+description: >
+  Use when the task involves OpenMy data, audio processing, transcription,
+  daily context, corrections, vocabulary, profile setup, onboarding, or
+  first-time setup. Routes to the correct sub-skill and enforces
+  communication style (plain language, no jargon, no file paths).
 ---
 
 # OpenMy Router Skill

@@ -133,7 +133,30 @@ openmy skill day.run --date 2026-04-08 --audio path/to/audio.wav --json
 
 ### Install Skills for Your Agent
 
-如果你要把 OpenMy 接进自己的 Agent（助手程序），把这些 Skill（技能说明文件）一起带上：
+#### 一键安装（所有平台）
+
+```bash
+bash scripts/install-skills.sh
+```
+
+自动检测你安装了哪些 AI 工具（Claude Code / Codex / Gemini CLI / Antigravity），把 Skills 链接过去。
+
+#### 分平台安装
+
+**Codex** — 告诉 Codex：
+> Fetch and follow instructions from https://raw.githubusercontent.com/openmy-ai/openmy/refs/heads/main/.codex/INSTALL.md
+
+**Gemini CLI** —
+```bash
+gemini extensions install https://github.com/openmy-ai/openmy
+```
+
+**Claude Code** — 克隆仓库后 CLAUDE.md 自动生效，或手动链接：
+```bash
+bash scripts/install-skills.sh
+```
+
+#### Skill 目录
 
 - `skills/openmy/`
 - `skills/openmy-startup-context/`
