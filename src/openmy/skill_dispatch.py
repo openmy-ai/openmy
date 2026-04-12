@@ -240,6 +240,35 @@ def _meta_has_core_content(payload: dict[str, Any]) -> bool:
     return False
 
 
+def _upsert_project_env(key: str, value: str) -> Path:
+    cli = _cli()
+    env_path = cli.PROJECT_ENV_PATH
+    lines: list[str] = []
+    if env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+
+    replaced = False
+    prefix = f"{key}="
+    for index, raw_line in enumerate(lines):
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        existing_key = stripped.split("=", 1)[0].strip()
+        if existing_key != key:
+            continue
+        lines[index] = f"{key}={value}"
+        replaced = True
+        break
+
+    if not replaced:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append(f"{key}={value}")
+
+    env_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return env_path
+
+
 def _normalize_week_value(raw: str | None) -> str:
     value = str(raw or "").strip()
     if not value:
@@ -791,10 +820,23 @@ def handle_profile_set(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     from openmy.services.context.consolidation import profile_path, save_profile_settings
 
     cli = _cli()
+    audio_source = str(getattr(args, "audio_source", "") or "").strip()
+    if audio_source:
+        audio_source_path = Path(audio_source).expanduser()
+        if not audio_source_path.exists() or not audio_source_path.is_dir():
+            raise SkillDispatchError(
+                action="profile.set",
+                error_code="invalid_audio_source_dir",
+                message="Audio source directory does not exist.",
+                hint="Pass an existing folder path for --audio-source.",
+            )
+        audio_source = str(audio_source_path)
+
     updates = {
         "name": str(getattr(args, "name", "") or "").strip(),
         "language": str(getattr(args, "language", "") or "").strip(),
         "timezone": str(getattr(args, "timezone", "") or "").strip(),
+        "audio_source_dir": audio_source,
     }
     final_updates = {key: value for key, value in updates.items() if value}
     if not final_updates:
@@ -806,11 +848,14 @@ def handle_profile_set(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         )
 
     profile = save_profile_settings(cli.DATA_ROOT, final_updates)
+    artifacts = {"profile": str(profile_path(cli.DATA_ROOT))}
+    if audio_source:
+        artifacts["env"] = str(_upsert_project_env("OPENMY_AUDIO_SOURCE_DIR", audio_source))
     payload = build_success_payload(
         action="profile.set",
         data={"profile": profile, "updated_fields": sorted(final_updates.keys())},
         human_summary=f"Profile updated for {profile.get('name', 'user')}.",
-        artifacts={"profile": str(profile_path(cli.DATA_ROOT))},
+        artifacts=artifacts,
         next_actions=["Run openmy skill context.get --json if you want a fresh context snapshot."],
     )
     return (payload, 0)
@@ -819,6 +864,7 @@ def handle_profile_set(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 def _validate_day_run_inputs(args: argparse.Namespace) -> None:
     cli = _cli()
     from openmy.services.ingest.audio_pipeline import load_sidecar_transcript
+    from openmy.services.ingest.audio_pipeline import discover_configured_audio_files
 
     date_str = _require_date("day.run", getattr(args, "date", None))
     paths = cli.resolve_day_paths(date_str)
@@ -833,12 +879,23 @@ def _validate_day_run_inputs(args: argparse.Namespace) -> None:
         )
 
     if not args.audio and not args.skip_transcribe and not (paths["raw"].exists() or paths["transcript"].exists()):
-        raise SkillDispatchError(
-            action="day.run",
-            error_code="missing_audio",
-            message="No audio provided and no existing transcript data found.",
-            hint="Pass --audio, or make sure data already exists for that date.",
-        )
+        discovered_audio = discover_configured_audio_files(date_str)
+        if discovered_audio:
+            args.audio = discovered_audio
+        else:
+            from openmy.config import get_audio_source_dir
+
+            source_dir = str(get_audio_source_dir() or "").strip()
+            if source_dir:
+                hint = f"No audio found for {date_str} in configured audio source directory: {source_dir}."
+            else:
+                hint = "Pass --audio, or configure OPENMY_AUDIO_SOURCE_DIR first."
+            raise SkillDispatchError(
+                action="day.run",
+                error_code="missing_audio",
+                message="No audio provided and no existing transcript data found.",
+                hint=hint,
+            )
 
     if args.audio and not args.skip_transcribe:
         audio_files = [Path(str(item)).expanduser() for item in args.audio]

@@ -1215,6 +1215,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_skill.add_argument("--name", help="给 profile.set 使用的名字")
     p_skill.add_argument("--language", help="给 profile.set 使用的语言")
     p_skill.add_argument("--timezone", help="给 profile.set 使用的时区")
+    p_skill.add_argument("--audio-source", help="给 profile.set 使用的录音固定目录")
     p_skill.add_argument("--week", help="给 aggregate 使用的周，例如 2026-W15")
     p_skill.add_argument("--month", help="给 aggregate 使用的月，例如 2026-04")
     p_skill.add_argument("--payload-json", help="给 submit 类动作使用的 JSON 字符串")

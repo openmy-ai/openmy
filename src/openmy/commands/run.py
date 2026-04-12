@@ -11,12 +11,22 @@ from dataclasses import asdict, is_dataclass
 
 from openmy.config import (
     GEMINI_MODEL,
+    get_audio_source_dir,
     get_export_provider_name,
     get_llm_api_key,
     get_stage_llm_model,
     get_stt_provider_name,
     has_llm_credentials,
 )
+
+
+def _discover_audio_inputs(date_str: str) -> tuple[list[str], str]:
+    from openmy.services.ingest.audio_pipeline import discover_configured_audio_files
+
+    source_dir = str(get_audio_source_dir() or "").strip()
+    if not source_dir:
+        return [], "missing_source_dir"
+    return discover_configured_audio_files(date_str), source_dir
 
 
 PARTIAL_SUCCESS = 2
@@ -372,6 +382,26 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     """全流程：转写 → 清洗 → 角色 → 蒸馏 → 日报。"""
     cli = _cli()
     date_str = args.date
+    if not getattr(args, "audio", None) and not getattr(args, "skip_transcribe", False):
+        paths = cli.resolve_day_paths(date_str)
+        has_reusable = paths["raw"].exists() or paths["transcript"].exists() or paths["scenes"].exists()
+        if not has_reusable:
+            discovered_audio, source_dir = _discover_audio_inputs(date_str)
+            if discovered_audio:
+                args.audio = discovered_audio
+                cli.console.print(f"[green]✅ 已从固定录音目录找到 {len(discovered_audio)} 段音频[/green]")
+            elif source_dir == "missing_source_dir":
+                cli.console.print(
+                    "[red]❌ 还没配置录音固定目录，也没有手动传音频。[/red]\n"
+                    "请先设置 OPENMY_AUDIO_SOURCE_DIR，或这次直接传 --audio。"
+                )
+                return 1
+            else:
+                cli.console.print(
+                    f"[red]❌ 固定录音目录里没有找到 {date_str} 的音频。[/red]\n"
+                    f"当前目录：{source_dir}"
+                )
+                return 1
     run_status = _init_run_status(date_str, entrypoint)
     cli.console.print(
         cli.Panel(

@@ -1002,6 +1002,66 @@ class TestOpenMyCli(unittest.TestCase):
         finally:
             self.cleanup_day_dir(date_str)
 
+    def test_cmd_run_auto_discovers_audio_from_configured_source_dir(self):
+        from openmy.commands import run as run_command
+
+        date_str = "2099-01-26"
+        day_dir = self.make_day_dir(date_str)
+        fake_audio = "/tmp/today.wav"
+
+        def fake_transcribe(date_str, audio_files, **kwargs):
+            self.assertEqual(audio_files, [fake_audio])
+            (day_dir / "transcript.raw.md").write_text("# raw", encoding="utf-8")
+            return 0, ""
+
+        def fake_clean(args):
+            (day_dir / "transcript.md").write_text("新 transcript", encoding="utf-8")
+            return 0
+
+        segmented_payload = {
+            "scenes": [
+                {
+                    "scene_id": "new",
+                    "time_start": "10:00",
+                    "time_end": "10:05",
+                    "text": "新文本",
+                    "summary": "",
+                    "preview": "新文本",
+                    "role": {"addressed_to": "", "scene_type_label": "自言自语", "needs_review": False},
+                }
+            ],
+            "stats": {"total_scenes": 1, "role_distribution": {}, "needs_review_count": 0},
+        }
+
+        try:
+            with (
+                patch.object(run_command, "_discover_audio_inputs", return_value=([fake_audio], "/tmp/audio-source")),
+                patch.object(run_command, "transcribe_audio_files", side_effect=fake_transcribe) as transcribe_mock,
+                patch("openmy.cli.cmd_clean", side_effect=fake_clean),
+                patch("openmy.cli.build_segmented_scenes_payload", return_value=segmented_payload),
+                patch("openmy.commands.run.has_llm_credentials", return_value=False),
+            ):
+                result = run_command.cmd_run(
+                    argparse.Namespace(
+                        date=date_str,
+                        audio=None,
+                        skip_transcribe=False,
+                        skip_aggregate=True,
+                        stt_provider="faster-whisper",
+                        stt_model="small",
+                        stt_vad=False,
+                        stt_word_timestamps=False,
+                        stt_enrich_mode="off",
+                        stt_align=False,
+                        stt_diarize=False,
+                    )
+                )
+
+            self.assertEqual(result, 2)
+            transcribe_mock.assert_called_once()
+        finally:
+            self.cleanup_day_dir(date_str)
+
     def test_cmd_run_keeps_backup_artifacts_when_rerun_extract_fails(self):
         from openmy.commands import run as run_command
 

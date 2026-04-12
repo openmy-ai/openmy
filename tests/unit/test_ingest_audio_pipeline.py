@@ -1,12 +1,15 @@
 import json
+import os
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
 
 from openmy.services.ingest.audio_pipeline import (
     PreparedChunk,
+    discover_audio_files_for_date,
     offset_time_label,
     prepare_audio_chunks,
     transcribe_audio_files,
@@ -68,6 +71,26 @@ class PrepareAudioChunksTest(unittest.TestCase):
 
 
 class TranscribeAudioFilesTest(unittest.TestCase):
+    def test_discover_audio_files_for_date_uses_modified_day_only(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            today_audio = root / "today.wav"
+            other_audio = root / "other.wav"
+            nested_audio = root / "nested" / "voice.m4a"
+            nested_audio.parent.mkdir(parents=True, exist_ok=True)
+            for path in [today_audio, other_audio, nested_audio]:
+                path.write_bytes(b"audio")
+
+            target_ts = datetime(2026, 4, 12, 9, 30).timestamp()
+            old_ts = datetime(2026, 4, 11, 9, 30).timestamp()
+            os.utime(today_audio, (target_ts, target_ts))
+            os.utime(nested_audio, (target_ts + 10, target_ts + 10))
+            os.utime(other_audio, (old_ts, old_ts))
+
+            discovered = discover_audio_files_for_date(root, "2026-04-12")
+
+            self.assertEqual(discovered, [str(today_audio.resolve()), str(nested_audio.resolve())])
+
     def test_uses_vocab_example_when_private_vocab_missing(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)

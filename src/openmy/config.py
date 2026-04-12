@@ -137,6 +137,10 @@ def get_export_provider_name() -> str:
     return value if value in EXPORT_PROVIDERS else ""
 
 
+def get_audio_source_dir() -> str:
+    return _read_env("OPENMY_AUDIO_SOURCE_DIR")
+
+
 def get_export_config() -> dict[str, Any]:
     provider = get_export_provider_name()
     if provider == "obsidian":

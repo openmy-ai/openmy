@@ -9,6 +9,14 @@ from openmy.services import watcher
 
 
 class TestWatcher(unittest.TestCase):
+    def test_resolve_watch_directory_uses_env_when_directory_missing(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            with patch.object(watcher, "get_audio_source_dir", return_value=str(root)):
+                resolved = watcher.resolve_watch_directory(None)
+
+            self.assertEqual(resolved, root.resolve())
+
     def test_scan_finds_new_stable_wav_without_event(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

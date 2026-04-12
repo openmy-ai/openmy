@@ -56,6 +56,7 @@ DEFAULT_PROFILE_PAYLOAD: dict[str, Any] = {
     "name": "User",
     "language": "en",
     "timezone": "UTC",
+    "audio_source_dir": "",
     "roles": [],
     "answer_language": "en",
     "answer_style": "direct_compact",

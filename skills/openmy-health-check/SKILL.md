@@ -75,6 +75,13 @@ Your reply to the user MUST follow this exact structure. No extra paragraphs, no
    - Say: "把 key 发给我，我帮你配好。"
    - User pastes key → write to `.env` → confirm: "配好了。"
 3. If the engine is local, just confirm and move on.
+4. Then ask where the user's recordings usually land:
+   - "你的录音通常存在哪个文件夹？比如：~/Documents/DJI-Mic/"
+   - "告诉我路径，以后自动从那里找录音。不知道的话可以跳过。"
+5. If the user gives a path:
+   - verify the folder exists
+   - save it with `openmy skill profile.set --audio-source "..." --json`
+   - confirm: "配好了。以后直接说‘处理今天的录音’就行。"
 
 ### Other Rules
 
@@ -82,4 +89,3 @@ Your reply to the user MUST follow this exact structure. No extra paragraphs, no
 - If profile is missing, run `profile.set` silently (auto-detect timezone/language). Do NOT ask the user.
 - If vocab is missing, run `vocab.init` silently. Do NOT tell the user.
 - If `llm_available` is false, do NOT mention it unless the user asks. Audio processing works without it.
-

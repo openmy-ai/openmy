@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -27,6 +28,7 @@ class TestSkillDispatch(unittest.TestCase):
             "name": None,
             "language": None,
             "timezone": None,
+            "audio_source": None,
             "week": None,
             "month": None,
         }
@@ -222,6 +224,49 @@ class TestSkillDispatch(unittest.TestCase):
                 path.unlink(missing_ok=True)
             else:
                 path.write_text(original, encoding="utf-8")
+
+    def test_profile_set_accepts_audio_source_and_syncs_env(self):
+        from openmy import skill_dispatch
+        from openmy.services.context.consolidation import profile_path
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            audio_source = Path(tmp_dir) / "audio"
+            audio_source.mkdir(parents=True, exist_ok=True)
+            env_path = Path(tmp_dir) / ".env"
+            env_path.write_text("OPENMY_STT_PROVIDER=faster-whisper\n", encoding="utf-8")
+
+            fake_cli = SimpleNamespace(DATA_ROOT=data_root, PROJECT_ENV_PATH=env_path)
+            with patch("openmy.skill_dispatch._cli", return_value=fake_cli):
+                args = self.make_args(action="profile.set", audio_source=str(audio_source))
+                payload, exit_code = skill_dispatch.dispatch_skill_action("profile.set", args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(payload["data"]["profile"]["audio_source_dir"], str(audio_source))
+            self.assertIn("OPENMY_AUDIO_SOURCE_DIR=", env_path.read_text(encoding="utf-8"))
+            saved = json.loads(profile_path(data_root).read_text(encoding="utf-8"))
+            self.assertEqual(saved["audio_source_dir"], str(audio_source))
+
+    def test_day_run_uses_configured_audio_source_when_audio_missing(self):
+        from openmy import skill_dispatch
+
+        fake_status = {"status": "completed", "current_step": "briefing"}
+        with (
+            patch("openmy.skill_dispatch._run_existing_command", return_value=0) as run_mock,
+            patch("openmy.skill_dispatch._day_run_status_path") as status_path_mock,
+            patch("openmy.skill_dispatch._read_json", return_value=fake_status),
+            patch("openmy.services.ingest.audio_pipeline.discover_configured_audio_files", return_value=["/tmp/today.wav"]),
+            patch("openmy.services.ingest.audio_pipeline.load_sidecar_transcript", return_value="已有侧车转写"),
+        ):
+            status_path_mock.return_value.exists.return_value = True
+            args = self.make_args(action="day.run", date="2099-02-10", audio=None)
+            payload, exit_code = skill_dispatch.dispatch_skill_action("day.run", args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(args.audio, ["/tmp/today.wav"])
+        self.assertTrue(payload["ok"])
+        run_mock.assert_called_once()
 
     def test_health_check_masks_export_api_key(self):
         from openmy import skill_dispatch

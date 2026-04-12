@@ -17,6 +17,7 @@ from openmy.adapters.transcription.gemini_cli import load_vocab_terms
 from openmy.config import (
     AUDIO_PIPELINE_TIMEOUT,
     GEMINI_MODEL,
+    get_audio_source_dir,
     get_stt_api_key,
     get_stt_model,
     get_stt_provider_name,
@@ -39,6 +40,18 @@ SILENCE_FILTER = (
     "start_periods=1:"
     "start_threshold=-35dB"
 )
+
+AUDIO_SOURCE_EXTENSIONS = {
+    ".wav",
+    ".mp3",
+    ".m4a",
+    ".aac",
+    ".mp4",
+    ".mov",
+    ".flac",
+    ".ogg",
+    ".webm",
+}
 
 
 @dataclass(frozen=True)
@@ -92,6 +105,31 @@ def parse_audio_time(audio_path: Path) -> str:
     if not match:
         return ""
     return f"{match.group(2)}:{match.group(3)}"
+
+
+def discover_audio_files_for_date(source_dir: str | Path | None, date_str: str) -> list[str]:
+    raw_dir = Path(str(source_dir or "")).expanduser() if source_dir else None
+    if raw_dir is None or not raw_dir.exists() or not raw_dir.is_dir():
+        return []
+
+    discovered: list[tuple[float, str]] = []
+    for path in raw_dir.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in AUDIO_SOURCE_EXTENSIONS:
+            continue
+        try:
+            modified_date = datetime.fromtimestamp(path.stat().st_mtime).date().isoformat()
+        except OSError:
+            continue
+        if modified_date != date_str:
+            continue
+        discovered.append((path.stat().st_mtime, str(path.resolve())))
+
+    discovered.sort()
+    return [path for _, path in discovered]
+
+
+def discover_configured_audio_files(date_str: str) -> list[str]:
+    return discover_audio_files_for_date(get_audio_source_dir(), date_str)
 
 
 def offset_time_label(base_time: str, offset_minutes: int) -> str:

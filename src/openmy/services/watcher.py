@@ -16,6 +16,8 @@ import sys
 import time
 from pathlib import Path
 
+from openmy.config import get_audio_source_dir
+
 try:
     from watchdog.events import FileSystemEventHandler
     from watchdog.observers import Observer
@@ -137,11 +139,22 @@ def create_observer(path: Path, handler: AudioFileHandler):
     return observer
 
 
-def watch(directory: str, cooldown: int = 30):
-    """启动监控。"""
-    path = Path(directory).resolve()
+def resolve_watch_directory(directory: str | None = None) -> Path:
+    raw = str(directory or "").strip() or get_audio_source_dir()
+    if not raw:
+        raise ValueError("未提供监控目录，也没有配置 OPENMY_AUDIO_SOURCE_DIR。")
+    path = Path(raw).expanduser().resolve()
     if not path.exists():
-        print(f"❌ 目录不存在: {path}")
+        raise ValueError(f"目录不存在: {path}")
+    return path
+
+
+def watch(directory: str | None = None, cooldown: int = 30):
+    """启动监控。"""
+    try:
+        path = resolve_watch_directory(directory)
+    except ValueError as exc:
+        print(f"❌ {exc}")
         sys.exit(1)
 
     handler = AudioFileHandler(cooldown_seconds=cooldown)
@@ -168,7 +181,4 @@ def watch(directory: str, cooldown: int = 30):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("用法: python3 -m openmy.services.watcher <监控目录>")
-        sys.exit(1)
-    watch(sys.argv[1])
+    watch(sys.argv[1] if len(sys.argv) >= 2 else None)

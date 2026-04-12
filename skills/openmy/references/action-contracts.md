@@ -26,6 +26,7 @@ openmy skill status.get --json
 openmy skill vocab.init --json
 openmy skill profile.get --json
 openmy skill profile.set --name "User Name" --language zh-CN --timezone Asia/Shanghai --json
+openmy skill profile.set --audio-source "~/Documents/DJI-Mic" --json
 openmy skill health.check --json
 ```
 
