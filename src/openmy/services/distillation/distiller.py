@@ -18,6 +18,7 @@ from openmy.config import (
 )
 from openmy.providers.registry import ProviderRegistry
 from openmy.utils.io import safe_write_json
+from openmy.services.scene_quality import scene_is_usable_for_downstream
 
 
 def _is_retryable_llm_error(exc: Exception) -> bool:
@@ -111,7 +112,10 @@ def distill_scenes(scenes_path: Path, api_key: str, model: str | None) -> dict:
     data = json.loads(scenes_path.read_text(encoding='utf-8'))
     jobs: list[tuple[int, dict, str, str | None]] = []
     for index, scene in enumerate(data.get('scenes', [])):
+        scene.setdefault('summary', '')
         if scene.get('summary'):
+            continue
+        if not scene_is_usable_for_downstream(scene):
             continue
         jobs.append((index, scene, api_key, model))
 

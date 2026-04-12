@@ -231,6 +231,14 @@ class AssistantReplyTest(unittest.TestCase):
         result = clean.clean_text(f"你觉得呢？\n{long_line}")
         self.assertNotIn("[助手回复]", result)
 
+    def test_suspicious_crosstalk_marked(self):
+        text = (
+            "在编写代码时，PostgreSQL 确实也是一个不错的选择，特别是如果你需要处理复杂 SQL 查询。"
+            "另外它对 JSONB 支持也很强，这使得传统数据库处理非结构化数据更加灵活。"
+        )
+        result = clean.clean_text(text)
+        self.assertIn("[疑似串台]", result)
+
 
 class InlineAhPreservedTest(unittest.TestCase):
     """Fix 5: 句中"啊"不删"""

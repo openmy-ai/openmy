@@ -29,6 +29,7 @@ class TestSkillDispatch(unittest.TestCase):
             "language": None,
             "timezone": None,
             "audio_source": None,
+            "stt_provider": None,
             "week": None,
             "month": None,
         }
@@ -225,6 +226,27 @@ class TestSkillDispatch(unittest.TestCase):
             else:
                 path.write_text(original, encoding="utf-8")
 
+    def test_profile_set_accepts_stt_provider_and_syncs_env(self):
+        from openmy import skill_dispatch
+
+        data_root = skill_dispatch._cli().DATA_ROOT
+        env_path = skill_dispatch._cli().PROJECT_ENV_PATH
+        original_env = env_path.read_text(encoding="utf-8") if env_path.exists() else None
+
+        try:
+            args = self.make_args(action="profile.set", stt_provider="funasr")
+            payload, exit_code = skill_dispatch.dispatch_skill_action("profile.set", args)
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["data"]["stt_provider"], "funasr")
+            self.assertIn("stt_provider", payload["data"]["updated_fields"])
+            self.assertIn("OPENMY_STT_PROVIDER=funasr", env_path.read_text(encoding="utf-8"))
+        finally:
+            if original_env is None:
+                env_path.unlink(missing_ok=True)
+            else:
+                env_path.write_text(original_env, encoding="utf-8")
+
     def test_profile_set_accepts_audio_source_and_syncs_env(self):
         from openmy import skill_dispatch
         from openmy.services.context.consolidation import profile_path
@@ -316,6 +338,12 @@ class TestSkillDispatch(unittest.TestCase):
         self.assertEqual(payload["data"]["export"]["config"]["api_key"], "***")
         self.assertEqual(payload["data"]["export"]["config"]["database_id"], "db_123")
         self.assertTrue(payload["data"]["llm_available"])
+        self.assertIn("onboarding", payload["data"])
+        self.assertEqual(payload["data"]["onboarding"]["recommended_provider"], "faster-whisper")
+        self.assertTrue(payload["data"]["onboarding"]["state_path"].endswith("onboarding_state.json"))
+        self.assertIn("headline", payload["data"]["onboarding"])
+        self.assertIn("choices", payload["data"]["onboarding"])
+        self.assertEqual(payload["next_actions"][0], payload["data"]["onboarding"]["primary_action"])
 
     def test_health_check_requires_engine_choice_when_provider_missing(self):
         from openmy import skill_dispatch
@@ -348,7 +376,10 @@ class TestSkillDispatch(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["data"]["stt_active"], "")
         self.assertIn("No STT provider selected yet.", payload["data"]["issues"][0])
-        self.assertIn("Ask the user to choose an STT engine first.", payload["next_actions"][0])
+        self.assertEqual(payload["next_actions"][0], payload["data"]["onboarding"]["primary_action"])
+        self.assertEqual(payload["data"]["onboarding"]["stage"], "choose_provider")
+        self.assertEqual(payload["data"]["onboarding"]["recommended_provider"], "funasr")
+        self.assertIn("当前还没选转写引擎", payload["human_summary"])
 
     def test_distill_pending_and_submit_round_trip(self):
         from openmy import skill_dispatch

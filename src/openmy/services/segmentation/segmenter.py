@@ -9,6 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from openmy.domain.models import SceneBlock
+from openmy.services.scene_quality import annotate_scene_payload
 from openmy.utils.io import safe_write_json
 
 
@@ -72,7 +73,7 @@ def segment(markdown: str) -> list[SceneBlock]:
 
 def build_scenes_payload(scenes: list[SceneBlock]) -> dict[str, list[dict]]:
     """序列化场景列表，保持和下游 readers 的 payload 结构一致。"""
-    return {"scenes": [asdict(scene) for scene in scenes]}
+    return {"scenes": [annotate_scene_payload(asdict(scene)) for scene in scenes]}
 
 
 def main() -> None:

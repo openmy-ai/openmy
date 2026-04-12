@@ -379,6 +379,9 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
     elif briefing.screen_highlights:
         first_signal = "screen"
         summary_parts.append(f"我在屏幕上主要在处理 {briefing.screen_highlights[0]}")
+    elif briefing.time_blocks:
+        first_signal = "time_block"
+        summary_parts.append(briefing.time_blocks[0].summary)
     elif active_periods:
         first_signal = "periods"
         summary_parts.append(f"我活跃时段：{'、'.join(active_periods)}")

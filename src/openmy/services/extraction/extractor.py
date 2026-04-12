@@ -41,6 +41,7 @@ from openmy.domain.intent import DONE_STATUSES, DueDate, Fact, Intent
 from openmy.utils.io import safe_write_json
 from openmy.providers.registry import ProviderRegistry
 from openmy.services.query.search_index import update_search_index_for_day
+from openmy.services.scene_quality import annotate_scene_payload, scene_is_usable_for_downstream
 from openmy.services.screen_recognition.summary import infer_project_hint_from_text
 from openmy.utils.time import iso_at
 
@@ -526,17 +527,9 @@ def _build_extract_prompt(text: str, reference_date: str | None) -> str:
 
 
 def _load_scene_catalog(input_path: Path) -> list[dict[str, str]]:
-    scenes_path = input_path.parent / "scenes.json"
-    if not scenes_path.exists():
-        return []
-    try:
-        payload = json.loads(scenes_path.read_text(encoding="utf-8"))
-    except Exception:
-        return []
-
     scenes = []
-    for scene in payload.get("scenes", []):
-        if not isinstance(scene, dict):
+    for scene in _load_scene_payloads(input_path):
+        if not scene_is_usable_for_downstream(scene):
             continue
         scenes.append(
             {
@@ -560,7 +553,26 @@ def _load_scene_payloads(input_path: Path) -> list[dict[str, Any]]:
         payload = json.loads(scenes_path.read_text(encoding="utf-8"))
     except Exception:
         return []
-    return [scene for scene in payload.get("scenes", []) if isinstance(scene, dict)]
+    return [annotate_scene_payload(scene) for scene in payload.get("scenes", []) if isinstance(scene, dict)]
+
+
+def _build_transcript_for_extraction(input_path: Path) -> str:
+    scenes = _load_scene_payloads(input_path)
+    if not scenes:
+        return _load_transcript_body(input_path)
+
+    usable_scenes = [scene for scene in scenes if scene_is_usable_for_downstream(scene)]
+    if not usable_scenes:
+        return ""
+
+    blocks: list[str] = []
+    for scene in usable_scenes:
+        time_start = _normalize_text(scene.get("time_start")) or "00:00"
+        text = _normalize_text(scene.get("text"))
+        if not text:
+            continue
+        blocks.append(f"## {time_start}\n\n{text}")
+    return "\n\n".join(blocks).strip() or _load_transcript_body(input_path)
 
 
 def _build_enrich_prompt(
@@ -945,7 +957,9 @@ def apply_screen_context_to_payload(payload: dict[str, Any], scenes: list[dict[s
     scenes_by_id = {
         _normalize_text(scene.get("scene_id")): scene
         for scene in scenes
-        if isinstance(scene, dict) and _normalize_text(scene.get("scene_id"))
+        if isinstance(scene, dict)
+        and _normalize_text(scene.get("scene_id"))
+        and not annotate_scene_payload(scene).get("suspicious_content", False)
     }
 
     screen_evidence: list[dict[str, Any]] = []
@@ -1411,7 +1425,13 @@ def run_core_extraction(
             raise ExtractionError(message)
         return None
 
-    text = _load_transcript_body(input_path)
+    text = _build_transcript_for_extraction(input_path)
+    if not text.strip():
+        message = "场景全部被判成可疑内容，已阻止继续提取。请先检查转写串台。"
+        print(message, file=sys.stderr)
+        if raise_on_error:
+            raise ExtractionError(message)
+        return None
     print(f"📖 读取 {input_path.name}: {len(text)} 字", file=sys.stderr)
     print(f"🤖 调用默认 LLM provider ({final_model}) 提取结构化摘要...", file=sys.stderr)
 
@@ -1458,7 +1478,13 @@ def run_enrichment_extraction(
             raise ExtractionError(message)
         return None
 
-    text = _load_transcript_body(input_path)
+    text = _build_transcript_for_extraction(input_path)
+    if not text.strip():
+        message = "场景全部被判成可疑内容，已阻止继续补全提取。请先检查转写串台。"
+        print(message, file=sys.stderr)
+        if raise_on_error:
+            raise ExtractionError(message)
+        return mark_enrichment_status(core_payload, "failed", message)
     try:
         enrich_payload = call_gemini_enrichment(
             text,

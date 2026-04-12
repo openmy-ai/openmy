@@ -1,0 +1,48 @@
+{
+  "scenes": [
+    {
+      "scene_id": "s01",
+      "time_start": "11:08",
+      "time_end": "11:08",
+      "text": "Claude",
+      "summary": "Claude",
+      "role": {}
+    },
+    {
+      "scene_id": "s02",
+      "time_start": "12:00",
+      "time_end": "12:10",
+      "text": "今天继续推进 OpenMy 的前端可读性。",
+      "summary": "继续推进前端可读性。",
+      "role": {
+        "addressed_to": "",
+        "scene_type": "self"
+      }
+    },
+    {
+      "scene_id": "s03",
+      "time_start": "19:52",
+      "time_end": "19:52",
+      "text": "Claude 现在的性能比去年好多了，你看过最新的 TED Talk 吗？关于数据库的，提到 Postgres 架构的部分我觉得非常有意思。",
+      "summary": "数据库讲解。",
+      "role": {}
+    },
+    {
+      "scene_id": "s04",
+      "time_start": "23:02",
+      "time_end": "23:12",
+      "text": "我来给你展示一下，其实它就是非常简单。你可以看到，我这里已经有了两个数据源。接下来我就需要创建一个订阅，然后把这些数据同步过去。",
+      "summary": "数据源同步讲解。",
+      "role": {}
+    },
+    {
+      "scene_id": "s05",
+      "time_start": "23:22",
+      "time_end": "23:22",
+      "text": "请提供您需要转写的音频文件。目前我无法直接接收或播放音频文件。",
+      "summary": "机器回复。",
+      "role": {}
+    }
+  ],
+  "stats": {}
+}

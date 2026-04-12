@@ -40,6 +40,7 @@ from openmy.config import (
     stt_provider_requires_api_key,
 )
 from openmy.utils.io import safe_write_json
+from openmy.services.onboarding.state import load_onboarding_state
 from openmy.services.query.context_query import query_context, render_query_result
 from openmy.services.query.search_index import get_day_status_from_index, list_index_dates
 
@@ -80,6 +81,7 @@ def project_version() -> str:
 
 
 def _show_main_menu() -> None:
+    onboarding = load_onboarding_state(DATA_ROOT)
     sections = [
         (
             "快速开始",
@@ -143,6 +145,10 @@ def _show_main_menu() -> None:
 
     footer = f"v{project_version()} · https://github.com/openmy-ai/openmy"
     grid.add_row(f"[dim]{footer}[/dim]", "")
+    if onboarding and not onboarding.get("completed", False):
+        recommended = onboarding.get("recommended_label") or onboarding.get("recommended_provider") or "先做环境检查"
+        reason = onboarding.get("recommended_reason") or onboarding.get("next_step") or "先把第一次使用走通。"
+        console.print(Panel(f"下一步建议：{recommended}\n{reason}", title="首次使用引导", border_style="yellow"))
     console.print(Panel(grid, title="OpenMy — 你的个人上下文引擎", border_style="bright_blue"))
 
 

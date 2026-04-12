@@ -187,6 +187,24 @@ def mark_assistant_replies(lines: list[str], min_length: int = 80) -> list[str]:
     return result
 
 
+def mark_suspicious_crosstalk(lines: list[str], min_length: int = 40) -> list[str]:
+    """给明显像外放/串台的长行打标签，不直接删除。"""
+    from openmy.services.scene_quality import inspect_scene_text
+
+    result: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or TIME_HEADER_RE.match(stripped) or stripped.startswith('#'):
+            result.append(line)
+            continue
+        quality = inspect_scene_text(stripped)
+        if quality["suspicious_content"] and len(stripped) >= min_length and not stripped.startswith('[疑似串台]'):
+            result.append(f'[疑似串台] {line}')
+            continue
+        result.append(line)
+    return result
+
+
 def collapse_blank_lines(lines: list[str]) -> list[str]:
     """连续空行最多保留 1 个"""
     result: list[str] = []
@@ -343,6 +361,9 @@ def clean_text(text: str, api_key: str | None = None) -> str:
 
     # Step 4.5 (Fix 4): 给助手回复打标签
     lines = mark_assistant_replies(lines)
+
+    # Step 4.6: 给明显串台的长段打标签
+    lines = mark_suspicious_crosstalk(lines)
 
     # Step 5: 去除连续重复行
     lines = deduplicate_lines(lines)

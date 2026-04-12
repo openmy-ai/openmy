@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+from tests.unit.fixture_loader import load_fixture_json
 
 
 class TestDistillerCli(unittest.TestCase):
@@ -106,6 +109,76 @@ class TestDistillerScreenContext(unittest.TestCase):
         executor_cls.assert_called_once_with(max_workers=5)
         self.assertEqual(payload["scenes"][0]["summary"], "")
         self.assertEqual(payload["scenes"][1]["summary"], "第二段摘要")
+
+    @patch("openmy.services.distillation.distiller.ThreadPoolExecutor")
+    def test_distill_scenes_skips_suspicious_scenes_from_regression_fixture(self, executor_cls):
+        from openmy.services.distillation import distiller
+
+        class FakeExecutor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def map(self, fn, jobs):
+                return [fn(job) for job in jobs]
+
+        executor_cls.return_value = FakeExecutor()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scenes_path = Path(tmp_dir) / "scenes.json"
+            scenes = load_fixture_json("crosstalk_sample.scenes.json")
+            trimmed = []
+            for scene in scenes["scenes"]:
+                item = dict(scene)
+                item["summary"] = ""
+                trimmed.append(item)
+            scenes_path.write_text(json.dumps({"scenes": trimmed}, ensure_ascii=False), encoding="utf-8")
+
+            with patch("openmy.services.distillation.distiller.summarize_scene", return_value="正常摘要") as summarize:
+                payload = distiller.distill_scenes(scenes_path, "test-key", "gemini-test")
+
+        summarize.assert_called_once()
+        self.assertEqual(payload["scenes"][0]["summary"], "")
+        self.assertEqual(payload["scenes"][1]["summary"], "正常摘要")
+        self.assertEqual(payload["scenes"][2]["summary"], "")
+        self.assertEqual(payload["scenes"][3]["summary"], "")
+        self.assertEqual(payload["scenes"][4]["summary"], "")
+
+    @patch("openmy.services.distillation.distiller.ThreadPoolExecutor")
+    def test_distill_scenes_skips_mixed_crosstalk_fixture(self, executor_cls):
+        from openmy.services.distillation import distiller
+
+        class FakeExecutor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def map(self, fn, jobs):
+                return [fn(job) for job in jobs]
+
+        executor_cls.return_value = FakeExecutor()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scenes_path = Path(tmp_dir) / "scenes.json"
+            scenes = load_fixture_json("mixed_crosstalk_sample.scenes.json")
+            trimmed = []
+            for scene in scenes["scenes"]:
+                item = dict(scene)
+                item["summary"] = ""
+                trimmed.append(item)
+            scenes_path.write_text(json.dumps({"scenes": trimmed}, ensure_ascii=False), encoding="utf-8")
+
+            with patch("openmy.services.distillation.distiller.summarize_scene", return_value="正常摘要") as summarize:
+                payload = distiller.distill_scenes(scenes_path, "test-key", "gemini-test")
+
+        summarize.assert_called_once()
+        self.assertEqual(payload["scenes"][0]["summary"], "正常摘要")
+        self.assertEqual(payload["scenes"][1]["summary"], "")
+        self.assertEqual(payload["scenes"][2]["summary"], "")
 
 
 if __name__ == "__main__":

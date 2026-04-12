@@ -10,13 +10,17 @@ from pathlib import Path
 from dataclasses import asdict, is_dataclass
 
 from openmy.config import (
+    DEFAULT_STT_MODELS,
     GEMINI_MODEL,
+    LOCAL_STT_PROVIDERS,
     get_audio_source_dir,
     get_export_provider_name,
     get_llm_api_key,
     get_stage_llm_model,
+    get_stt_api_key,
     get_stt_provider_name,
     has_llm_credentials,
+    stt_provider_requires_api_key,
 )
 
 
@@ -99,6 +103,54 @@ def _seed_demo_transcript(date_str: str, transcript_text: str) -> None:
     transcript_path.write_text(
         "# OpenMy demo\n\n---\n\n## 12:00\n\n" + transcript_text.strip() + "\n",
         encoding="utf-8",
+    )
+
+
+def _collect_quick_start_onboarding(stt_provider_override: str | None = None) -> dict:
+    cli = _cli()
+    from openmy.services.cleaning.cleaner import CORRECTIONS_FILE, VOCAB_FILE
+    from openmy.services.context.consolidation import profile_path
+    from openmy.services.onboarding.state import build_onboarding_state, save_onboarding_state
+
+    current_stt = (stt_provider_override or get_stt_provider_name()).lower().strip()
+    stt_providers: list[dict[str, object]] = []
+    for name, default_model in DEFAULT_STT_MODELS.items():
+        needs_key = stt_provider_requires_api_key(name)
+        stt_providers.append({
+            "name": name,
+            "type": "local" if name in LOCAL_STT_PROVIDERS else "api",
+            "default_model": default_model,
+            "needs_api_key": needs_key,
+            "api_key_configured": bool(get_stt_api_key(name)) if needs_key else True,
+            "is_active": name == current_stt,
+            "ready": bool(get_stt_api_key(name)) if needs_key else True,
+        })
+
+    payload = build_onboarding_state(
+        data_root=cli.DATA_ROOT,
+        stt_providers=stt_providers,
+        current_stt=current_stt,
+        profile_exists=profile_path(cli.DATA_ROOT).exists(),
+        vocab_exists=CORRECTIONS_FILE.exists() and VOCAB_FILE.exists(),
+    )
+    save_onboarding_state(cli.DATA_ROOT, payload)
+    return payload
+
+
+def _print_quick_start_onboarding(onboarding: dict) -> None:
+    cli = _cli()
+    recommended = onboarding.get("recommended_label") or onboarding.get("recommended_provider") or "先做环境检查"
+    reason = onboarding.get("recommended_reason") or onboarding.get("next_step") or "先把第一次使用走通。"
+    provider = onboarding.get("recommended_provider") or "faster-whisper"
+    cli.console.print(
+        cli.Panel(
+            "[yellow]⚠️ 还差一步才能开始第一次转写[/yellow]\n"
+            f"推荐路线：{recommended}\n"
+            f"原因：{reason}\n\n"
+            f"现在直接运行 [bold]openmy skill profile.set --stt-provider {provider} --json[/bold]，\n"
+            "先把这条路线定下来，再回来跑 quick-start。",
+            border_style="yellow",
+        )
     )
 
 
@@ -841,6 +893,10 @@ def cmd_quick_start(args: argparse.Namespace) -> int:
         return 1
 
     if not getattr(args, "demo", False):
+        effective_provider = str(getattr(args, "stt_provider", None) or get_stt_provider_name() or "").strip()
+        if not effective_provider:
+            _print_quick_start_onboarding(_collect_quick_start_onboarding())
+            return 1
         try:
             cli.ensure_runtime_dependencies(stt_provider=getattr(args, "stt_provider", None))
         except cli.FriendlyCliError as exc:

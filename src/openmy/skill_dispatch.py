@@ -817,10 +817,12 @@ def handle_profile_get(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
 
 def handle_profile_set(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    from openmy.config import DEFAULT_STT_MODELS
     from openmy.services.context.consolidation import profile_path, save_profile_settings
 
     cli = _cli()
     audio_source = str(getattr(args, "audio_source", "") or "").strip()
+    stt_provider = str(getattr(args, "stt_provider", "") or "").strip().lower()
     if audio_source:
         audio_source_path = Path(audio_source).expanduser()
         if not audio_source_path.exists() or not audio_source_path.is_dir():
@@ -832,6 +834,14 @@ def handle_profile_set(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             )
         audio_source = str(audio_source_path)
 
+    if stt_provider and stt_provider not in DEFAULT_STT_MODELS:
+        raise SkillDispatchError(
+            action="profile.set",
+            error_code="invalid_stt_provider",
+            message="Unknown STT provider.",
+            hint="Pass one of: gemini, faster-whisper, funasr, groq, dashscope, deepgram.",
+        )
+
     updates = {
         "name": str(getattr(args, "name", "") or "").strip(),
         "language": str(getattr(args, "language", "") or "").strip(),
@@ -839,22 +849,36 @@ def handle_profile_set(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "audio_source_dir": audio_source,
     }
     final_updates = {key: value for key, value in updates.items() if value}
-    if not final_updates:
+    if not final_updates and not stt_provider:
         raise SkillDispatchError(
             action="profile.set",
             error_code="missing_profile_fields",
             message="No profile fields provided.",
-            hint="Pass at least one of --name, --language, or --timezone.",
+            hint="Pass at least one of --name, --language, --timezone, --audio-source, or --stt-provider.",
         )
 
     profile = save_profile_settings(cli.DATA_ROOT, final_updates)
     artifacts = {"profile": str(profile_path(cli.DATA_ROOT))}
+    env_path = None
     if audio_source:
-        artifacts["env"] = str(_upsert_project_env("OPENMY_AUDIO_SOURCE_DIR", audio_source))
+        env_path = _upsert_project_env("OPENMY_AUDIO_SOURCE_DIR", audio_source)
+    if stt_provider:
+        env_path = _upsert_project_env("OPENMY_STT_PROVIDER", stt_provider)
+    if env_path:
+        artifacts["env"] = str(env_path)
+    updated_fields = sorted(final_updates.keys())
+    if stt_provider:
+        updated_fields.append("stt_provider")
+    if stt_provider and final_updates:
+        human_summary = f"Profile updated for {profile.get('name', 'user')} and STT provider set to {stt_provider}."
+    elif stt_provider:
+        human_summary = f"STT provider set to {stt_provider}."
+    else:
+        human_summary = f"Profile updated for {profile.get('name', 'user')}."
     payload = build_success_payload(
         action="profile.set",
-        data={"profile": profile, "updated_fields": sorted(final_updates.keys())},
-        human_summary=f"Profile updated for {profile.get('name', 'user')}.",
+        data={"profile": profile, "updated_fields": updated_fields, "stt_provider": stt_provider},
+        human_summary=human_summary,
         artifacts=artifacts,
         next_actions=["Run openmy skill context.get --json if you want a fresh context snapshot."],
     )
@@ -1051,6 +1075,7 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         stt_provider_requires_api_key,
     )
     from openmy.services.cleaning.cleaner import CORRECTIONS_FILE, VOCAB_FILE
+    from openmy.services.onboarding.state import build_onboarding_state, save_onboarding_state
     from openmy.services.context.consolidation import profile_path
     from openmy.services.screen_recognition.settings import load_screen_context_settings
 
@@ -1147,14 +1172,6 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         issues.append("Screen recognition is enabled, but the built-in capture loop is not running.")
 
     all_ok = len(issues) == 0
-    summary_parts = []
-    if all_ok:
-        summary_parts.append("Environment healthy.")
-    else:
-        summary_parts.append(f"{len(issues)} issue(s) found.")
-    summary_parts.append(f"STT: {current_stt or 'not selected'}; LLM: {llm_provider}; {data_days} days of data.")
-    if not llm_key_ok:
-        summary_parts.append("An agent can finish distillation and extraction with its own model.")
 
     next_actions: list[str] = []
     if not profile_exists:
@@ -1174,6 +1191,27 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             next_actions.append("Add NOTION_API_KEY and NOTION_DATABASE_ID, then run health.check again.")
     if screen_settings.enabled and not screen_daemon_running:
         next_actions.append("Run openmy screen on to start the built-in screen capture loop, or set SCREEN_RECOGNITION_ENABLED=false if you do not want it.")
+
+    onboarding = build_onboarding_state(
+        data_root=cli.DATA_ROOT,
+        stt_providers=stt_providers,
+        current_stt=current_stt,
+        profile_exists=profile_exists,
+        vocab_exists=vocab_exists,
+    )
+    save_onboarding_state(cli.DATA_ROOT, onboarding)
+
+    summary_parts = [onboarding["headline"]]
+    if current_stt:
+        summary_parts.append(f"当前在用 {current_stt}。")
+    else:
+        summary_parts.append("当前还没选转写引擎。")
+    summary_parts.append(f"已经有 {data_days} 天数据。")
+    if not llm_key_ok:
+        summary_parts.append("后面的整理步骤，代理也能先接住。")
+
+    if onboarding.get("primary_action"):
+        next_actions.insert(0, onboarding["primary_action"])
 
     payload = build_success_payload(
         action="health.check",
@@ -1201,12 +1239,13 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 "capture_interval_seconds": screen_settings.capture_interval_seconds,
                 "screenshot_retention_hours": screen_settings.screenshot_retention_hours,
             },
+            "onboarding": onboarding,
             "data_root": str(cli.DATA_ROOT),
             "issues": issues,
             "healthy": all_ok,
         },
         human_summary=" ".join(summary_parts),
-        artifacts={"data_root": str(cli.DATA_ROOT)},
+        artifacts={"data_root": str(cli.DATA_ROOT), "onboarding_state": onboarding["state_path"]},
         next_actions=next_actions,
     )
     return (payload, 0)

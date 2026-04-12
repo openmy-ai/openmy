@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from openmy.services.extraction import extractor
+from tests.unit.fixture_loader import load_fixture_json
 
 
 class TestExtractorCompatibility(unittest.TestCase):
@@ -195,6 +196,120 @@ class TestExtractorCallGemini(unittest.TestCase):
 
         self.assertIsNotNone(result)
         call_gemini.assert_called_once_with("今天记一下。", "test-key", extractor.GEMINI_MODEL, "2026-04-08")
+
+    @patch("openmy.services.extraction.extractor.call_gemini")
+    def test_run_extraction_filters_suspicious_scenes_before_calling_model(self, call_gemini):
+        call_gemini.return_value = {
+            "daily_summary": "ok",
+            "events": [],
+            "intents": [],
+            "facts": [],
+            "role_hints": [],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            input_path = Path(tmp_dir) / "cleaned.md"
+            input_path.write_text("原始稿里有很多内容。", encoding="utf-8")
+            (Path(tmp_dir) / "scenes.json").write_text(
+                json.dumps(
+                    {
+                        "scenes": [
+                            {"scene_id": "s01", "time_start": "12:00", "text": "今天继续推进前端可读性。"},
+                            {"scene_id": "s02", "time_start": "23:22", "text": "请提供您需要转写的音频文件。目前我无法直接接收或播放音频文件。"},
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = extractor.run_extraction(input_path, date="2026-04-08", dry_run=True, api_key="test-key")
+
+        self.assertIsNotNone(result)
+        call_gemini.assert_called_once()
+        model_input = call_gemini.call_args.args[0]
+        self.assertIn("今天继续推进前端可读性。", model_input)
+        self.assertNotIn("请提供您需要转写的音频文件", model_input)
+
+    @patch("openmy.services.extraction.extractor.call_gemini")
+    def test_run_extraction_stops_when_all_scenes_are_suspicious(self, call_gemini):
+        call_gemini.return_value = {
+            "daily_summary": "ok",
+            "events": [],
+            "intents": [],
+            "facts": [],
+            "role_hints": [],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            input_path = Path(tmp_dir) / "cleaned.md"
+            input_path.write_text("原始稿里有很多内容。", encoding="utf-8")
+            (Path(tmp_dir) / "scenes.json").write_text(
+                json.dumps(
+                    {
+                        "scenes": [
+                            {"scene_id": "s01", "time_start": "19:52", "text": "Claude 现在的性能比去年好多了，你看过最新的 TED Talk 吗？关于数据库的，提到 Postgres 架构的部分我觉得非常有意思。"},
+                            {"scene_id": "s02", "time_start": "23:22", "text": "请提供您需要转写的音频文件。目前我无法直接接收或播放音频文件。"},
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = extractor.run_extraction(input_path, date="2026-04-08", dry_run=True, api_key="test-key")
+
+        self.assertIsNone(result)
+        call_gemini.assert_not_called()
+
+    @patch("openmy.services.extraction.extractor.call_gemini")
+    def test_run_extraction_filters_report_fixture_crosstalk(self, call_gemini):
+        call_gemini.return_value = {
+            "daily_summary": "ok",
+            "events": [],
+            "intents": [],
+            "facts": [],
+            "role_hints": [],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            input_path = Path(tmp_dir) / "cleaned.md"
+            input_path.write_text("原始稿里有很多内容。", encoding="utf-8")
+            scenes = load_fixture_json("crosstalk_sample.scenes.json")
+            (Path(tmp_dir) / "scenes.json").write_text(json.dumps(scenes, ensure_ascii=False), encoding="utf-8")
+
+            result = extractor.run_extraction(input_path, date="2026-04-08", dry_run=True, api_key="test-key")
+
+        self.assertIsNotNone(result)
+        model_input = call_gemini.call_args.args[0]
+        self.assertIn("今天继续推进 OpenMy 的前端可读性。", model_input)
+        self.assertNotIn("TED Talk", model_input)
+        self.assertNotIn("两个数据源", model_input)
+        self.assertNotIn("创建一个订阅", model_input)
+
+    @patch("openmy.services.extraction.extractor.call_gemini")
+    def test_run_extraction_filters_mixed_crosstalk_fixture(self, call_gemini):
+        call_gemini.return_value = {
+            "daily_summary": "ok",
+            "events": [],
+            "intents": [],
+            "facts": [],
+            "role_hints": [],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            input_path = Path(tmp_dir) / "cleaned.md"
+            input_path.write_text("原始稿里有很多内容。", encoding="utf-8")
+            scenes = load_fixture_json("mixed_crosstalk_sample.scenes.json")
+            (Path(tmp_dir) / "scenes.json").write_text(json.dumps(scenes, ensure_ascii=False), encoding="utf-8")
+
+            result = extractor.run_extraction(input_path, date="2026-04-08", dry_run=True, api_key="test-key")
+
+        self.assertIsNotNone(result)
+        model_input = call_gemini.call_args.args[0]
+        self.assertIn("原地打转", model_input)
+        self.assertNotIn("TED Talk", model_input)
+        self.assertNotIn("两个数据源", model_input)
 
     @patch("openmy.services.extraction.extractor.ProviderRegistry.from_env")
     def test_call_gemini_uses_provider_and_parses_json(self, registry_factory):

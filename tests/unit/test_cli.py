@@ -55,6 +55,29 @@ class TestOpenMyCli(unittest.TestCase):
         self.assertIn("openmy watch", result.stdout)
         self.assertIn("openmy screen on/off", result.stdout)
 
+    def test_openmy_without_args_shows_onboarding_hint_when_incomplete(self):
+        import openmy.cli as cli
+
+        onboarding_path = PROJECT_ROOT / "data" / "onboarding_state.json"
+        original = self.read_optional_text(onboarding_path)
+        onboarding_path.parent.mkdir(parents=True, exist_ok=True)
+        onboarding_path.write_text(json.dumps({
+            "completed": False,
+            "recommended_label": "本地中文优先",
+            "recommended_reason": "中文录音优先，而且不用密钥。"
+        }, ensure_ascii=False), encoding="utf-8")
+
+        try:
+            buffer = io.StringIO()
+            with patch("sys.stdout", buffer):
+                cli.main_with_args(argparse.Namespace(command=None))
+            output = buffer.getvalue()
+        finally:
+            self.restore_optional_text(onboarding_path, original)
+
+        self.assertIn("首次使用引导", output)
+        self.assertIn("本地中文优先", output)
+
     def seed_view_day(self, date_str: str) -> Path:
         day_dir = self.make_day_dir(date_str)
         (day_dir / "transcript.md").write_text(
@@ -247,6 +270,7 @@ class TestOpenMyCli(unittest.TestCase):
         args = parser.parse_args(["quick-start", str(audio_path)])
 
         with (
+            patch("openmy.commands.run.get_stt_provider_name", return_value="faster-whisper"),
             patch("openmy.cli.cmd_run", return_value=0) as run_mock,
             patch("openmy.cli.ensure_runtime_dependencies", return_value=None),
             patch("openmy.cli.launch_local_report", return_value=None),
@@ -290,6 +314,38 @@ class TestOpenMyCli(unittest.TestCase):
         self.assertEqual(result, 0)
         forwarded_args = run_mock.call_args.args[0]
         self.assertEqual(forwarded_args.stt_provider, "faster-whisper")
+
+    def test_cli_quick_start_shows_guidance_when_no_provider_selected(self):
+        import openmy.cli as cli
+
+        audio_path = PROJECT_ROOT / "tests" / "fixtures" / "TX01_MIC005_20260408_131552_orig.wav"
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        audio_path.write_bytes(b"wav")
+
+        parser = cli.build_parser()
+        args = parser.parse_args(["quick-start", str(audio_path)])
+        onboarding_path = PROJECT_ROOT / "data" / "onboarding_state.json"
+        original = self.read_optional_text(onboarding_path)
+
+        try:
+            with (
+                patch("openmy.commands.run.get_stt_provider_name", return_value=""),
+                patch("openmy.commands.run.get_stt_api_key", return_value=""),
+                patch("openmy.commands.run._cli") as cli_mock,
+            ):
+                fake_console = cli.console
+                cli_mock.return_value = cli
+                with patch.object(fake_console, "print") as print_mock:
+                    result = cli.main_with_args(args)
+
+            self.assertEqual(result, 1)
+            panel = print_mock.call_args_list[0].args[0]
+            rendered = str(panel.renderable)
+            self.assertIn("还差一步", rendered)
+            self.assertIn("profile.set --stt-provider", rendered)
+            self.assertTrue(onboarding_path.exists())
+        finally:
+            self.restore_optional_text(onboarding_path, original)
 
     def test_cli_quick_start_accepts_funasr_and_enrich_mode_flags(self):
         import openmy.cli as cli
@@ -474,6 +530,7 @@ class TestOpenMyCli(unittest.TestCase):
         args = parser.parse_args(["quick-start", str(audio_path)])
 
         with (
+            patch("openmy.commands.run.get_stt_provider_name", return_value="faster-whisper"),
             patch("openmy.cli.cmd_run", return_value=2),
             patch("openmy.cli.ensure_runtime_dependencies", return_value=None),
             patch("openmy.cli.launch_local_report", return_value=None) as launch_mock,

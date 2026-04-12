@@ -16,6 +16,7 @@ from openmy.services.briefing.generator import (
     generate_briefing,
     save_briefing,
 )
+from tests.unit.fixture_loader import load_fixture_json
 
 
 class TestTimeToPeriod(unittest.TestCase):
@@ -114,6 +115,37 @@ class TestGenerateBriefing(unittest.TestCase):
             payload = json.dumps(asdict(briefing), ensure_ascii=False)
             self.assertNotIn("大家", payload)
             self.assertNotIn("有人说", payload)
+        finally:
+            os.unlink(tmp_path)
+
+    def test_briefing_skips_suspicious_and_low_signal_scenes(self):
+        scenes = load_fixture_json("crosstalk_sample.scenes.json")
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as fh:
+            json.dump(scenes, fh, ensure_ascii=False)
+            tmp_path = Path(fh.name)
+
+        try:
+            briefing = generate_briefing(tmp_path, "2026-04-07")
+            self.assertEqual(len(briefing.time_blocks), 1)
+            self.assertIn("前端可读性", briefing.summary)
+            self.assertNotIn("Claude", briefing.summary)
+            self.assertNotIn("机器回复", json.dumps(asdict(briefing), ensure_ascii=False))
+        finally:
+            os.unlink(tmp_path)
+
+    def test_briefing_skips_mixed_crosstalk_fixture(self):
+        scenes = load_fixture_json("mixed_crosstalk_sample.scenes.json")
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as fh:
+            json.dump(scenes, fh, ensure_ascii=False)
+            tmp_path = Path(fh.name)
+
+        try:
+            briefing = generate_briefing(tmp_path, "2026-04-07")
+            payload = json.dumps(asdict(briefing), ensure_ascii=False)
+            self.assertEqual(len(briefing.time_blocks), 1)
+            self.assertIn("终端里到底改了什么", payload)
+            self.assertNotIn("TED Talk", payload)
+            self.assertNotIn("两个数据源", payload)
         finally:
             os.unlink(tmp_path)
 
