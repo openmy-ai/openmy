@@ -94,10 +94,14 @@ def probe_duration_seconds(path: Path) -> int:
     )
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip()[:2000] or f"ffprobe 读取时长失败: {path}")
+    raw_duration = proc.stdout.strip() or "0"
     try:
-        return int(float(proc.stdout.strip() or "0"))
-    except ValueError as exc:  # pragma: no cover - defensive fallback
-        raise RuntimeError(f"无法解析音频时长: {path}") from exc
+        return int(float(raw_duration))
+    except ValueError:
+        match = re.search(r"-?\d+(?:\.\d+)?", raw_duration)
+        if match:
+            return int(float(match.group(0)))
+        return 0
 
 
 def parse_audio_time(audio_path: Path) -> str:
