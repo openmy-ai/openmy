@@ -13,7 +13,6 @@ import socket
 import subprocess
 import sys
 import time
-import tomllib
 import webbrowser
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import date, datetime
@@ -73,10 +72,11 @@ class FriendlyCliError(RuntimeError):
 
 def project_version() -> str:
     try:
-        payload = tomllib.loads((ROOT_DIR / "pyproject.toml").read_text(encoding="utf-8"))
+        content = (ROOT_DIR / "pyproject.toml").read_text(encoding="utf-8")
     except Exception:
         return "0.x.x"
-    return str(payload.get("project", {}).get("version", "0.x.x") or "0.x.x")
+    match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
+    return match.group(1) if match else "0.x.x"
 
 
 def _show_main_menu() -> None:
