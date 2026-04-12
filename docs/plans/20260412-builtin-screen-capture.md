@@ -6,7 +6,21 @@ OpenMy has 4000+ lines of screen context processing code (align, sessionize, pri
 
 ## Goal
 
-Build a built-in screen capture module so OpenMy captures screens and extracts text by itself. No external service. No Screenpipe.
+Port Screenpipe's screen capture and OCR logic from Rust to Python, making it a built-in OpenMy module. No external service. No separate install.
+
+## IMPORTANT: Read Screenpipe Source First
+
+**Before writing any code**, read the Screenpipe source from GitHub:
+- Repo: https://github.com/mediar-ai/screenpipe
+- Key files to study:
+  - `screenpipe-vision/src/capture.rs` — screenshot capture logic
+  - `screenpipe-vision/src/ocr.rs` or `text.rs` — OCR / text extraction
+  - `screenpipe-vision/src/core.rs` — main loop and event format
+  - `screenpipe-core/` — data models and storage
+
+**Port the core logic to Python.** Do NOT reinvent from scratch. Translate what Screenpipe actually does — their capture strategy, OCR pipeline, event format, and deduplication logic. Adapt for Python (use subprocess for screencapture, PyObjC or Swift helper for Vision OCR).
+
+Screenpipe is MIT licensed, attribution required — add a comment in `capture.py` header.
 
 ## Architecture
 
