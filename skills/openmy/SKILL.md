@@ -40,6 +40,7 @@ Use this skill when:
 - vocabulary initialization → `openmy-vocab-init`
 - profile onboarding → `openmy-profile-init`
 - environment and engine check → `openmy-health-check`
+- **change / switch STT engine** → `openmy-health-check` (run health.check, show engines, let user pick, update `.env`)
 - agent-side scene distillation handoff → `openmy-distill`
 - agent-side core extraction handoff → `openmy-extract`
 - export setup → `openmy-export`
@@ -83,13 +84,14 @@ If this looks like a first-time setup:
 
 1. **Always start with `openmy-health-check`** — this tells you what is ready and what is missing.
 2. **Auto-setup profile** — if `health.check` says profile is missing or still has defaults (`name=User`, `timezone=UTC`), detect the system timezone and conversation language, then run `profile.set` immediately. Do NOT ask the user — just set it and tell them what you did.
-3. Route to `openmy-vocab-init` if vocab is missing.
-4. Help the user locate the first audio file.
-5. Route to `openmy-day-run`.
-6. Review the result with the user.
-7. Suggest corrections if the transcript clearly has errors.
-8. Route back to `openmy-vocab-init` if you discover more names or terms.
-9. If `health.check` says `llm_available: false`, route to `openmy-distill` and `openmy-extract` instead of asking for an API key.
+3. **Ask which STT engine to use** — present the available engines from `health.check` results and ask the user to choose. This is the ONE question you must ask during first setup. After the user picks, set `OPENMY_STT_PROVIDER` in the project `.env` file.
+4. Route to `openmy-vocab-init` if vocab is missing.
+5. Help the user locate the first audio file.
+6. Route to `openmy-day-run`.
+7. Review the result with the user.
+8. Suggest corrections if the transcript clearly has errors.
+9. Route back to `openmy-vocab-init` if you discover more names or terms.
+10. If `health.check` says `llm_available: false`, route to `openmy-distill` and `openmy-extract` instead of asking for an API key.
 
 ## Typical Daily Workflow
 

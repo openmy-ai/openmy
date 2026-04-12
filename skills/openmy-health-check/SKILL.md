@@ -19,7 +19,7 @@ Use it when:
 ## Restrictions
 
 - Do not guess environment state without checking.
-- Do not edit `.env` automatically.
+- Only edit `.env` after the user confirms the change (e.g., choosing an STT engine).
 - Do not switch providers silently.
 
 ## Output
@@ -36,7 +36,13 @@ Use it when:
 2. If profile is missing, suggest `profile.set` first.
 3. If vocab is missing, suggest `vocab.init` next.
 4. If the active engine needs a key, explain which key name is missing.
-5. When the user asks which engine to choose, compare local engines and API engines in plain language.
+5. **First-time STT engine selection (CRITICAL):**
+   - On first setup, **always ask the user which speech-to-text engine they want to use.** Do NOT silently default to `faster-whisper`.
+   - Present the options from `stt_providers` in a clear comparison:
+     - **Local (no key needed):** `faster-whisper` (English-optimized), `funasr` (Chinese-optimized, needs extra install)
+     - **Cloud (needs API key):** `gemini` (good all-around), `dashscope/Qwen` (best Chinese accuracy, free tier available), `groq` (fast), `deepgram` (enterprise)
+   - Recommend based on the user's language: Chinese speakers → suggest `dashscope` or `gemini`; English speakers → suggest `faster-whisper` or `gemini`.
+   - Once the user chooses, set `OPENMY_STT_PROVIDER=<chosen>` in the project `.env` file. If the chosen engine needs an API key, help the user add it.
 6. **Always highlight that local engines work without any key.** If the user has no API keys configured, say: "You can already process audio with the built-in local engine. API keys are optional — they unlock cloud-based engines with better accuracy."
 7. When recommending an engine, start with the one that is already `ready: true`.
 8. If `llm_available` is false, explain that an agent can still finish distillation and extraction through `distill.pending -> distill.submit` and `extract.core.pending -> extract.core.submit`.
