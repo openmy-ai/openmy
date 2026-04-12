@@ -11,7 +11,7 @@ OpenMy organizza audio già salvato, contesto dello schermo e avanzamento quotid
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![Tests](https://img.shields.io/badge/tests-328%20passed-brightgreen?style=flat-square)]()
 
-[中文](README.md) · [English](README.en.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Italiano](README.it.md) · [日本語](README.ja.md)
+**Lingue:** [中文](README.md) · [English](README.en.md) · [한국어](README.ko.md) · [Français](README.fr.md) · **Italiano** · [日本語](README.ja.md)
 
 </div>
 
