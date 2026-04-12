@@ -61,6 +61,14 @@ Do not block audio processing because an API key is missing.
 
 Unless the user explicitly says "start recording now", stay in the existing-file workflow.
 
+### External Storage (MANDATORY)
+
+If audio files are on an external device (`/Volumes/...`, SD card, USB drive, etc.):
+1. **ALWAYS copy files to local disk first.** Do NOT process directly from external storage.
+2. Copy to a temp directory under the project data folder: `data/{date}/raw_audio/`
+3. Then pass the local copies to `day.run --audio`.
+4. Tell the user: "先把录音拷到本机，避免中途断开。" Do NOT ask whether to copy — just do it.
+
 ## Agent Behavior: Progress Reporting (CRITICAL)
 
 **Users must never feel like they are staring at a black box.** Report every single step as it happens.
