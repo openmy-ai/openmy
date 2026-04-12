@@ -51,13 +51,13 @@ class TestProviderRegistry(unittest.TestCase):
         self.assertEqual(llm.api_key, "llm-key")
 
     def test_registry_defaults_stt_to_local_faster_whisper(self):
+        """No default STT provider — must raise if not configured."""
         with patch.dict("os.environ", {}, clear=True):
             from openmy.providers.registry import ProviderRegistry
 
             registry = ProviderRegistry.from_env()
-            stt = registry.get_stt_provider()
-
-        self.assertEqual(stt.name, "faster-whisper")
+            with self.assertRaises(ValueError):
+                registry.get_stt_provider()
 
     def test_registry_builds_local_funasr_provider_without_api_key(self):
         with patch.dict(

@@ -283,6 +283,22 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     paths = cli.resolve_day_paths(date_str)
     downstream_backups: list[Path] = []
     if args.audio and not args.skip_transcribe:
+        stt_provider = getattr(args, "stt_provider", None) or get_stt_provider_name()
+        if not stt_provider:
+            cli.console.print(
+                cli.Panel(
+                    "[red]❌ 尚未选择转写引擎[/red]\n"
+                    "请先运行 [bold]openmy skill health.check --json[/bold] 查看可用引擎，\n"
+                    "然后在 .env 中设置 OPENMY_STT_PROVIDER（如 gemini、faster-whisper、dashscope）。\n\n"
+                    "本地引擎（无需 API Key）：faster-whisper、funasr\n"
+                    "云端引擎（需 API Key）：gemini、dashscope、groq、deepgram",
+                    border_style="red",
+                )
+            )
+            _mark_step(date_str, run_status, "transcribe", "failed",
+                       message="未选择转写引擎：请先配置 OPENMY_STT_PROVIDER")
+            _finish_run(date_str, run_status, "failed", "transcribe")
+            return 1
         _mark_step(date_str, run_status, "transcribe", "running", message="正在转写音频")
         cli.console.print("[bold]Step 0: 🎙️ 转写音频[/bold]")
         result, error_msg = transcribe_audio_files(

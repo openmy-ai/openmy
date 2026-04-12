@@ -22,7 +22,7 @@ from typing import Any
 
 # 向后兼容：旧代码仍会直接 import GEMINI_MODEL
 GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
-DEFAULT_STT_PROVIDER = "faster-whisper"
+DEFAULT_STT_PROVIDER = ""  # 故意留空：用户必须显式选择转写引擎
 DEFAULT_LLM_PROVIDER = "gemini"
 DEFAULT_STT_MODELS = {
     "gemini": GEMINI_MODEL,
@@ -56,7 +56,8 @@ def _read_bool_env(*names: str, default: bool = False) -> bool:
 
 
 def get_stt_provider_name() -> str:
-    return (_read_env("OPENMY_STT_PROVIDER") or DEFAULT_STT_PROVIDER).lower()
+    """Return the configured STT provider, or empty string if not set."""
+    return (_read_env("OPENMY_STT_PROVIDER") or DEFAULT_STT_PROVIDER).lower().strip()
 
 
 def get_llm_provider_name() -> str:

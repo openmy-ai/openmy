@@ -298,7 +298,7 @@ class TranscribeAudioFilesTest(unittest.TestCase):
             ]
 
             with (
-                mock.patch.dict("os.environ", {"GEMINI_API_KEY": "fake-key"}),
+                mock.patch.dict("os.environ", {"GEMINI_API_KEY": "fake-key", "OPENMY_STT_PROVIDER": "gemini"}),
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.prepare_audio_chunks",
                     side_effect=prepared,
@@ -353,7 +353,7 @@ class TranscribeAudioFilesTest(unittest.TestCase):
             chunk_one.write_bytes(b"mp3")
 
             with (
-                mock.patch.dict("os.environ", {"GEMINI_API_KEY": "fake-key"}),
+                mock.patch.dict("os.environ", {"GEMINI_API_KEY": "fake-key", "OPENMY_STT_PROVIDER": "gemini"}, clear=True),
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.prepare_audio_chunks",
                     return_value=[PreparedChunk(path=chunk_one, time_label="13:15")],
