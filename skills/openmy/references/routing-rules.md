@@ -15,6 +15,7 @@ It does not execute details itself.
 | initialize vocab files | openmy-vocab-init |
 | initialize or update user profile | openmy-profile-init |
 | verify environment and engine readiness | openmy-health-check |
+| generate or refresh weekly/monthly summaries | openmy-aggregate |
 | set up daily briefing export | openmy-export |
 | explain or configure screen recognition | openmy-screen-recognition |
 

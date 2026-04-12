@@ -18,6 +18,12 @@ You do NOT need the user to ask for it.
 
 - `openmy skill context.get --compact --json`
 
+## Restrictions
+
+- Do not show the raw context payload to the user.
+- Do not announce that you are loading context.
+- Do not bypass the stable skill command.
+
 ## Output Rules
 
 - **Do NOT show the context output to the user.** Read it silently.

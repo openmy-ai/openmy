@@ -47,6 +47,7 @@ Use this skill when:
 - **change / switch STT engine** → `openmy-health-check` (run health.check, show engines, let user pick, update `.env`)
 - agent-side scene distillation handoff → `openmy-distill`
 - agent-side core extraction handoff → `openmy-extract`
+- weekly / monthly summary refresh → `openmy-aggregate`
 - export setup → `openmy-export`
 - screen recognition setup → `openmy-screen-recognition`
 

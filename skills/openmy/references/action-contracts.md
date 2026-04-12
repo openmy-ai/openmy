@@ -17,6 +17,10 @@ openmy skill distill.pending --date YYYY-MM-DD --json
 openmy skill distill.submit --date YYYY-MM-DD --payload-file payload.json --json
 openmy skill extract.core.pending --date YYYY-MM-DD --json
 openmy skill extract.core.submit --date YYYY-MM-DD --payload-file payload.json --json
+openmy skill aggregate --week YYYY-Www --json
+openmy skill aggregate --month YYYY-MM --json
+openmy skill aggregate.weekly --week YYYY-Www --json
+openmy skill aggregate.monthly --month YYYY-MM --json
 openmy skill correction.apply --op close-loop --arg "Task Title" --json
 openmy skill status.get --json
 openmy skill vocab.init --json
@@ -75,6 +79,9 @@ Agent handoff contracts:
 
 - `extract.core.pending` returns transcript text, reference date, scene catalog, and output schema.
 - `extract.core.submit` accepts one normalized core extraction payload and writes `{date}.meta.json`.
+- `aggregate` routes to weekly or monthly aggregation based on `--week` / `--month`.
+- `aggregate.weekly` writes `data/weekly/{week}.json`.
+- `aggregate.monthly` writes `data/monthly/{month}.json`.
 - If `health.check` shows `llm_available: false`, agents may finish distillation and extraction with their own model, then call `day.run` again to finish briefing and consolidation.
 
 

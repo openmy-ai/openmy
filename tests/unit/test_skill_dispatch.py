@@ -14,6 +14,7 @@ class TestSkillDispatch(unittest.TestCase):
             "date": None,
             "audio": None,
             "skip_transcribe": False,
+            "skip_aggregate": False,
             "correct_args": None,
             "op": None,
             "arg": None,
@@ -26,6 +27,8 @@ class TestSkillDispatch(unittest.TestCase):
             "name": None,
             "language": None,
             "timezone": None,
+            "week": None,
+            "month": None,
         }
         base.update(overrides)
         return argparse.Namespace(**base)
@@ -41,6 +44,9 @@ class TestSkillDispatch(unittest.TestCase):
                 "correction.apply",
                 "day.get",
                 "day.run",
+                "aggregate",
+                "aggregate.monthly",
+                "aggregate.weekly",
                 "distill.pending",
                 "distill.submit",
                 "extract.core.pending",
@@ -94,6 +100,40 @@ class TestSkillDispatch(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(payload, fake_payload)
+
+    def test_aggregate_routes_to_weekly_by_default(self):
+        from openmy import skill_dispatch
+
+        with patch.object(skill_dispatch, "handle_aggregate_weekly", return_value=({"ok": True}, 0)) as weekly_mock:
+            payload, exit_code = skill_dispatch.dispatch_skill_action("aggregate", self.make_args(action="aggregate"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload, {"ok": True})
+        weekly_mock.assert_called_once()
+
+    def test_aggregate_routes_to_monthly_when_month_is_present(self):
+        from openmy import skill_dispatch
+
+        with patch.object(skill_dispatch, "handle_aggregate_monthly", return_value=({"ok": True}, 0)) as monthly_mock:
+            payload, exit_code = skill_dispatch.dispatch_skill_action(
+                "aggregate",
+                self.make_args(action="aggregate", month="2026-04"),
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload, {"ok": True})
+        monthly_mock.assert_called_once()
+
+    def test_aggregate_rejects_conflicting_targets(self):
+        from openmy import skill_dispatch
+
+        payload, exit_code = skill_dispatch.dispatch_skill_action(
+            "aggregate",
+            self.make_args(action="aggregate", week="2026-W15", month="2026-04"),
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(payload["error_code"], "conflicting_target")
 
     def test_day_run_bridges_existing_run_command(self):
         from openmy import skill_dispatch

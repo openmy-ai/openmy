@@ -20,6 +20,7 @@ SUBSKILLS = [
     "openmy-health-check",
     "openmy-distill",
     "openmy-extract",
+    "openmy-aggregate",
     "openmy-export",
     "openmy-screen-recognition",
 ]

@@ -240,6 +240,20 @@ def _meta_has_core_content(payload: dict[str, Any]) -> bool:
     return False
 
 
+def _normalize_week_value(raw: str | None) -> str:
+    value = str(raw or "").strip()
+    if not value:
+        raise ValueError("Missing ISO week")
+    return value
+
+
+def _normalize_month_value(raw: str | None) -> str:
+    value = str(raw or "").strip()
+    if not value:
+        raise ValueError("Missing month")
+    return value
+
+
 def _load_scene_payload(action: str, date_str: str) -> tuple[Path, dict[str, Any]]:
     scenes_path = _cli().resolve_day_paths(date_str)["scenes"]
     if not scenes_path.exists():
@@ -569,6 +583,75 @@ def handle_extract_core_submit(args: argparse.Namespace) -> tuple[dict[str, Any]
         next_actions=[f"Run openmy skill day.run --date {date_str} --skip-transcribe --json to finish briefing and consolidation."],
     )
     return (payload, 0)
+
+
+def handle_aggregate_weekly(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    cli = _cli()
+    from openmy.services.aggregation import generate_weekly_review
+
+    try:
+        week_str = _normalize_week_value(getattr(args, "week", None)) if getattr(args, "week", None) else None
+        review = generate_weekly_review(cli.DATA_ROOT, week_str)
+    except ValueError as exc:
+        raise SkillDispatchError(
+            action="aggregate.weekly",
+            error_code="invalid_week",
+            message=str(exc),
+            hint="Pass --week YYYY-Www, for example 2026-W15.",
+        ) from exc
+
+    return (
+        build_success_payload(
+            action="aggregate.weekly",
+            data=review,
+            human_summary=f"Weekly review ready for {review['week']}.",
+            artifacts={"weekly_review": str(cli.DATA_ROOT / 'weekly' / f"{review['week']}.json")},
+            next_actions=[],
+        ),
+        0,
+    )
+
+
+def handle_aggregate_monthly(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    cli = _cli()
+    from openmy.services.aggregation import generate_monthly_review
+
+    try:
+        month_str = _normalize_month_value(getattr(args, "month", None)) if getattr(args, "month", None) else None
+        review = generate_monthly_review(cli.DATA_ROOT, month_str)
+    except ValueError as exc:
+        raise SkillDispatchError(
+            action="aggregate.monthly",
+            error_code="invalid_month",
+            message=str(exc),
+            hint="Pass --month YYYY-MM, for example 2026-04.",
+        ) from exc
+
+    return (
+        build_success_payload(
+            action="aggregate.monthly",
+            data=review,
+            human_summary=f"Monthly review ready for {review['month']}.",
+            artifacts={"monthly_review": str(cli.DATA_ROOT / 'monthly' / f"{review['month']}.json")},
+            next_actions=[],
+        ),
+        0,
+    )
+
+
+def handle_aggregate(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    week = str(getattr(args, "week", "") or "").strip()
+    month = str(getattr(args, "month", "") or "").strip()
+    if week and month:
+        raise SkillDispatchError(
+            action="aggregate",
+            error_code="conflicting_target",
+            message="Pass either --week or --month, not both.",
+            hint="Use one target per aggregation call.",
+        )
+    if month:
+        return handle_aggregate_monthly(args)
+    return handle_aggregate_weekly(args)
 
 
 def handle_context_get(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
@@ -1067,6 +1150,9 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
 
 ACTION_HANDLERS: dict[str, Callable[[argparse.Namespace], tuple[dict[str, Any], int]]] = {
+    "aggregate": handle_aggregate,
+    "aggregate.monthly": handle_aggregate_monthly,
+    "aggregate.weekly": handle_aggregate_weekly,
     "context.get": handle_context_get,
     "context.query": handle_context_query,
     "distill.pending": handle_distill_pending,
