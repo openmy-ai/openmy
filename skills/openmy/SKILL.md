@@ -81,6 +81,7 @@ If the user picks B, proceed with `distill.pending` → `distill.submit` and `ex
 
 When presenting results to users:
 - Talk like a human assistant, not a developer tool.
+- Use plain Chinese. Avoid tool jargon like "LLM", "structure extraction", "provider", "pending", or "API" unless you immediately explain them in normal language.
 - Never show raw file paths. Say "your profile is saved" instead of a full path.
 - Never dump JSON. Read it and summarize it in plain language.
 - Never ask users to type terminal commands. Run the commands yourself.
@@ -91,6 +92,11 @@ When presenting results to users:
 - Use emoji sparingly for visual hierarchy.
 - When listing items, prefer one compact sentence over a long list.
 - End with a question or suggestion, not a status dump.
+- **Never say or imply:** "You must configure Gemini before audio can run."
+- When audio is already processed and only the later AI steps are missing, say it plainly:
+  - "音频已经跑完了。现在只差后面两步整理。"
+  - "你有两个选项：我现在直接替你做；或者你以后再配 Gemini key。"
+  - "如果你想省事，我现在就继续帮你做。"
 
 ## First-Time Setup Flow
 
@@ -106,6 +112,15 @@ If this looks like a first-time setup:
 8. Suggest corrections if the transcript clearly has errors.
 9. Route back to `openmy-vocab-init` if you discover more names or terms.
 10. **If `day.run` returns `partial` because of missing LLM key** — present the two distillation options (A: configure cheap Gemini API key vs B: agent does it with its own expensive tokens). Let the user choose. See the "Distillation & Extraction: Two Options" section above.
+
+### First-Run Reply Shape
+
+For a first-time user, the reply should feel like this:
+1. confirm what is already ready
+2. say there is only one decision left right now: choose the speech-to-text engine
+3. if audio already ran, say "音频已经跑完了"
+4. if later AI steps are blocked, say "我也可以直接替你做后面两步"
+5. end with one clear next question or next action
 
 ## Typical Daily Workflow
 

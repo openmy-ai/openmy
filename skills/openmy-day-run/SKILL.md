@@ -113,3 +113,24 @@ Use these status icons:
 8. Summarize what the user talked about that day in 2-3 sentences.
 9. If the run pauses at distillation or extraction, present the two options (cheap Gemini API key vs agent token) and let the user choose.
 
+## Required Reply When The Run Stops Midway
+
+If `day.run` stops after audio processing because later AI steps are not ready, the reply must be simple and direct:
+
+- First say what is already done:
+  - "音频已经转完了。"
+  - "清洗和场景切分也做完了。"
+- Then say what is missing in plain language:
+  - "现在只差后面两步整理。"
+- Then tell the user the agent can help right now:
+  - "我现在就可以直接替你做。"
+- Then give the two choices without jargon:
+  - "选项 A：我现在继续替你做完。"
+  - "选项 B：你以后再配 Gemini key，让它自己自动做。"
+
+Do **not** say only:
+- "缺少 LLM API key"
+- "结构化提取会停在等待状态"
+- "当前唯一没配的是 LLM key"
+
+Those lines are too tool-like and do not help a first-time user understand that audio has already been processed and the agent can continue for them.

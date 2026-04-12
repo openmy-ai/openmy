@@ -46,3 +46,7 @@ Use it when:
 6. **Always highlight that local engines work without any key.** If the user has no API keys configured, say: "You can already process audio with the built-in local engine. API keys are optional — they unlock cloud-based engines with better accuracy."
 7. When recommending an engine, start with the one that is already `ready: true`.
 8. If `llm_available` is false, explain that an agent can still finish distillation and extraction through `distill.pending -> distill.submit` and `extract.core.pending -> extract.core.submit`.
+9. When `llm_available` is false, do **not** stop at "missing key". Say it in user language:
+   - "先别管 Gemini key。音频可以先跑。"
+   - "后面两步整理我也可以直接替你做。"
+   - "你现在只需要先选转写引擎。"
