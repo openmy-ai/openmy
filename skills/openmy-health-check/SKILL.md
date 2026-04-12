@@ -42,12 +42,18 @@ Use it when:
 3. If vocab is missing, suggest `vocab.init` next.
 4. If the active engine needs a key, explain which key name is missing.
 5. **First-time STT engine selection (CRITICAL):**
-   - On first setup, **always ask the user which speech-to-text engine they want to use.** Do NOT silently default to `faster-whisper`.
-   - Present the options from `stt_providers` in a clear comparison:
-     - **Local (no key needed):** `faster-whisper` (English-optimized), `funasr` (Chinese-optimized, needs extra install)
-     - **Cloud (needs API key):** `gemini` (good all-around), `dashscope/Qwen` (best Chinese accuracy, free tier available), `groq` (fast), `deepgram` (enterprise)
-   - Recommend based on the user's language: Chinese speakers → suggest `dashscope` or `gemini`; English speakers → suggest `faster-whisper` or `gemini`.
-   - Once the user chooses, set `OPENMY_STT_PROVIDER=<chosen>` in the project `.env` file. If the chosen engine needs an API key, help the user add it.
+   - On first setup, **always ask the user which speech-to-text engine they want to use.** Do NOT silently default to any engine.
+   - **You MUST present ALL available engines from `stt_providers`.** Never hide or omit any. Show them grouped:
+     - **Local engines (no API key needed, works immediately):**
+       - `funasr` — Best for Chinese. Runs locally. Free.
+       - `faster-whisper` — Best for English/multilingual. Runs locally. Free.
+     - **Cloud engines (needs API key, better accuracy):**
+       - `dashscope` (阿里百炼/通义千问) — Excellent Chinese accuracy. Free tier available. Key: `DASHSCOPE_API_KEY`
+       - `gemini` (Google) — Good all-around. Key: `GEMINI_API_KEY`
+       - `groq` (Groq Whisper) — Very fast. Key: `GROQ_API_KEY`
+       - `deepgram` (Deepgram Nova) — Enterprise grade. Key: `DEEPGRAM_API_KEY`
+   - Recommend based on the user's language: Chinese speakers → suggest `funasr` (local) or `dashscope` (cloud); English speakers → suggest `faster-whisper` (local) or `gemini` (cloud).
+   - Once the user chooses, set `OPENMY_STT_PROVIDER=<chosen>` in the project `.env` file. If the chosen engine needs an API key, also help the user add it to `.env`.
 6. **Always highlight that local engines work without any key.** If the user has no API keys configured, say: "You can already process audio with the built-in local engine. API keys are optional — they unlock cloud-based engines with better accuracy."
 7. When recommending an engine, start with the one that is already `ready: true`.
 8. If `llm_available` is false, explain that an agent can still finish distillation and extraction through `distill.pending -> distill.submit` and `extract.core.pending -> extract.core.submit`.
