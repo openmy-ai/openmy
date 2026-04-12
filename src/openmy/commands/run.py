@@ -268,6 +268,17 @@ def transcribe_audio_files(
     return 0, ""
 
 
+def _normalize_transcribe_result(result: object) -> tuple[int, str]:
+    """兼容旧测试替身：既接受 int，也接受 (code, message)。"""
+    if isinstance(result, tuple):
+        if len(result) == 0:
+            return 1, "unknown transcription error"
+        code = int(result[0])
+        message = str(result[1]) if len(result) > 1 and result[1] is not None else ""
+        return code, message
+    return int(result), ""
+
+
 def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     """全流程：转写 → 清洗 → 角色 → 蒸馏 → 日报。"""
     cli = _cli()
@@ -301,7 +312,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             return 1
         _mark_step(date_str, run_status, "transcribe", "running", message="正在转写音频")
         cli.console.print("[bold]Step 0: 🎙️ 转写音频[/bold]")
-        result, error_msg = transcribe_audio_files(
+        raw_result = transcribe_audio_files(
             date_str,
             args.audio,
             stt_provider=getattr(args, "stt_provider", None),
@@ -309,6 +320,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             stt_vad=bool(getattr(args, "stt_vad", False)),
             stt_word_timestamps=bool(getattr(args, "stt_word_timestamps", False)),
         )
+        result, error_msg = _normalize_transcribe_result(raw_result)
         if result != 0:
             _mark_step(date_str, run_status, "transcribe", "failed", message=f"转写失败: {error_msg}")
             _finish_run(date_str, run_status, "failed", "transcribe")

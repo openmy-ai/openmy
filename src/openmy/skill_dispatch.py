@@ -823,11 +823,18 @@ def handle_day_run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         next_actions.append("Personal vocab not initialized. Run: openmy skill vocab.init --json")
 
     current_step = str(run_status.get("current_step", "") or "").strip()
-    current_message = str(run_status.get("steps", {}).get(current_step, {}).get("message", "") or "").strip()
-    if final_status == "partial" and current_step == "distill" and "distill.pending" in current_message:
+    current_step_payload = run_status.get("steps", {}).get(current_step, {}) or {}
+    current_message = str(current_step_payload.get("message", "") or "").strip()
+    current_skip_reason = str(current_step_payload.get("skip_reason", "") or "").strip()
+    missing_llm_handoff = current_skip_reason == "missing_llm_key_agent_handoff"
+    if final_status == "partial" and current_step == "distill" and (
+        "distill.pending" in current_message or missing_llm_handoff
+    ):
         summary = f"{date_str} paused after deterministic steps; an agent now needs to distill scenes."
         next_actions = [f"Run openmy skill distill.pending --date {date_str} --json next."]
-    elif final_status == "partial" and current_step == "extract_core" and "extract.core.pending" in current_message:
+    elif final_status == "partial" and current_step == "extract_core" and (
+        "extract.core.pending" in current_message or missing_llm_handoff
+    ):
         summary = f"{date_str} paused after scene distillation; an agent now needs to submit core extraction."
         next_actions = [f"Run openmy skill extract.core.pending --date {date_str} --json next."]
 
@@ -979,7 +986,9 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         issues.append("ffmpeg not found. Install it: brew install ffmpeg (macOS) or apt install ffmpeg (Linux).")
     if not ffprobe_ok:
         issues.append("ffprobe not found. Usually installed together with ffmpeg.")
-    if not has_stt_credentials():
+    if not current_stt:
+        issues.append("No STT provider selected yet. Ask the user to choose one local or cloud engine first.")
+    elif not has_stt_credentials():
         issues.append(f"Active STT provider '{current_stt}' needs an API key but none is configured.")
     if not llm_key_ok:
         issues.append("No LLM API key configured. Agent handoff is available for distillation and extraction.")
@@ -998,7 +1007,7 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         summary_parts.append("Environment healthy.")
     else:
         summary_parts.append(f"{len(issues)} issue(s) found.")
-    summary_parts.append(f"STT: {current_stt}; LLM: {llm_provider}; {data_days} days of data.")
+    summary_parts.append(f"STT: {current_stt or 'not selected'}; LLM: {llm_provider}; {data_days} days of data.")
     if not llm_key_ok:
         summary_parts.append("An agent can finish distillation and extraction with its own model.")
 
@@ -1009,7 +1018,9 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         next_actions.append("Run: openmy skill vocab.init --json")
     if not llm_key_ok:
         next_actions.append("If you want agent-native processing, run day.run first, then use distill.pending / distill.submit and extract.core.pending / extract.core.submit.")
-    if not has_stt_credentials() and current_stt not in LOCAL_STT_PROVIDERS:
+    if not current_stt:
+        next_actions.insert(0, "Ask the user to choose an STT engine first. Local choices are faster-whisper and funasr; cloud choices need an API key.")
+    elif not has_stt_credentials() and current_stt not in LOCAL_STT_PROVIDERS:
         next_actions.append(f"Add API key for '{current_stt}' to .env, or switch to a local provider: OPENMY_STT_PROVIDER=faster-whisper")
     if export_provider and not export_ready:
         if export_provider == "obsidian":

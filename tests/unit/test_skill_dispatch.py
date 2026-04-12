@@ -231,6 +231,38 @@ class TestSkillDispatch(unittest.TestCase):
         self.assertEqual(payload["data"]["export"]["config"]["database_id"], "db_123")
         self.assertTrue(payload["data"]["llm_available"])
 
+    def test_health_check_requires_engine_choice_when_provider_missing(self):
+        from openmy import skill_dispatch
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            fake_cli = SimpleNamespace(DATA_ROOT=data_root, find_all_dates=lambda: [])
+            fake_screen_settings = SimpleNamespace(
+                enabled=False,
+                participation_mode="off",
+                provider_base_url="http://127.0.0.1:0",
+            )
+
+            with (
+                patch("openmy.skill_dispatch._cli", return_value=fake_cli),
+                patch("openmy.config.get_export_provider_name", return_value=""),
+                patch("openmy.config.get_export_config", return_value={}),
+                patch("openmy.config.get_llm_provider_name", return_value="gemini"),
+                patch("openmy.config.has_llm_credentials", return_value=False),
+                patch("openmy.config.get_stt_provider_name", return_value=""),
+                patch("openmy.config.has_stt_credentials", return_value=False),
+                patch("openmy.services.screen_recognition.settings.load_screen_context_settings", return_value=fake_screen_settings),
+                patch("shutil.which", return_value="/usr/bin/fake"),
+            ):
+                payload, exit_code = skill_dispatch.handle_health_check(self.make_args(action="health.check"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["data"]["stt_active"], "")
+        self.assertIn("No STT provider selected yet.", payload["data"]["issues"][0])
+        self.assertIn("Ask the user to choose an STT engine first.", payload["next_actions"][0])
+
     def test_distill_pending_and_submit_round_trip(self):
         from openmy import skill_dispatch
 
