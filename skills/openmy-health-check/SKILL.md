@@ -39,33 +39,37 @@ Use it when:
 
 ### Output Format (STRICT)
 
-Your reply to the user MUST follow this exact structure. No extra paragraphs, no "顺手提醒", no filler.
+Your reply to the user MUST follow this order. No filler, no long warning block.
 
 ```
-[一句话状态]
+[一句话结论：先说推荐路线]
 
-选一个转写引擎：
+推荐你先走：
+- [推荐路线名称]
+- 原因：[一句人话原因]
 
-🏠 本地（不需要 key，直接用）
-- funasr — 中文推荐 ✅
-- faster-whisper — 英文推荐
+如果你想自己挑，再看下面：
 
-☁️ 云端（需要 API key）
-- dashscope（阿里百炼）— 中文精度最高
-- gemini（Google）— 全能型
-- groq — 最快
-- deepgram — 企业级
+🏠 本地
+- funasr — 中文优先 ✅
+- faster-whisper — 通用优先
 
-选哪个？
+☁️ 云端
+- dashscope — 中文更强
+- gemini — 省事
+- groq — 快
+- deepgram — 英文更强
+
+要不要先按推荐路线来？
 ```
 
-- If the user's language is Chinese, mark `funasr` with ✅. If English, mark `faster-whisper` with ✅.
-- Do NOT explain what LLM keys are, what vocab is, or what screen recognition does. The user did not ask.
-- Do NOT say "顺手提醒" or add disclaimers about incomplete setup. If something is missing, fix it silently or save it for later.
+- Read the recommendation from `data.onboarding.headline`, `data.onboarding.primary_action`, and `data.onboarding.choices`.
+- Do NOT explain what LLM keys are, what vocab is, or what screen recognition does unless the user explicitly asks.
+- Do NOT dump raw `issues` first. Recommendation first, details later.
 
 ### After the User Chooses
 
-1. Set `OPENMY_STT_PROVIDER=<chosen>` in `.env` immediately.
+1. Run `openmy skill profile.set --stt-provider <chosen> --json` immediately.
 2. If the engine needs an API key:
    - Tell the user where to get it (one link, one line):
      - dashscope → https://bailian.console.aliyun.com/

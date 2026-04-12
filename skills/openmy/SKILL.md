@@ -112,9 +112,9 @@ When presenting results to users:
 
 If this looks like a first-time setup:
 
-1. **Always start with `openmy-health-check`** — this tells you what is ready and what is missing.
+1. **Always start with `openmy-health-check`** — it now gives a recommended route, a one-line headline, and grouped engine choices.
 2. **Auto-setup profile** — if `health.check` says profile is missing or still has defaults (`name=User`, `timezone=UTC`), detect the system timezone and conversation language, then run `profile.set` immediately. Do NOT ask the user — just set it and tell them what you did.
-3. **Ask which STT engine to use** — present the available engines from `health.check` results and ask the user to choose. This is the ONE question you must ask during first setup. After the user picks, set `OPENMY_STT_PROVIDER` in the project `.env` file.
+3. **Ask only one choice question** — do not dump all engines raw. Read `health.check` → `data.onboarding`, present the recommended route first, then ask whether the user wants to go with that route. This is the ONE question you must ask during first setup. After the user picks, run `openmy skill profile.set --stt-provider <chosen> --json` so the project `.env` is updated for them.
 4. Route to `openmy-vocab-init` if vocab is missing.
 5. Help the user locate the first audio file.
 6. Route to `openmy-day-run`.
@@ -166,9 +166,9 @@ Ask: "Would you like your daily summaries automatically saved to a note-taking a
 
 ### Screen Recognition
 
-Ask: "OpenMy can also capture what is on your screen to give richer context. This needs a local screen recognition service running in the background. Would you like to enable it?"
+Ask: "OpenMy can also capture what is on your screen to give richer context. This uses the built-in background capture loop. Would you like to enable it?"
 - Explain clearly: "Screen data stays on your machine. It helps match what you said with what you were doing on screen."
-- If yes, check whether the local service is reachable at `localhost:3030`.
+- If yes, run `openmy screen on` and confirm the built-in capture loop is running.
 - If no, set `SCREEN_RECOGNITION_ENABLED=false` and move on quietly.
 
 ### STT Engine Upgrade
