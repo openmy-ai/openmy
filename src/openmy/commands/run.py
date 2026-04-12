@@ -244,8 +244,8 @@ def transcribe_audio_files(
     stt_model: str | None = None,
     stt_vad: bool = False,
     stt_word_timestamps: bool = False,
-) -> int:
-    """把本地音频文件转成 raw transcript。"""
+) -> tuple[int, str]:
+    """把本地音频文件转成 raw transcript。返回 (exit_code, error_message)。"""
     cli = _cli()
     from openmy.services.ingest.audio_pipeline import transcribe_audio_files as run_ingest_pipeline
 
@@ -260,11 +260,12 @@ def transcribe_audio_files(
             word_timestamps=stt_word_timestamps,
         )
     except Exception as exc:
-        cli.console.print(f"[red]❌ 转写失败[/red]: {exc}")
-        return 1
+        error_msg = str(exc)
+        cli.console.print(f"[red]❌ 转写失败[/red]: {error_msg}")
+        return 1, error_msg
 
     cli.console.print(f"[green]✅ 原始转写已生成[/green]: {output_path}")
-    return 0
+    return 0, ""
 
 
 def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
@@ -284,7 +285,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     if args.audio and not args.skip_transcribe:
         _mark_step(date_str, run_status, "transcribe", "running", message="正在转写音频")
         cli.console.print("[bold]Step 0: 🎙️ 转写音频[/bold]")
-        result = transcribe_audio_files(
+        result, error_msg = transcribe_audio_files(
             date_str,
             args.audio,
             stt_provider=getattr(args, "stt_provider", None),
@@ -293,7 +294,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             stt_word_timestamps=bool(getattr(args, "stt_word_timestamps", False)),
         )
         if result != 0:
-            _mark_step(date_str, run_status, "transcribe", "failed", message="转写失败")
+            _mark_step(date_str, run_status, "transcribe", "failed", message=f"转写失败: {error_msg}")
             _finish_run(date_str, run_status, "failed", "transcribe")
             return result
         downstream_backups = _clear_downstream_artifacts(date_str)
