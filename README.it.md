@@ -2,9 +2,9 @@
 
 <img src="docs/images/openmy-banner.png" alt="OpenMy" width="800" />
 
-# Turn audio and screen activity into context your agent can keep
+# Trasforma registrazioni e attività sullo schermo in contesto duraturo per i tuoi agenti
 
-OpenMy turns saved audio, screen context, and daily progress into **queryable, correctable, cross-day memory**. You can read the daily report yourself or plug the same state into your own agent.
+OpenMy organizza audio già salvato, contesto dello schermo e avanzamento quotidiano in una **memoria interrogabile, correggibile e cumulativa tra più giorni**. Puoi leggere il rapporto giornaliero da solo oppure collegare lo stesso stato al tuo agente.
 
 [![Release](https://img.shields.io/github/v/release/openmy-ai/openmy?style=flat-square&color=blue)](https://github.com/openmy-ai/openmy/releases)
 [![MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
@@ -17,33 +17,33 @@ OpenMy turns saved audio, screen context, and daily progress into **queryable, c
 
 ---
 
-## What you get first
+## Cosa ottieni subito
 
-- **A daily briefing** with summaries, timeline, tables, and charts
-- **Active context** that keeps projects, people, todos, and facts across days
-- **A correction loop** so names, roles, and decisions get better over time
-- **Stable entrypoints** for both humans and agents
-
----
-
-## Why this is not just another transcription tool
-
-OpenMy does more than convert audio into text.
-
-It keeps going:
-
-1. Split a day into scenes
-2. Resolve who you were talking to and what was happening
-3. Generate a daily briefing plus structured output
-4. Accumulate ongoing projects, people, and open loops into long-term context
-
-That makes OpenMy a **personal context engine**, not a one-off transcript utility.
-
-> OpenMy is not a live recording app. It processes recordings you already saved, plus optional screen context from the same day.
+- **Un briefing giornaliero** con riassunti, linea temporale, tabelle e grafici
+- **Contesto attivo** che conserva progetti, persone, attività e fatti tra più giorni
+- **Un ciclo di correzione** che migliora nomi, ruoli e decisioni nel tempo
+- **Punti di ingresso stabili** sia per le persone sia per gli agenti
 
 ---
 
-## ⚡ Get it running in one minute
+## Perché non è solo un altro strumento di trascrizione
+
+OpenMy non si limita a trasformare l’audio in testo.
+
+Poi continua a fare questo:
+
+1. divide la giornata in scene;
+2. ricostruisce con chi stavi parlando e che cosa stava succedendo;
+3. genera un briefing giornaliero e un’uscita strutturata;
+4. accumula progetti in corso, persone ed elementi aperti in un contesto di lungo periodo.
+
+Per questo OpenMy è un **motore di contesto personale**, non un semplice strumento usa e getta per trascrivere.
+
+> OpenMy non è un’app di registrazione dal vivo. Elabora registrazioni già salvate, con contesto schermo opzionale della stessa giornata.
+
+---
+
+## ⚡ Avvialo in un minuto
 
 ```bash
 git clone https://github.com/openmy-ai/openmy.git && cd openmy
@@ -52,66 +52,66 @@ pip install .
 openmy quick-start --demo
 ```
 
-> You only need Python 3.10+ and FFmpeg.
-> `--demo` runs the bundled sample first so you can verify the full flow before switching to your own audio.
+> Ti servono solo Python 3.10+ e FFmpeg.
+> `--demo` esegue prima l’esempio incluso, così puoi verificare l’intero flusso prima di passare ai tuoi file audio.
 
-### After the demo works
+### Dopo il dimostratore
 
 ```bash
 openmy skill health.check --json
 openmy quick-start path/to/your-audio.wav
 ```
 
-- `health.check` gives you a recommended route first, so you do not have to guess between six engines
-- `quick-start` now pauses and guides you if first-run setup is still incomplete
+- `health.check` ti propone subito il percorso più adatto alla macchina
+- `quick-start` si ferma e ti guida se la configurazione iniziale non è ancora completa
 
-### How should you choose a speech-to-text engine?
+### Come scegliere il motore speech-to-text
 
-Do not start by comparing every engine yourself. Use this order:
+Non partire confrontando a mano tutti i motori. L’ordine più sicuro è questo:
 
-1. Run `health.check` and follow the recommended route
-2. If your recordings are mostly Chinese and you want local-first, start with `funasr`
-3. If you want the safest local path first, use `faster-whisper`
-4. Only look at cloud options after that, or when local setup is not the right fit
+1. esegui `health.check` e segui la raccomandazione;
+2. se le tue registrazioni sono soprattutto in cinese e vuoi una soluzione locale, parti da `funasr`;
+3. se vuoi prima il percorso locale più stabile, usa `faster-whisper`;
+4. guarda le opzioni in cloud solo se il percorso locale non ti va bene o se vuoi meno configurazione.
 
-Cloud options: `gemini`, `groq`, `dashscope`, and `deepgram` are there when you want them, but they are not the first thing you need to think about.
+Le opzioni in cloud `gemini`, `groq`, `dashscope` e `deepgram` sono disponibili, ma non devono essere la tua prima preoccupazione.
 
-- `GEMINI_API_KEY` is **not** required for audio processing; it only affects later LLM-backed cleanup steps
-
----
-
-## Who this is for
-
-### 1. People who want a daily report from voice notes, meetings, and ideas
-OpenMy helps turn raw recordings into a readable day summary instead of leaving you with a pile of files.
-
-### 2. People already using agents heavily
-OpenMy can act as a long-term context layer so your agent reads what happened instead of asking you to restate everything.
-
-### 3. Developers building personal-context workflows
-You can plug the stable actions into your own CLI, desktop tool, or automation flow.
+- `GEMINI_API_KEY` **non** è richiesto per l’elaborazione audio; influisce solo sui passaggi finali basati su grandi modelli
 
 ---
 
-## What the output looks like
+## Per chi è pensato
+
+### 1. Per chi vuole un rapporto giornaliero da note vocali, riunioni e idee
+OpenMy trasforma pile di file grezzi in un riepilogo della giornata leggibile.
+
+### 2. Per chi usa già molto gli agenti
+OpenMy può diventare uno strato di contesto di lungo periodo, così l’agente legge ciò che è successo invece di chiedertelo di nuovo.
+
+### 3. Per gli sviluppatori che costruiscono flussi di contesto personale
+Puoi collegare questi punti di ingresso stabili alla tua riga di comando, alla tua app desktop o ai tuoi automatismi.
+
+---
+
+## Come appare l’output
 
 <div align="center">
 <img src="docs/images/openmy-quick-start.png" alt="OpenMy report" width="700" />
 </div>
 
-The generated report includes:
+Il rapporto generato include:
 
-- **Overview** — scenes, word count, speaking time, role distribution
-- **Daily briefing** — what happened and what still matters
-- **Summary timeline** — condensed scene-by-scene timeline
-- **Scene table** — full list of scenes with expandable detail
-- **Charts** — visual breakdown by role and duration
-- **Corrections** — fix names, roles, and decisions
-- **Flow controls** — re-run specific stages when needed
+- **Overview** — numero di scene, quantità di testo, tempo di parola, distribuzione dei ruoli
+- **Daily briefing** — che cosa è successo e che cosa conta ancora
+- **Summary timeline** — linea temporale compatta scena per scena
+- **Scene table** — elenco completo delle scene con dettagli espandibili
+- **Charts** — vista grafica per ruoli e durata
+- **Corrections** — correzione di nomi, ruoli e decisioni
+- **Flow controls** — rilancio mirato di una fase
 
 ---
 
-## How it works
+## Come funziona
 
 ```mermaid
 graph TD
@@ -123,41 +123,41 @@ graph TD
     F --> G["Agent / You"]
 ```
 
-If you want the deeper system view, read [docs/architecture.md](docs/architecture.md).
+Per una vista più approfondita, leggi [docs/architecture.md](docs/architecture.md).
 
 ---
 
-## 🤖 Connect OpenMy to your agent
+## 🤖 Collegare OpenMy al tuo agente
 
-The core asset is not a single CLI shell. It is **durable context state plus a stable action contract**.
+L’asset principale non è una singola interfaccia a riga di comando, ma **uno stato di contesto persistente e un contratto di azioni stabile**.
 
-Current stable JSON entrypoints:
+Punti di ingresso JSON stabili al momento:
 
 ```bash
 openmy skill status.get --json
 openmy skill day.get --date 2026-04-08 --json
 openmy skill context.get --json
-openmy skill day.run --date 2026-04-08 --audio path/to/audio.wav --json
+openmy skill day.run --date 2026-04-08 --audio path/to/your-audio.wav --json
 ```
 
-- `status.get` — inspect readiness and data presence
-- `day.get` — read one processed day
-- `context.get` — read cross-day active context
-- `day.run` — process one day and persist artifacts
+- `status.get` — controlla stato di prontezza e presenza dei dati
+- `day.get` — legge una giornata già elaborata
+- `context.get` — legge il contesto attivo su più giorni
+- `day.run` — elabora una giornata e salva gli artefatti
 
-The old `openmy agent` entrypoint still exists as a compatibility alias.
+Il vecchio ingresso `openmy agent` resta disponibile come alias di compatibilità.
 
-### Install the skill bundle
+### Installare il pacchetto di skill
 
-#### One-shot install
+#### Installazione in un colpo solo
 
 ```bash
 bash scripts/install-skills.sh
 ```
 
-The script detects common agent tools and links the OpenMy skill bundle for you.
+Lo script rileva gli strumenti di agente più comuni e collega il pacchetto di skill di OpenMy.
 
-#### Key directories if you want to wire it up manually
+#### Directory chiave se vuoi collegarlo a mano
 
 - `skills/openmy/`
 - `skills/openmy-startup-context/`
@@ -172,54 +172,54 @@ The script detects common agent tools and links the OpenMy skill bundle for you.
 
 ---
 
-## Optional capabilities
+## Funzionalità opzionali
 
-### Screen recognition
+### Riconoscimento dello schermo
 
-OpenMy can enrich a day with screen context so the system knows what was on-screen while you were speaking.
+OpenMy può arricchire una giornata con il contesto dello schermo, così il sistema sa che cosa era visibile mentre parlavi.
 
-This feature is optional. It now uses OpenMy's built-in capture loop, so there is no separate local service to install. If you leave it off, OpenMy falls back to voice-only mode and the main flow still works.
+Questa funzione è opzionale. Ora usa il ciclo di cattura integrato di OpenMy, quindi non serve installare un servizio locale separato. Se la lasci spenta, OpenMy torna alla modalità solo voce e il flusso principale continua a funzionare.
 
-### Export
+### Esportazione
 
-Daily briefings can be exported to:
+I briefing giornalieri possono essere esportati in:
 
-- `Obsidian` — write Markdown directly into your vault
-- `Notion` — create pages through the API
+- `Obsidian` — scrittura diretta in Markdown nel tuo archivio
+- `Notion` — creazione di pagine tramite interfaccia
 
-Export is optional. If it is not configured, the main pipeline still completes normally.
+L’esportazione è opzionale. Se non è configurata, il flusso principale termina comunque senza problemi.
 
-### Folder watcher mode
+### Modalità watcher della cartella
 
-If you prefer dropping recordings into a folder and letting OpenMy process them automatically, run the watcher:
+Se preferisci lasciare i file audio in una cartella e far elaborare tutto automaticamente da OpenMy, avvia il watcher:
 
 ```bash
 python3 -m openmy.services.watcher ~/Recordings/OpenMy
 ```
 
-This works well when:
-- your phone syncs recordings onto the computer
-- a recorder or wireless mic writes into a fixed folder
-- you want capture and processing to stay separate
+Funziona bene quando:
+- il telefono sincronizza le registrazioni sul computer;
+- un registratore o un microfono wireless scrive in una cartella fissa;
+- vuoi separare raccolta ed elaborazione.
 
-The watcher waits for files to settle, then starts processing automatically. You can still ignore watcher mode and run `quick-start` or `day.run` manually.
+Il watcher aspetta che i file siano stabili e poi avvia l’elaborazione. Se non ti serve, puoi ignorarlo e usare `quick-start` o `day.run` manualmente.
 
-### Recommended workflow
+### Flusso consigliato
 
-Record first, sync into a stable folder, run `openmy quick-start`, then enable watcher mode only after the manual path feels right.
+Il percorso più lineare è questo: registra prima, sincronizza in una cartella stabile, esegui `openmy quick-start`, poi abilita il watcher solo quando il percorso manuale ti convince.
 
 ---
 
 ## Roadmap
 
-- ~~v0.1~~ ✅ Core pipeline working
+- ~~v0.1~~ ✅ pipeline principale funzionante
 - **v0.2 now** — quick-start, report workspace, correction dictionary, structured extraction, active context
 - **v0.3** — multilingual support, stronger cross-day context, Obsidian plugin
 - **v1.0** — stable API, plugin system, multiple model backends
 
 ---
 
-## Development
+## Sviluppo
 
 ```bash
 pip install -e .
@@ -228,6 +228,8 @@ python3 -m pytest tests/ -v
 ```
 
 ---
+
+## Albero attuale dell’implementazione tecnica e dell’architettura
 
 ## Current technical implementation and architecture tree
 
