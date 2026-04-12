@@ -40,3 +40,5 @@ Turn the snapshot into a next move.
 3. Mention the last obvious focus area.
 4. If profile or vocab is missing, start onboarding.
 5. If this is the first conversation ever, run `health.check` before anything else.
+6. If the user says "find the DJI mic recording" or mentions another recorder/device, treat it as a file-finding request first.
+7. Do **not** turn a file-finding request into "start recording now" or live transcription unless the user explicitly asks for realtime capture.

@@ -53,6 +53,11 @@ Use this skill when:
 - Do not edit `active_context.json`, `corrections.jsonl`, `scenes.json`, `meta.json`, or `profile.json` directly.
 - Do not treat the frontend as the execution surface.
 - Do not describe OpenMy as an MCP-first product.
+- When the user mentions a device or source such as DJI Mic, phone voice memos, meeting recorder, or screen recording, assume they mean **existing recordings already saved on disk**.
+- Do **not** start live recording, open the microphone, or switch into realtime transcription unless the user explicitly says they want to record **now**.
+- Default interpretation:
+  - "去找大疆麦克风录音" = find the recorded audio files
+  - "打开麦克风开始录" = start live recording
 
 ## Critical: API Keys Are Optional
 

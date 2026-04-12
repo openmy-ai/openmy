@@ -41,10 +41,20 @@ It is not tied to one device.
 - any `ffmpeg`-compatible audio file
 
 If the file date is unclear, ask the user before choosing a date.
+If the user mentions a recorder or microphone brand, first look for recordings that already exist on disk.
+Do **not** assume the user wants to start a new live recording session.
 
 The default STT engine (`faster-whisper`) runs locally and needs no API key.
 If the user has not configured any keys, proceed with the local engine.
 Do not block audio processing because an API key is missing.
+
+### Intent Disambiguation For Audio Source
+
+- "Find the DJI mic audio" = search for existing `.wav` / `.mp4` files from that device
+- "Use today's voice memo" = search for today's saved recording files
+- "Start recording now" / "turn on the mic" = live capture request
+
+Unless the user explicitly says "start recording now", stay in the existing-file workflow.
 
 ## Agent Behavior: Progress Reporting (CRITICAL)
 
