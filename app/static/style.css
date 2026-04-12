@@ -190,8 +190,26 @@ body {
 .prop-item { font-size: 16px; line-height: 1.75; color: var(--text); padding: 0 0 18px; margin-bottom: 18px; border-bottom: 1px dashed var(--border); }
 .prop-item:last-child { border-bottom: none; }
 .prop-item .time-tag { font-size: 11px; color: var(--text-light); font-family: monospace; margin-right: 8px; background: var(--bg-hover); padding: 2px 6px; border-radius: 4px; }
-.prop-item .project-tag { font-size: 11px; padding: 2px 8px; border-radius: 12px; background: var(--accent-light); color: var(--accent); font-weight: 600; margin-right: 8px; }
 .prop-count { font-size: 12px; color: var(--text-light); font-weight: 500; margin-left: auto; background: var(--bg-hover); padding: 2px 8px; border-radius: 12px; }
+.prop-item .inline-project { color: var(--text-secondary); font-size: 14px; }
+
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.collapse-arrow {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.record-list.collapsed {
+  display: none;
+}
 
 .raw-btn, .action-btn {
   background: var(--bg-hover); border: 1px solid var(--border); padding: 8px 16px;

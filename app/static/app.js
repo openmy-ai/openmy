@@ -74,6 +74,8 @@ function plainText(value) {
     .replace(/\*(.*?)\*/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/<[^>]+>/g, '')
+    .replace(/^---+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
@@ -235,18 +237,27 @@ function formatRangeLabel(start, end) {
   return `${formatShortDate(start)}–${formatShortDate(end)}`;
 }
 
-function truncateSummary(text, maxLength = 20) {
+function truncateSummary(text, maxLength = 50) {
   const summary = plainText(text || '');
   if (!summary) return '暂无摘要';
   return summary.length > maxLength ? `${summary.slice(0, maxLength)}…` : summary;
 }
 
+function getVisibleDates() {
+  const currentYear = new Date().getFullYear();
+  return [...(state.allDates || [])]
+    .filter((item) => {
+      const year = Number.parseInt(String(item?.date || '').split('-')[0], 10);
+      return Number.isFinite(year) && year <= currentYear + 1;
+    });
+}
+
 function latestDateInfo() {
-  return [...state.allDates].sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+  return getVisibleDates().sort((a, b) => b.date.localeCompare(a.date))[0] || null;
 }
 
 function filterDateRange(startDate, endDate) {
-  return [...state.allDates]
+  return getVisibleDates()
     .filter((item) => item.date >= startDate && item.date <= endDate)
     .sort((a, b) => b.date.localeCompare(a.date));
 }
@@ -405,12 +416,13 @@ function renderSidebar() {
   document.getElementById('monthlyBtn')?.classList.toggle('active', state.route === 'monthly');
 
   const dateList = document.getElementById('dateList');
-  if (!state.allDates.length) {
+  const visibleDates = getVisibleDates();
+  if (!visibleDates.length) {
     dateList.innerHTML = renderEmptyState('暂无可用阅读数据');
     return;
   }
 
-  dateList.innerHTML = state.allDates.map((item) => `
+  dateList.innerHTML = visibleDates.map((item) => `
     <button class="date-item ${state.route === 'date' && item.date === state.currentDate ? 'active' : ''}" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
       <span>${escapeHtml(item.date)}</span>
       <span class="meta">${item.segments}条</span>
@@ -423,7 +435,8 @@ function renderHomePage() {
   setRoute('home');
   state.currentDate = '';
   const main = document.getElementById('main');
-  if (!state.allDates.length) {
+  const visibleDates = getVisibleDates();
+  if (!visibleDates.length) {
     main.innerHTML = `
       <div class="home-page">
         <h1>OpenMy</h1>
@@ -676,8 +689,10 @@ function renderDayLayout() {
       ${summaryText ? `<section class="summary-callout"><p>${escapeHtml(summaryText)}</p></section>` : ''}
       ${renderMetaPanels(meta)}
       <section class="article-section">
-        <h2>详细记录</h2>
-        <div class="record-list">
+        <h2 class="collapsible-header" type="button" onclick="toggleSection(this)">
+          详细记录 <span class="collapse-arrow">▶</span>
+        </h2>
+        <div class="record-list collapsed">
           ${detail.segments.map((segment) => `
             <div class="record-item" data-segment-time="${escapeHtml(segment.time)}">
               <div class="record-time">${escapeHtml(segment.time)}</div>
@@ -724,8 +739,7 @@ function renderMetaPanels(meta) {
         const summary = escapeHtml(plainText(item.summary || item.what || item.task || item.content || item.decision || item.fact || item.intent || ''));
         return `<div class="prop-item">
           ${time ? `<span class="time-tag">${time}</span>` : ''}
-          ${project ? `<span class="project-tag">${project}</span>` : ''}
-          ${summary}
+          ${summary}${project ? ` <span class="inline-project">(${project})</span>` : ''}
         </div>`;
       }).join('') : '<div class="empty-state">暂无</div>'}
       </div>
@@ -736,22 +750,16 @@ function renderMetaPanels(meta) {
 }
 
 function getSegmentDistillation(segment, meta) {
-  const highlights = [];
-  (meta.events || []).filter((item) => item.time === segment.time).forEach((item) => {
-    highlights.push(`<strong>${escapeHtml(item.project || '事件')}</strong> ${escapeHtml(plainText(item.summary || item.what || ''))}`);
-  });
-  (meta.decisions || []).filter((item) => item.time === segment.time).forEach((item) => {
-    highlights.push(`<strong>${escapeHtml(item.project || '决策')}</strong> ${escapeHtml(plainText(item.what || item.decision || ''))}`);
-  });
-  (meta.todos || []).filter((item) => item.time === segment.time).forEach((item) => {
-    highlights.push(`<strong>${escapeHtml(item.project || '待办')}</strong> ${escapeHtml(plainText(item.task || ''))}`);
-  });
-  const preview = escapeHtml(plainText(segment.summary || segment.preview || segment.text || ''));
-  if (highlights.length > 0) {
-    return `${preview ? `<div>${preview}</div>` : ''}<div class="muted" style="margin-top:8px;font-size:14px;line-height:1.7">${highlights.join('<br>')}</div>`;
-  }
   if (segment.summary) return escapeHtml(plainText(segment.summary));
-  return escapeHtml(plainText(segment.preview || ''));
+  return escapeHtml(plainText(segment.preview || segment.text || '').slice(0, 200));
+}
+
+function toggleSection(header) {
+  const content = header?.nextElementSibling;
+  const arrow = header?.querySelector('.collapse-arrow');
+  if (!content || !arrow) return;
+  const isCollapsed = content.classList.toggle('collapsed');
+  arrow.textContent = isCollapsed ? '▶' : '▼';
 }
 
 function initCharts() {

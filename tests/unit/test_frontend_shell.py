@@ -83,9 +83,25 @@ class TestFrontendShell(unittest.TestCase):
         )
         self.assertIsNotNone(match)
         body = match.group("body")
-        self.assertIn("const preview = escapeHtml(plainText(segment.summary || segment.preview || segment.text || ''));", body)
         self.assertIn("if (segment.summary) return escapeHtml(plainText(segment.summary));", body)
-        self.assertIn("return escapeHtml(plainText(segment.preview || ''));", body)
+        self.assertIn("return escapeHtml(plainText(segment.preview || segment.text || '').slice(0, 200));", body)
+
+    def test_plain_text_cleans_markdown_separator(self):
+        self.assertIn(".replace(/^---+$/gm, '')", self.content)
+
+    def test_day_view_detail_list_starts_collapsed(self):
+        self.assertIn("collapsible-header", self.content)
+        self.assertIn("collapse-arrow", self.content)
+        self.assertIn("record-list collapsed", self.content)
+        self.assertIn("function toggleSection(header)", self.content)
+
+    def test_sidebar_filters_future_test_dates(self):
+        self.assertIn("function getVisibleDates()", self.content)
+        self.assertIn("year <= currentYear + 1", self.content)
+
+    def test_meta_panel_project_tag_switched_to_parentheses(self):
+        self.assertIn("inline-project", self.content)
+        self.assertNotIn("project-tag", self.script_content)
 
     def test_mobile_layout_has_single_column_breakpoint(self):
         self.assertRegex(
