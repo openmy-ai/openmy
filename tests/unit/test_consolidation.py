@@ -603,6 +603,43 @@ class TestRenderer(unittest.TestCase):
         self.assertTrue(content.startswith("# Active Context"))
         self.assertIn("最近主要推进", content)
 
+    def test_render_compact_md_includes_weekly_and_monthly_sections_when_available(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            (data_root / "weekly").mkdir(parents=True, exist_ok=True)
+            (data_root / "monthly").mkdir(parents=True, exist_ok=True)
+            (data_root / "weekly" / "2026-W15.json").write_text(
+                json.dumps(
+                    {
+                        "summary": "这周把聚合链路搭起来了。",
+                        "next_week_focus": "补自动触发和手动入口",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (data_root / "monthly" / "2026-04.json").write_text(
+                json.dumps(
+                    {
+                        "summary": "这个月主要在把 OpenMy 的上下文链路做扎实。",
+                        "direction": "继续补启动注入和聚合回顾",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            ctx = self.make_context()
+            ctx.generated_at = "2026-04-08T23:58:10+08:00"
+            ctx.realtime_context.ingestion_health.last_processed_date = "2026-04-08"
+
+            content = render_compact_md(ctx, data_root)
+
+            self.assertIn("## 本月方向", content)
+            self.assertIn("## 本周进展", content)
+            self.assertIn("这周把聚合链路搭起来了。", content)
+            self.assertIn("这个月主要在把 OpenMy 的上下文链路做扎实。", content)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -589,7 +589,7 @@ def handle_context_get(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     }
     artifacts = {"active_context": str(ctx_path)}
     if getattr(args, "compact", False):
-        compact_markdown = render_compact_md(ctx)
+        compact_markdown = render_compact_md(ctx, cli.DATA_ROOT)
         compact_path.write_text(compact_markdown, encoding="utf-8")
         data["compact_markdown"] = compact_markdown
         artifacts["compact_markdown"] = str(compact_path)

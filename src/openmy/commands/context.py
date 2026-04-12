@@ -29,7 +29,7 @@ def cmd_context(args: argparse.Namespace) -> int:
         ctx.save(ctx_path)
 
     if args.compact:
-        markdown = render_compact_md(ctx)
+        markdown = render_compact_md(ctx, cli.DATA_ROOT)
         compact_path.write_text(markdown, encoding="utf-8")
         cli.console.print(f"[green]✅ 已保存[/green]: {compact_path}")
         cli.console.print(cli.Markdown(markdown))

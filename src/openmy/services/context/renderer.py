@@ -3,7 +3,59 @@
 
 from __future__ import annotations
 
+import json
+from datetime import datetime
+from pathlib import Path
+
 from openmy.services.context.active_context import ActiveContext
+
+
+def _read_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _reference_date(ctx: ActiveContext) -> datetime.date:
+    raw = str(ctx.realtime_context.ingestion_health.last_processed_date or "").strip()
+    if raw:
+        try:
+            return datetime.strptime(raw, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+    raw = str(ctx.generated_at or "").strip()
+    if raw:
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+        except ValueError:
+            pass
+    return datetime.now().date()
+
+
+def _aggregate_lines(review: dict, *, kind: str) -> list[str]:
+    if not review:
+        return []
+    lines: list[str] = []
+    summary = str(review.get("summary", "") or "").strip()
+    if summary:
+        lines.append(summary)
+    if kind == "monthly":
+        direction = str(review.get("direction", "") or "").strip()
+        if direction:
+            lines.append(f"接下来盯：{direction}")
+        elif review.get("projects"):
+            lines.append(f"主线：{'、'.join(review.get('projects', [])[:3])}")
+    else:
+        focus = str(review.get("next_week_focus", "") or "").strip()
+        if focus:
+            lines.append(f"接下来盯：{focus}")
+        elif review.get("open_items"):
+            lines.append(f"待处理：{'、'.join(review.get('open_items', [])[:3])}")
+    return lines[:3]
 
 
 def _unresolved_loops(ctx: ActiveContext):
@@ -81,7 +133,7 @@ def render_level1(ctx: ActiveContext) -> str:
     return "\n".join(parts).strip()
 
 
-def render_compact_md(ctx: ActiveContext) -> str:
+def render_compact_md(ctx: ActiveContext, data_root: Path | None = None) -> str:
     """Markdown 版压缩视图 — 用于 Agent 启动时无感注入。"""
     lines = [
         "# Active Context",
@@ -97,6 +149,25 @@ def render_compact_md(ctx: ActiveContext) -> str:
         name = identity.preferred_name or identity.canonical_name
         lines.append(f"用户：{name}（{identity.primary_language}，{identity.timezone}）")
         lines.append("")
+
+    if data_root is not None:
+        from openmy.services.aggregation import current_month_str, current_week_str
+
+        reference_date = _reference_date(ctx)
+        monthly_review = _read_json(data_root / "monthly" / f"{current_month_str(reference_date)}.json")
+        weekly_review = _read_json(data_root / "weekly" / f"{current_week_str(reference_date)}.json")
+
+        monthly_lines = _aggregate_lines(monthly_review, kind="monthly")
+        if monthly_lines:
+            lines.append("## 本月方向")
+            lines.extend(monthly_lines)
+            lines.append("")
+
+        weekly_lines = _aggregate_lines(weekly_review, kind="weekly")
+        if weekly_lines:
+            lines.append("## 本周进展")
+            lines.extend(weekly_lines)
+            lines.append("")
 
     # 活跃项目
     if ctx.rolling_context.active_projects:
@@ -130,4 +201,3 @@ def render_compact_md(ctx: ActiveContext) -> str:
         lines.extend([f"- {item.decision}" for item in ctx.rolling_context.recent_decisions[:5]])
 
     return "\n".join(lines).strip() + "\n"
-
