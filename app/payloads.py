@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from openmy.config import DEFAULT_STT_MODELS, LOCAL_STT_PROVIDERS, get_stt_api_key, get_stt_provider_name, stt_provider_requires_api_key
+from openmy.services.onboarding.state import load_onboarding_state, save_onboarding_state
 from openmy.services.screen_recognition.settings import (
     ScreenContextSettings,
     load_screen_context_settings,
@@ -158,8 +159,10 @@ def update_onboarding_provider_payload(data: dict) -> dict:
     if provider not in DEFAULT_STT_MODELS:
         return {'success': False, 'error': '未知 provider'}
 
+    server = _server()
     _upsert_project_env('OPENMY_STT_PROVIDER', provider)
     onboarding = _build_current_onboarding_payload(provider_override=provider)
+    save_onboarding_state(server.DATA_ROOT, onboarding)
     return {
         'success': True,
         'provider': provider,
@@ -169,7 +172,13 @@ def update_onboarding_provider_payload(data: dict) -> dict:
 
 
 def get_onboarding_payload() -> dict:
-    return _build_current_onboarding_payload()
+    server = _server()
+    existing = load_onboarding_state(server.DATA_ROOT) or {}
+    if existing:
+        return existing
+    payload = _build_current_onboarding_payload()
+    save_onboarding_state(server.DATA_ROOT, payload)
+    return payload
 
 def get_context_payload() -> dict:
     snapshot = load_active_context_snapshot()
