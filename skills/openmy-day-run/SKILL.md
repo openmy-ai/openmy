@@ -46,12 +46,35 @@ The default STT engine (`faster-whisper`) runs locally and needs no API key.
 If the user has not configured any keys, proceed with the local engine.
 Do not block audio processing because an API key is missing.
 
-## Agent Behavior After Successful Run
+## Agent Behavior: Progress Reporting (CRITICAL)
 
-1. Call `day.get` for the same date.
-2. Scan for obvious transcript errors.
-3. Suggest corrections when names or terms look wrong.
-4. If vocab is not initialized, suggest `vocab.init`.
-5. Summarize the day in plain language.
-6. If any step was skipped or failed, explain why and offer the next fix.
-7. If the run pauses at distillation or core extraction because no LLM key is configured, route to `distill.pending` / `distill.submit` or `extract.core.pending` / `extract.core.submit` instead of asking the user for a key first.
+**Users must never feel like they are staring at a black box.** Report progress at every stage.
+
+### Before Starting
+
+1. **Count and inspect first.** Before calling `day.run`, check how many audio files the user wants to process. Report:
+   - "You have X audio files for this date, total duration is about Y minutes."
+   - "Estimated processing time: ~Z minutes with [engine name]."
+2. If there are many files (5+), suggest processing in batches and ask the user.
+
+### During Processing
+
+3. **Report each major step as it completes.** After calling `day.run`, immediately check `run_status.json` and tell the user which steps passed and which are still running:
+   - "Transcription done (3 files, 45 minutes of audio)."
+   - "Cleaning and segmentation done (12 scenes found)."
+   - "Distillation done (all 12 scenes summarized)."
+   - "Daily briefing generated."
+4. **If a step fails or is skipped**, explain WHY immediately. Don't wait until the end.
+   - "Transcription of file 3 failed: network timeout. The other 2 files are fine. Want me to retry?"
+   - "Distillation paused: no LLM key configured. You have two options: ..."
+5. **If the command is taking long** (over 2 minutes), check `run_status.json` mid-flight to give the user an update.
+
+### After Completion
+
+6. Call `day.get` for the same date.
+7. Scan for obvious transcript errors.
+8. Suggest corrections when names or terms look wrong.
+9. If vocab is not initialized, suggest `vocab.init`.
+10. Summarize the day in plain language.
+11. If any step was skipped or failed, explain why and offer the next fix.
+12. If the run pauses at distillation or extraction, present the two options (cheap Gemini API key vs agent token) and let the user choose.
