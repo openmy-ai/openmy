@@ -2,9 +2,9 @@
 
 <img src="docs/images/openmy-banner.png" alt="OpenMy" width="800" />
 
-**面向多 Agent 的个人上下文引擎**
+# 把录音和屏幕，变成能被 Agent 长期记住的个人上下文
 
-把录音、屏幕等个人原始信号处理成可被 Agent 调用、可纠正、可跨天积累的上下文状态。默认推荐 Gemini provider，但系统本体不绑定单一模型供应商。
+OpenMy 会把已经落盘的音频、屏幕和每天的进展整理成**可查询、可纠正、可跨天积累**的上下文状态。你可以自己看日报，也可以把它接进自己的 Agent。
 
 [![Release](https://img.shields.io/github/v/release/openmy-ai/openmy?style=flat-square&color=blue)](https://github.com/openmy-ai/openmy/releases)
 [![MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
@@ -17,110 +17,121 @@
 
 ---
 
-## ⚡ 快速开始
+## 你会先得到什么
+
+- **当天日报**：把录音和场景整理成能直接看的总结、时间线和表格
+- **活跃上下文**：把项目、人物、待办和事实跨天攒起来，不用每天从头讲
+- **可纠正系统**：错词、错人、错判断都能回改，下次会更准
+- **稳定入口**：既能自己看，也能让 Agent 按固定动作读取和继续处理
+
+---
+
+## 为什么它不是普通转写工具
+
+OpenMy 不只是把音频变成文字。
+
+它会继续往下做四件事：
+
+1. 把一天内容切成独立场景
+2. 判断这段话在和谁说、在做什么
+3. 生成日报和结构化结果
+4. 把还在推进的项目、人物和待办沉淀进长期上下文
+
+所以它更像一个**个人上下文引擎**，不是一次性的录音整理器。
+
+> OpenMy 不负责现场录音；它负责处理你已经录下来的音频和当天屏幕信息。
+
+---
+
+## ⚡ 一分钟跑起来
 
 ```bash
 git clone https://github.com/openmy-ai/openmy.git && cd openmy
 python3 -m venv .venv && source .venv/bin/activate
 pip install .
-openmy skill health.check --json
-openmy skill vocab.init --json
-openmy quick-start path/to/your-audio.wav
-openmy quick-start --demo  # 用内置示例先跑一遍
+openmy quick-start --demo
 ```
 
-> 依赖：Python 3.10+、FFmpeg。第一次使用先跑 `health.check`（环境检查），再选转写引擎。
-> 本地引擎 `faster-whisper`（本地英文优先转写引擎）和 `funasr`（本地中文优先转写引擎）都可以先跑，不需要任何 key（密钥）。
-> 只有蒸馏和提取这类大模型步骤，才会在后面问你是配 `Gemini`（谷歌大模型） key（密钥），还是让智能体代做。
+> 依赖只有两样：Python 3.10+ 和 FFmpeg。
+> `--demo` 会先跑内置示例，先确认整条链路能走通，再换你自己的音频。
 
-**首次使用：初始化你的个人词库**
+### 跑通演示以后，下一步怎么做
+
 ```bash
-openmy skill vocab.init --json
+openmy skill health.check --json
+openmy quick-start path/to/your-audio.wav
 ```
 
-这个命令会从内置示例自动创建 `corrections.json` 和 `vocab.txt`。
-这两个文件已加入 `.gitignore`，你可以自由加入自己的错词纠正和专有名词，不会被提交。
+- `health.check`：先给你一条推荐路线，不用自己在六种转写引擎里瞎挑
+- `quick-start`：如果还没配好，它会先拦一下，再告诉你现在最适合走哪条路
 
-### Provider 配置
+### 第一次怎么选转写引擎
 
-- 首次配置先做两件事：
-  1. 跑 `openmy skill health.check --json`（环境检查）
-  2. 选一个转写引擎
-- `GEMINI_API_KEY`（谷歌大模型密钥）不是音频处理的前置条件；它只会影响蒸馏和提取这类大模型步骤。
-- 也支持这些额外转写引擎：
+先别自己硬挑。建议这样走：
 
-| Provider | 类型 | 更适合谁 | 需要什么 |
-|---|---|---|---|
-| `faster-whisper` | 本地 | 想省钱、想本地跑 | 直接可用 |
-| `funasr` | 本地 | 中文场景 | 安装 `funasr` |
-| `gemini` | 接口 | 想少折腾 | `GEMINI_API_KEY` |
-| `groq` | 接口 | 想要便宜又快 | `GROQ_API_KEY` |
-| `dashscope` | 接口 | 中文和方言优先 | `DASHSCOPE_API_KEY` |
-| `deepgram` | 接口 | 英文优先 | `DEEPGRAM_API_KEY` |
+1. 先跑 `health.check`，看系统推荐你走哪条路
+2. 如果你主要是中文录音，而且想先本地跑，通常先用 `funasr`
+3. 如果你想先稳稳跑通，本地通用路线就用 `faster-whisper`
+4. 只有当本地路线不顺，或者你明确想少折腾，再看云端路线
 
-如果你要试更强的中文本地模型，可以继续用 `funasr`，再把 `.env` 里的 `OPENMY_STT_MODEL=SenseVoiceSmall` 加上。
+云端选择（`gemini`、`groq`、`dashscope`、`deepgram`）都放在后面再看。
 
-切换方式很简单，在 `.env` 里写：`OPENMY_STT_PROVIDER=groq`
-
-- 更通用的配置名：
-  - `OPENMY_STT_PROVIDER`
-  - `OPENMY_STT_MODEL`
-  - `OPENMY_STT_API_KEY`
-  - `OPENMY_LLM_PROVIDER`
-  - `OPENMY_LLM_MODEL`
-  - `OPENMY_LLM_API_KEY`
-- 阶段级模型覆盖：
-  - `OPENMY_EXTRACT_MODEL`
-  - `OPENMY_DISTILL_MODEL`
+- `GEMINI_API_KEY` 不是音频处理前置条件；它只影响蒸馏、提取这类后段整理
 
 ---
 
-## 🔬 处理流程
+## 适合谁
+
+### 1. 想把每天语音整理成日报的人
+你可以把随手录下来的语音、会议、灵感、碎念整理成当天报告，不再靠回忆拼时间线。
+
+### 2. 已经重度使用 Agent 的人
+你可以把 OpenMy 变成 Agent 的长期记忆层，让它直接读取上下文，而不是每次都重头问你。
+
+### 3. 想做个人上下文工作流的开发者
+你可以把现成的稳定动作接到自己的命令行、桌面工具、自动流程里。
+
+---
+
+## 最后产物长什么样
+
+<div align="center">
+<img src="docs/images/openmy-quick-start.png" alt="OpenMy 报告" width="700" />
+</div>
+
+处理完成后，你会得到这些视图：
+
+- **概览**：场景数、字数、语音时长、角色分布
+- **日报**：当天发生了什么、接下来要盯什么
+- **摘要时间线**：每个场景的精简结果
+- **场景表格**：完整列表，可回看原文
+- **图表**：角色分布和场景时长可视化
+- **校正**：错词、错人、错判断的纠正入口
+- **流程**：可以重跑任意阶段
+
+---
+
+## 它怎么工作
 
 ```mermaid
 graph TD
-    A["🎙️ 音频文件"] --> B["转写"]
-    B --> C["清洗"]
-    C --> D["场景切分"]
-    D --> E["角色识别"]
-    E --> F["蒸馏摘要"]
-    F --> G["结构化提取"]
-    G --> H["日报生成"]
-    H --> I["活跃上下文"]
-    I --> J["🖥️ 每日报告"]
-
-    style A fill:#6366f1,stroke:#4f46e5,color:#fff
-    style J fill:#06b6d4,stroke:#0891b2,color:#fff
+    A["🎙️ 音频 / 屏幕"] --> B["转写与清洗"]
+    B --> C["场景切分与角色识别"]
+    C --> D["蒸馏与结构化提取"]
+    D --> E["日报"]
+    E --> F["活跃上下文"]
+    F --> G["Agent / 你自己"]
 ```
 
-### 每一步做什么
-
-**转写** — 音频转成带时间戳的逐字文本。
-
-**清洗** — 去掉口语噪音（嗯、啊、重复词），修标点，应用纠错词典。纯规则，不调 API。
-
-**场景切分** — 按时间间隔和话题转换，把一整天的文本切成独立的对话段落。
-
-**角色识别** — 判断每段对话在跟谁说话：AI 助手、朋友、商家、宠物、自言自语。结合屏幕上下文提高准确率。
-
-**蒸馏摘要** — 每个场景压缩成一到两句话，保留核心信息，感知角色身份。
-
-**结构化提取** — 从全天内容中分桶提取三类信息：
-- 🚀 **事件** — 做了什么、打算做什么
-- 📌 **事实** — 确认的信息、数据、结论
-- ⚡ **洞察** — 想法、判断、灵感
-
-**日报生成** — 汇总当天所有场景，生成有摘要、有时间线、有统计的每日报告。
-
-**活跃上下文** — 跨天累积项目进展、人物关系、待办事项。7 天没再提到的自动标记过期。
+如果你想看更细的设计，直接看 [docs/architecture.md](docs/architecture.md)。
 
 ---
 
-## 🤖 接给 Agent
+## 🤖 怎么接给你的 Agent
 
-OpenMy 的核心资产不是某个 CLI 壳子，而是稳定的上下文状态和动作契约。
+OpenMy 的核心不是某个命令行壳子，而是**稳定的上下文状态 + 稳定的动作契约**。
 
-当前推荐的稳定入口：
+当前最稳的 JSON 入口：
 
 ```bash
 openmy skill status.get --json
@@ -129,34 +140,24 @@ openmy skill context.get --json
 openmy skill day.run --date 2026-04-08 --audio path/to/audio.wav --json
 ```
 
-兼容入口 `openmy agent` 仍然保留，但后续会逐步退到兼容别名。
+- `status.get`：先看现在有没有数据、系统能不能跑
+- `day.get`：读某一天的结果
+- `context.get`：读跨天活跃上下文
+- `day.run`：跑一天并写入结果
 
-### Install Skills for Your Agent
+兼容入口 `openmy agent` 还保留着，但后面会慢慢退成兼容别名。
 
-#### 一键安装（所有平台）
+### 安装给你的 Agent 用的技能说明
+
+#### 一键安装
 
 ```bash
 bash scripts/install-skills.sh
 ```
 
-自动检测你安装了哪些 AI 工具（Claude Code / Codex / Gemini CLI / Antigravity），把 Skills 链接过去。
+这个脚本会自动识别常见 Agent 工具，把对应技能说明链接过去。
 
-#### 分平台安装
-
-**Codex** — 告诉 Codex：
-> Fetch and follow instructions from https://raw.githubusercontent.com/openmy-ai/openmy/refs/heads/main/.codex/INSTALL.md
-
-**Gemini CLI** —
-```bash
-gemini extensions install https://github.com/openmy-ai/openmy
-```
-
-**Claude Code** — 克隆仓库后 CLAUDE.md 自动生效，或手动链接：
-```bash
-bash scripts/install-skills.sh
-```
-
-#### Skill 目录
+#### 手动接入时，重点看这些目录
 
 - `skills/openmy/`
 - `skills/openmy-startup-context/`
@@ -169,117 +170,81 @@ bash scripts/install-skills.sh
 - `skills/openmy-vocab-init/`
 - `skills/openmy-profile-init/`
 
-这样 Agent（助手程序）就知道：什么时候先看状态，什么时候该跑一天，什么时候该主动建议补词库和用户资料。
-
 ---
 
-## 🖼️ 输出效果
+## 可选能力
 
-<div align="center">
-<img src="docs/images/openmy-quick-start.png" alt="OpenMy 报告" width="700" />
-</div>
+### 屏幕识别
 
-生成的报告包含 7 个视图：
+OpenMy 可以把屏幕信息一起并进当天结果，让系统知道你说这段话时，屏幕上正在干什么。
 
-- **概览** — 当天统计：场景数、字数、语音时长、角色分布
-- **日报** — 结构化的每日摘要
-- **摘要时间线** — 按时间排列每个场景的蒸馏结果
-- **场景表格** — 完整场景列表，可展开查看原文
-- **图表** — 角色分布和场景时长可视化
-- **校正** — 纠错词典管理，支持全局搜索替换
-- **流程** — 重跑管线任意阶段
+这块是可选能力，而且现在就是内置后台采集，不需要再单独装外部服务。
+如果你没开它，OpenMy 会退回纯语音模式，不会卡住，也不会影响主流程继续生成日报。
 
----
+### 导出
 
-## 📤 导出
+日报现在可以自动导出到：
 
-处理完的日报，现在可以自动导出到两种地方：
-
-- `Obsidian`：直接写成 Markdown 文件到你的笔记库文件夹
+- `Obsidian`：直接写 Markdown 到你的笔记库
 - `Notion`：通过接口自动建页面
 
-这块是可选功能。
-如果没配好，只会跳过导出，不会拦住主流程，也不会影响 quick-start / run 的主链路。
+这块也是可选能力。
+如果没配好，只会跳过导出，不会拦住主流程。
 
-## 🖥️ 屏幕识别
+### 自动监听文件夹
 
-OpenMy 还能接入屏幕识别，让它知道你说这段话的时候，屏幕上正在干什么。
-这样日报会更完整。
-
-这块也是可选功能，而且默认按本地模式处理。
-如果本地屏幕服务没开，OpenMy 会退回纯语音模式，不会卡住，也不会影响主流程继续生成日报。
-
-## 👀 自动监听文件夹模式
-
-如果你习惯把录音先丢到某个文件夹里，让 OpenMy 自动处理，可以直接跑 watcher：
+如果你习惯把录音先丢进固定文件夹，再让系统自己处理，可以直接开 watcher：
 
 ```bash
 python3 -m openmy.services.watcher ~/Recordings/OpenMy
 ```
 
-- 适合 DJI Mic 这类会按日期命名音频文件的设备
-- 有 `watchdog` 时走事件监听；没有时会自动降级成目录扫描模式
-- 录音稳定落盘后会自动触发 `openmy run <date> --audio ...`
-- 这是增强模式，不开 watcher 也完全不影响你手动运行 `quick-start` 或 `run`
+适合这类场景：
+- 手机录音同步到电脑
+- 录音笔或无线麦自动落到固定目录
+- 你想把“采集”和“处理”拆开
 
-## 📥 推荐录音采集工作流
+OpenMy 会在文件稳定落盘后自动触发处理。不开 watcher 也没关系，手动跑 `quick-start` 或 `day.run` 一样能用。
 
-推荐一个最省心的方式：
+### 推荐使用方式
 
-1. 手机 / 录音笔 / DJI Mic 先录音
-2. 用 AirDrop、iCloud Drive、Dropbox 或 NAS 把音频同步到电脑上的固定文件夹
-3. 要么手动运行 `openmy quick-start path/to/audio.wav`，要么让 watcher 自动监听那个文件夹
-
-这样你可以把“采集”和“处理”分开：录音设备只负责稳定记录，OpenMy 只负责在电脑上做转写、提取和生成日报。
-
-
-## 📍 路线图
-
-- ~~**v0.1**~~ ✅ 核心管线跑通
-- **v0.2** 🟢 当前 — quick-start、报告工作台、纠错词典、结构化提取、活跃上下文
-- **v0.3** 🔜 多语言、跨天上下文增强、Obsidian 插件
-- **v1.0** 📋 稳定 API、插件系统、多 LLM 后端
+先录音，再同步到电脑固定文件夹，最后用 `quick-start` 手动跑；跑顺以后，再决定要不要开 watcher 自动处理。
 
 ---
 
-## 🧪 开发
+## 路线图
+
+- ~~v0.1~~ ✅ 核心链路跑通
+- **v0.2 当前**：quick-start、报告工作台、纠错词典、结构化提取、活跃上下文
+- **v0.3**：多语言、跨天上下文增强、Obsidian 插件
+- **v1.0**：稳定 API、插件系统、多模型后端
+
+---
+
+## 开发
 
 ```bash
 pip install -e .
 uvx ruff check .
-python3 -m pytest tests/ -v   # 328 tests，不需要 API key
+python3 -m pytest tests/ -v
 ```
 
 ---
 
-## 📂 仓库结构
+## 仓库大致结构
 
+```text
+src/openmy/                核心源码
+app/                       报告页面
+skills/                    Agent 技能说明
+docs/                      设计与补充文档
+tests/                     自动化测试
 ```
-src/openmy/
-  commands/          CLI / skill 入口
-  providers/         STT / LLM provider 边界
-  services/
-    ingest/            音频导入与预处理
-    cleaning/          文本清洗（规则引擎）
-    segmentation/      场景切分
-    roles/             角色识别
-    distillation/      蒸馏摘要
-    extraction/        结构化提取
-    briefing/          日报生成
-    context/           活跃上下文
-    screen_recognition/  屏幕上下文
-  adapters/
-    transcription/    旧转写兼容壳
-app/                  报告页面
-tests/                自动化测试
-```
+
+更细的实现结构可以看 [docs/architecture.md](docs/architecture.md)。
 
 ---
 
-[CONTRIBUTING](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md) · [Discussions](https://github.com/openmy-ai/openmy/discussions) · [MIT License](LICENSE) · by [Joseph Zhou](https://github.com/openmy-ai)
+[CONTRIBUTING](CONTRIBUTING.md) · [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) · [SECURITY](SECURITY.md) · [MIT License](LICENSE)
 
-<div align="center">
-
-**觉得有用？⭐ 就是最大的支持。**
-
-</div>
+如果这项目对你有帮助，欢迎点个 ⭐。

@@ -2,9 +2,9 @@
 
 <img src="docs/images/openmy-banner.png" alt="OpenMy" width="800" />
 
-**A personal context engine for many agents**
+# Turn audio and screen activity into context your agent can keep
 
-Turns raw personal signals such as audio and screen context into state that agents can query, correct, and accumulate across days. Gemini is the default recommended provider, but OpenMy is not defined by a single vendor.
+OpenMy turns saved audio, screen context, and daily progress into **queryable, correctable, cross-day memory**. You can read the daily report yourself or plug the same state into your own agent.
 
 [![Release](https://img.shields.io/github/v/release/openmy-ai/openmy?style=flat-square&color=blue)](https://github.com/openmy-ai/openmy/releases)
 [![MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
@@ -17,94 +17,119 @@ Turns raw personal signals such as audio and screen context into state that agen
 
 ---
 
-## ⚡ Quick Start
+## What you get first
+
+- **A daily briefing** with summaries, timeline, tables, and charts
+- **Active context** that keeps projects, people, todos, and facts across days
+- **A correction loop** so names, roles, and decisions get better over time
+- **Stable entrypoints** for both humans and agents
+
+---
+
+## Why this is not just another transcription tool
+
+OpenMy does more than convert audio into text.
+
+It keeps going:
+
+1. Split a day into scenes
+2. Resolve who you were talking to and what was happening
+3. Generate a daily briefing plus structured output
+4. Accumulate ongoing projects, people, and open loops into long-term context
+
+That makes OpenMy a **personal context engine**, not a one-off transcript utility.
+
+> OpenMy is not a live recording app. It processes recordings you already saved, plus optional screen context from the same day.
+
+---
+
+## ⚡ Get it running in one minute
 
 ```bash
 git clone https://github.com/openmy-ai/openmy.git && cd openmy
 python3 -m venv .venv && source .venv/bin/activate
 pip install .
-openmy skill health.check --json
-openmy skill vocab.init --json
-openmy quick-start path/to/your-audio.wav
-openmy quick-start --demo  # try the bundled sample first
+openmy quick-start --demo
 ```
 
-> Requirements: Python 3.10+ and FFmpeg. On first run, start with `health.check`, then choose a speech-to-text engine.
-> Local engines `faster-whisper` and `funasr` can process audio without any API key.
-> Gemini keys are only needed later for distillation and extraction, unless you want the agent to handle those steps for you.
+> You only need Python 3.10+ and FFmpeg.
+> `--demo` runs the bundled sample first so you can verify the full flow before switching to your own audio.
 
-**First use: initialize your private vocabulary files**
+### After the demo works
+
 ```bash
-openmy skill vocab.init --json
+openmy skill health.check --json
+openmy quick-start path/to/your-audio.wav
 ```
 
-This command creates `corrections.json` and `vocab.txt` from the bundled examples.
-These files are ignored by git so you can safely store personal typo fixes and proper nouns locally.
+- `health.check` gives you a recommended route first, so you do not have to guess between six engines
+- `quick-start` now pauses and guides you if first-run setup is still incomplete
 
-### Provider Config
+### How should you choose a speech-to-text engine?
 
-- First-time setup should do two things in order:
-  1. Run `openmy skill health.check --json`
-  2. Choose a speech-to-text engine
-- `GEMINI_API_KEY` is not a prerequisite for audio processing. It only affects LLM-backed steps such as distillation and extraction.
-- Default shortcut when you do want cloud LLM steps: `GEMINI_API_KEY`
-- Provider-neutral keys:
-  - `OPENMY_STT_PROVIDER`
-  - `OPENMY_STT_MODEL`
-  - `OPENMY_STT_API_KEY`
-  - `OPENMY_LLM_PROVIDER`
-  - `OPENMY_LLM_MODEL`
-  - `OPENMY_LLM_API_KEY`
-- Stage-specific overrides:
-  - `OPENMY_EXTRACT_MODEL`
-  - `OPENMY_DISTILL_MODEL`
+Do not start by comparing every engine yourself. Use this order:
+
+1. Run `health.check` and follow the recommended route
+2. If your recordings are mostly Chinese and you want local-first, start with `funasr`
+3. If you want the safest local path first, use `faster-whisper`
+4. Only look at cloud options after that, or when local setup is not the right fit
+
+Cloud options (`gemini`, `groq`, `dashscope`, `deepgram`) are there when you want them, but they are not the first thing you need to think about.
+
+- `GEMINI_API_KEY` is **not** required for audio processing; it only affects later LLM-backed cleanup steps
 
 ---
 
-## 🔬 Pipeline
+## Who this is for
+
+### 1. People who want a daily report from voice notes, meetings, and ideas
+OpenMy helps turn raw recordings into a readable day summary instead of leaving you with a pile of files.
+
+### 2. People already using agents heavily
+OpenMy can act as a long-term context layer so your agent reads what happened instead of asking you to restate everything.
+
+### 3. Developers building personal-context workflows
+You can plug the stable actions into your own CLI, desktop tool, or automation flow.
+
+---
+
+## What the output looks like
+
+<div align="center">
+<img src="docs/images/openmy-quick-start.png" alt="OpenMy report" width="700" />
+</div>
+
+The generated report includes:
+
+- **Overview** — scenes, word count, speaking time, role distribution
+- **Daily briefing** — what happened and what still matters
+- **Summary timeline** — condensed scene-by-scene timeline
+- **Scene table** — full list of scenes with expandable detail
+- **Charts** — visual breakdown by role and duration
+- **Corrections** — fix names, roles, and decisions
+- **Flow controls** — re-run specific stages when needed
+
+---
+
+## How it works
 
 ```mermaid
 graph TD
-    A["🎙️ Audio File"] --> B["Transcribe"]
-    B --> C["Clean"]
-    C --> D["Scene Split"]
-    D --> E["Role Resolve"]
-    E --> F["Distill"]
-    F --> G["Extract"]
-    G --> H["Briefing"]
-    H --> I["Active Context"]
-    I --> J["🖥️ Daily Report"]
-
-    style A fill:#6366f1,stroke:#4f46e5,color:#fff
-    style J fill:#06b6d4,stroke:#0891b2,color:#fff
+    A["🎙️ Audio / Screen"] --> B["Transcribe + Clean"]
+    B --> C["Scene Split + Role Resolve"]
+    C --> D["Distill + Extract"]
+    D --> E["Briefing"]
+    E --> F["Active Context"]
+    F --> G["Agent / You"]
 ```
 
-### What Each Step Does
-
-**Transcribe** — Converts audio into timestamped text.
-
-**Clean** — Removes filler words, fixes punctuation, applies correction dictionary. Pure rules, no API calls.
-
-**Scene Split** — Cuts a full day of text into distinct conversation segments based on time gaps and topic shifts.
-
-**Role Resolve** — Identifies who you're talking to in each segment: AI assistant, friend, merchant, pet, or yourself. Uses screen context for better accuracy.
-
-**Distill** — Compresses each scene into one or two sentences, preserving key information and role awareness.
-
-**Extract** — Pulls three types of structured data from the full day:
-- 🚀 **Events** — what happened, what's planned
-- 📌 **Facts** — confirmed information, data, conclusions
-- ⚡ **Insights** — ideas, judgments, inspirations
-
-**Briefing** — Aggregates all scenes into a daily report with summary, timeline, and statistics.
-
-**Active Context** — Accumulates projects, relationships, and todos across days. Items untouched for 7 days are automatically flagged stale.
+If you want the deeper system view, read [docs/architecture.md](docs/architecture.md).
 
 ---
 
-## 🤖 Connect OpenMy To Your Agent
+## 🤖 Connect OpenMy to your agent
 
-OpenMy's real asset is durable context state plus a stable action contract, not a single CLI shell.
+The core asset is not a single CLI shell. It is **durable context state plus a stable action contract**.
 
 Current stable JSON entrypoints:
 
@@ -115,115 +140,109 @@ openmy skill context.get --json
 openmy skill day.run --date 2026-04-08 --audio path/to/audio.wav --json
 ```
 
+- `status.get` — inspect readiness and data presence
+- `day.get` — read one processed day
+- `context.get` — read cross-day active context
+- `day.run` — process one day and persist artifacts
+
 The old `openmy agent` entrypoint still exists as a compatibility alias.
 
+### Install the skill bundle
+
+#### One-shot install
+
+```bash
+bash scripts/install-skills.sh
+```
+
+The script detects common agent tools and links the OpenMy skill bundle for you.
+
+#### Key directories if you want to wire it up manually
+
+- `skills/openmy/`
+- `skills/openmy-startup-context/`
+- `skills/openmy-context-read/`
+- `skills/openmy-context-query/`
+- `skills/openmy-day-run/`
+- `skills/openmy-day-view/`
+- `skills/openmy-correction-apply/`
+- `skills/openmy-status-review/`
+- `skills/openmy-vocab-init/`
+- `skills/openmy-profile-init/`
+
 ---
 
-## 🖼️ Output
+## Optional capabilities
 
-<div align="center">
-<img src="docs/images/openmy-quick-start.png" alt="OpenMy Report" width="700" />
-</div>
+### Screen recognition
 
-The generated report includes 7 views:
+OpenMy can enrich a day with screen context so the system knows what was on-screen while you were speaking.
 
-- **Overview** — daily stats: scene count, word count, audio duration, role distribution
-- **Briefing** — structured daily summary
-- **Summary Timeline** — distilled results per scene in chronological order
-- **Scene Table** — full scene list with expandable transcripts
-- **Charts** — role distribution and scene duration visualizations
-- **Corrections** — typo dictionary with global search & replace
-- **Pipeline** — re-run any pipeline stage
+This feature is optional. It now uses OpenMy's built-in capture loop, so there is no separate local service to install. If you leave it off, OpenMy falls back to voice-only mode and the main flow still works.
 
----
+### Export
 
-## 📤 Export
+Daily briefings can be exported to:
 
-OpenMy can optionally export the generated daily briefing to:
+- `Obsidian` — write Markdown directly into your vault
+- `Notion` — create pages through the API
 
-- `Obsidian` — as Markdown inside your vault
-- `Notion` — via the API
+Export is optional. If it is not configured, the main pipeline still completes normally.
 
-If export is not configured, the main pipeline still completes normally. Export is additive, not a blocker.
+### Folder watcher mode
 
-## 🖥️ Screen Recognition
-
-OpenMy can also enrich a day with screen context so the system knows what was on-screen while you were speaking.
-
-This feature is optional. If the local screen service is not running, OpenMy falls back to voice-only mode and the main flow still works.
-
-## 👀 Folder Watcher Mode
-
-If you prefer dropping recordings into a folder and letting OpenMy pick them up automatically, run:
+If you prefer dropping recordings into a folder and letting OpenMy process them automatically, run the watcher:
 
 ```bash
 python3 -m openmy.services.watcher ~/Recordings/OpenMy
 ```
 
-- Great for DJI Mic-style files with date-based filenames
-- Uses `watchdog` events when available, then falls back to directory scanning
-- Waits until files are stable on disk before triggering `openmy run <date> --audio ...`
-- Entirely optional: manual `quick-start` and `run` still work the same way
+This works well when:
+- your phone syncs recordings onto the computer
+- a recorder or wireless mic writes into a fixed folder
+- you want capture and processing to stay separate
 
-## 📥 Recommended Capture Workflow
+The watcher waits for files to settle, then starts processing automatically. You can still ignore watcher mode and run `quick-start` or `day.run` manually.
 
-A simple setup that works well in practice:
+### Recommended workflow
 
-1. Record on your phone, recorder, or DJI Mic
-2. Sync audio to a fixed folder on your Mac via AirDrop, iCloud Drive, Dropbox, or NAS
-3. Either run `openmy quick-start path/to/audio.wav` manually or let the watcher process that folder
-
-This keeps capture and processing separate: your device records reliably, and OpenMy handles transcription plus context building on the computer.
+Record first, sync into a stable folder, run `openmy quick-start`, then enable watcher mode only after the manual path feels right.
 
 ---
 
-## 📍 Roadmap
+## Roadmap
 
-- ~~**v0.1**~~ ✅ Core pipeline running
-- **v0.2** 🟢 Current — quick-start, report workbench, correction dictionary, structured extraction, active context
-- **v0.3** 🔜 Multi-language, cross-day context improvements, Obsidian plugin
-- **v1.0** 📋 Stable API, plugin system, multi-LLM backend
+- ~~v0.1~~ ✅ Core pipeline working
+- **v0.2 now** — quick-start, report workspace, correction dictionary, structured extraction, active context
+- **v0.3** — multilingual support, stronger cross-day context, Obsidian plugin
+- **v1.0** — stable API, plugin system, multiple model backends
 
 ---
 
-## 🧪 Development
+## Development
 
 ```bash
 pip install -e .
 uvx ruff check .
-python3 -m pytest tests/ -v   # 328 tests, no API key needed
+python3 -m pytest tests/ -v
 ```
 
 ---
 
-## 📂 Repository Structure
+## Repository shape
 
+```text
+src/openmy/                core source
+app/                       report UI
+skills/                    agent skill bundle
+docs/                      architecture and extra docs
+tests/                     automated tests
 ```
-src/openmy/
-  commands/          CLI / skill entrypoints
-  providers/         STT / LLM provider boundary
-  services/
-    ingest/            Audio import & preprocessing
-    cleaning/          Text cleaning (rule engine)
-    segmentation/      Scene splitting
-    roles/             Role resolution
-    distillation/      Summary distillation
-    extraction/        Structured extraction
-    briefing/          Daily briefing
-    context/           Active context
-    screen_recognition/  Screen context
-  adapters/
-    transcription/    Legacy transcription compatibility shim
-app/                  Report page
-tests/                Automated tests
-```
+
+For the deeper module layout, see [docs/architecture.md](docs/architecture.md).
 
 ---
 
-[CONTRIBUTING](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md) · [Discussions](https://github.com/openmy-ai/openmy/discussions) · [MIT License](LICENSE) · by [Joseph Zhou](https://github.com/openmy-ai)
+[CONTRIBUTING](CONTRIBUTING.md) · [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) · [SECURITY](SECURITY.md) · [MIT License](LICENSE)
 
-<div align="center">
-
-**If this is useful, a ⭐ means the world.**
-
-</div>
+If this is useful, a ⭐ helps a lot.
