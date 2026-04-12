@@ -180,7 +180,6 @@ body {
   background: var(--bg-hover); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 20px 24px; margin-bottom: 32px; display: flex; gap: 16px; box-shadow: var(--shadow-sm);
 }
-.callout-icon { font-size: 24px; flex-shrink: 0; }
 .callout-body { font-size: 15px; color: var(--text); flex: 1; line-height: 1.6; font-weight: 500; }
 
 .props-grid { display: block; margin-bottom: 48px; }
