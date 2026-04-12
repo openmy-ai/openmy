@@ -51,3 +51,8 @@ pip install -e .
 uvx ruff check .
 python3 -m pytest tests/ -v
 ```
+
+## Git Conventions
+
+- **Commit messages must be in English.** Use Conventional Commits format: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`.
+- Keep messages short and descriptive. Example: `docs: add cross-platform skill install instructions`.

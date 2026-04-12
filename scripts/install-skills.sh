@@ -31,11 +31,11 @@ link_skills() {
       echo "  ✅ $skill_name (already linked)"
     elif [ -d "$link_path" ]; then
       echo "  ⚠️  $skill_name (directory exists, not a link — skipped)"
-      ((skipped++))
+      ((skipped++)) || true
     else
       ln -s "$skill_dir" "$link_path"
       echo "  🔗 $skill_name → linked"
-      ((installed++))
+      ((installed++)) || true
     fi
   done
 }
