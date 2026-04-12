@@ -50,6 +50,13 @@ Do not block audio processing because an API key is missing.
 
 **Users must never feel like they are staring at a black box.** Report every single step as it happens.
 
+### Anti-Silence Rules
+
+- **NEVER go silent for more than 30 seconds.** If you are waiting for a command to finish, tell the user: "Still processing, currently on step X..."
+- **If a command fails, report the failure IMMEDIATELY.** Do not silently retry without telling the user.
+- **If a command takes longer than expected, say so.** "This is taking longer than expected. Checking status..."
+- **All interaction happens in the chat.** Do not tell the user to open a terminal, check logs, or look at CLI output. YOU read the status and report back to the user in this conversation.
+
 ### Before Starting
 
 1. **Count and inspect first.** Before calling `day.run`, list the audio files and report:

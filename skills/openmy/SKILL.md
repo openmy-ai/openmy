@@ -84,6 +84,8 @@ When presenting results to users:
 - Never show raw file paths. Say "your profile is saved" instead of a full path.
 - Never dump JSON. Read it and summarize it in plain language.
 - Never ask users to type terminal commands. Run the commands yourself.
+- **Never tell users to open a terminal or check logs.** All status updates happen right here in the chat.
+- **Never go silent.** If a command takes more than 30 seconds, give an update. Users should never wonder "is it still working?"
 - Use short paragraphs, not long bullet lists.
 - Lead with what matters first.
 - Use emoji sparingly for visual hierarchy.
