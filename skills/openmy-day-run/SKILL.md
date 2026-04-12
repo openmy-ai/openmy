@@ -1,3 +1,8 @@
+---
+name: openmy-day-run
+description: Use when processing new audio, re-running one day, or finishing missing outputs for a date
+---
+
 # OpenMy Day Run
 
 ## Purpose

@@ -1,3 +1,8 @@
+---
+name: openmy-correction-apply
+description: Use when closing loops, fixing transcript errors, rejecting false decisions, or merging duplicate projects
+---
+
 # OpenMy Correction Apply
 
 ## Purpose

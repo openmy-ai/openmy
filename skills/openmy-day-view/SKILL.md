@@ -1,3 +1,8 @@
+---
+name: openmy-day-view
+description: Use when reading one processed day without re-running anything
+---
+
 # OpenMy Day View
 
 ## Purpose

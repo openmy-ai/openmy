@@ -1,3 +1,8 @@
+---
+name: openmy-context-query
+description: Use when searching structured context for projects, people, open items, closed items, or evidence
+---
+
 # OpenMy Context Query
 
 ## Purpose

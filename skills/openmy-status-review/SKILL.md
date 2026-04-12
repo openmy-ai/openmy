@@ -1,3 +1,8 @@
+---
+name: openmy-status-review
+description: Use when reviewing overall OpenMy state before choosing the next workflow
+---
+
 # OpenMy Status Review
 
 ## Purpose

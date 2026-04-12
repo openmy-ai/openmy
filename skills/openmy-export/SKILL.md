@@ -1,3 +1,8 @@
+---
+name: openmy-export
+description: Use when configuring automatic export of daily summaries to the user's note system
+---
+
 # OpenMy Export
 
 ## Purpose

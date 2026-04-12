@@ -1,3 +1,8 @@
+---
+name: openmy-distill
+description: Use when finishing missing scene summaries with the agent's own model because no LLM key is configured
+---
+
 # OpenMy Distill Handoff
 
 ## Purpose

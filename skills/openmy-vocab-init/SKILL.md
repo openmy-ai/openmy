@@ -1,3 +1,8 @@
+---
+name: openmy-vocab-init
+description: Use when initializing vocabulary files or gathering names, products, and domain terms that speech-to-text often gets wrong
+---
+
 # OpenMy Vocab Init
 
 ## Purpose

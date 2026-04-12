@@ -1,3 +1,8 @@
+---
+name: openmy-profile-init
+description: Use when creating or updating the user's profile (name, language, timezone)
+---
+
 # OpenMy Profile Init
 
 ## Purpose

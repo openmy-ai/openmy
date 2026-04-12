@@ -1,3 +1,8 @@
+---
+name: openmy-extract
+description: Use when producing the core structured extraction payload with the agent's own model because no LLM key is configured
+---
+
 # OpenMy Core Extraction Handoff
 
 ## Purpose

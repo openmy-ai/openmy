@@ -1,3 +1,8 @@
+---
+name: openmy-startup-context
+description: Use at the start of an OpenMy conversation to pull latest context and status before choosing the next workflow
+---
+
 # OpenMy Startup Context
 
 ## Purpose

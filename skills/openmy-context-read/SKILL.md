@@ -1,3 +1,8 @@
+---
+name: openmy-context-read
+description: Use when answering read-only questions about what the user is working on, what is pending, or what changed recently
+---
+
 # OpenMy Context Read
 
 ## Purpose

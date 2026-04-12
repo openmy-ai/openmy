@@ -1,3 +1,8 @@
+---
+name: openmy-health-check
+description: Use when verifying the runtime environment is ready or helping the user fix missing setup
+---
+
 # OpenMy Health Check
 
 ## Purpose

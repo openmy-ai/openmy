@@ -1,3 +1,8 @@
+---
+name: openmy-screen-recognition
+description: Use when explaining or managing screen recognition that matches speech with on-screen activity
+---
+
 # OpenMy Screen Recognition
 
 ## Purpose
