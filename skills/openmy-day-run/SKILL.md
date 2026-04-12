@@ -77,7 +77,11 @@ Unless the user explicitly says "start recording now", stay in the existing-file
 1. **Count and inspect first.** Before calling `day.run`, list the audio files and report:
    - "Found X audio files for [date], total ~Y minutes."
    - "Using [engine name]. Estimated time: ~Z minutes."
-2. If there are many files (5+), suggest processing in batches and ask the user.
+2. **Batch processing (MANDATORY for cloud engines):**
+   - If using a cloud engine (gemini, dashscope, groq, deepgram): **NEVER pass more than 5 audio files at once.** Split into batches of 5 and run `day.run` once per batch.
+   - If using a local engine (funasr, faster-whisper): up to 10 files at once is OK.
+   - Between batches, report progress: "第 1 批（5/26）转完了，继续下一批。"
+   - Do NOT ask the user whether to batch. Just do it.
 
 ### During Processing
 
