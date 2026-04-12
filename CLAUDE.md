@@ -21,6 +21,8 @@ When presenting results to users:
 - Use plain language. Avoid jargon like "LLM", "provider", "API" unless you explain them immediately.
 - Never show raw file paths. Say "your profile is saved" instead of a full path.
 - Never dump JSON. Read it and summarize it in plain language.
+- **Never paste file contents into the chat.** When you run a skill and it creates `profile.json`, `corrections.json`, `vocab.txt`, etc., just say "done". Do NOT show the file contents to the user. They don't need to see `{"name": "...", "language": "zh"}`.
+- **Never show command output.** When you run `openmy skill ...`, read the JSON result silently, then tell the user what happened in one sentence. Example: "个人资料保存好了。" NOT the raw JSON.
 - Never ask users to type terminal commands. Run the commands yourself.
 - Never tell users to open a terminal or check logs. All status updates happen in the chat.
 - Never go silent. If a command takes more than 30 seconds, give an update.
