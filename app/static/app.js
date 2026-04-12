@@ -24,6 +24,8 @@ const state = {
   currentBriefing: null,
   context: {},
   onboarding: {},
+  selectedTranscriptionProvider: '',
+  settingsSection: '',
   loops: [],
   projects: [],
   decisions: [],
@@ -442,37 +444,99 @@ function renderSidebar() {
 
 
 function renderOnboardingCard() {
-  const onboarding = state.onboarding || {};
-  if (!onboarding || onboarding.completed) return '';
-  const localChoices = onboarding.choices?.local || [];
-  const cloudChoices = onboarding.choices?.cloud || [];
-  const renderChoice = (item) => `
-    <div class="onboarding-choice ${item.is_recommended ? 'recommended' : ''}">
-      <div class="onboarding-choice-title">${escapeHtml(item.label || item.name)}</div>
-      <div class="onboarding-choice-desc">${escapeHtml(item.description || '')}</div>
-    </div>
-  `;
+  return renderHomeOnboardingCard();
+}
 
+function getTranscriptionIcon(provider) {
+  return `/static/icons/${provider}.svg`;
+}
+
+function renderHomeOnboardingCard() {
+  const onboarding = state.onboarding || {};
+  const currentProvider = onboarding.current_provider || '';
+  const currentLabel = currentProvider ? (onboarding.choices?.local || []).concat(onboarding.choices?.cloud || []).find((item) => item.name === currentProvider)?.label || currentProvider : '';
+  const title = currentProvider ? `已选转写模型：${currentLabel}` : '还没选转写模型';
+  const desc = currentProvider ? '现在可以直接开始第一次 quick-start（快速开始），要改的话也可以去左侧菜单里换。' : '先把转写模型定下来，别再去角落里找设置。';
+  const cta = currentProvider ? '去设置里改' : '去设置里选';
   return `
-    <section class="callout onboarding-card">
+    <section class="callout onboarding-card onboarding-card-compact">
       <div class="callout-body">
         <div class="section-kicker">网页首配入口</div>
-        <h2 class="onboarding-title">${escapeHtml(onboarding.headline || '先按推荐路线走')}</h2>
-        <p class="onboarding-copy">${escapeHtml(onboarding.recommended_reason || onboarding.next_step || '')}</p>
-        <div class="onboarding-command">${escapeHtml(onboarding.primary_action || '')}</div>
-        <div class="onboarding-grid">
-          <div>
-            <div class="onboarding-group-title">本地</div>
-            ${localChoices.length ? localChoices.map(renderChoice).join('') : renderEmptyState('暂无本地路线')}
-          </div>
-          <div>
-            <div class="onboarding-group-title">云端</div>
-            ${cloudChoices.length ? cloudChoices.map(renderChoice).join('') : renderEmptyState('暂无云端路线')}
-          </div>
-        </div>
+        <h2 class="onboarding-title">${escapeHtml(title)}</h2>
+        <p class="onboarding-copy">${escapeHtml(desc)}</p>
+        <div class="inline-actions"><button class="action-btn primary" type="button" onclick="openSettings('transcription')">${cta}</button></div>
       </div>
     </section>
   `;
+}
+
+function renderTranscriptionSettings() {
+  const onboarding = state.onboarding || {};
+  const localChoices = onboarding.choices?.local || [];
+  const cloudChoices = onboarding.choices?.cloud || [];
+  const selected = state.selectedTranscriptionProvider || onboarding.current_provider || onboarding.recommended_provider || '';
+  const currentLabel = currentProviderLabel();
+  const renderChoice = (item) => `
+    <button class="transcription-option ${selected === item.name ? 'active' : ''}" type="button" onclick="selectTranscriptionOption('${escapeHtml(item.name || '')}')">
+      <img class="transcription-option-icon" src="${getTranscriptionIcon(item.name || '')}" alt="">
+      <div>
+        <div class="transcription-option-title">${escapeHtml(item.label || item.name)}</div>
+        <div class="transcription-option-desc">${escapeHtml(item.description || '')}</div>
+        <div class="transcription-option-state">${item.is_recommended ? '推荐' : selected === item.name ? '已选中' : '点一下选中'}</div>
+      </div>
+    </button>
+  `;
+
+  return `
+    <div class="settings-section" id="transcriptionSettingsSection">
+      <div class="settings-section-title">转写模型</div>
+      <div class="transcription-grid">
+        ${localChoices.map(renderChoice).join('')}
+        ${cloudChoices.map(renderChoice).join('')}
+      </div>
+      <div class="transcription-actions">
+        <div class="transcription-current">当前：${escapeHtml(currentLabel || '还没定')}</div>
+        <button class="action-btn primary" type="button" onclick="confirmTranscriptionProvider()">确认</button>
+      </div>
+    </div>
+  `;
+}
+
+function currentProviderLabel() {
+  const onboarding = state.onboarding || {};
+  const items = (onboarding.choices?.local || []).concat(onboarding.choices?.cloud || []);
+  const provider = onboarding.current_provider || '';
+  return items.find((item) => item.name === provider)?.label || provider;
+}
+
+function selectTranscriptionOption(provider) {
+  state.selectedTranscriptionProvider = provider;
+  rerenderSettingsOverlay();
+}
+
+async function confirmTranscriptionProvider() {
+  const provider = state.selectedTranscriptionProvider || state.onboarding?.recommended_provider || '';
+  if (!provider) return;
+  await selectOnboardingProvider(provider, { closeSettings: true });
+}
+
+async function selectOnboardingProvider(provider, options = {}) {
+  if (!provider) return;
+  try {
+    const result = await postJson('/api/onboarding/select', { provider });
+    if (result?.onboarding) {
+      state.onboarding = result.onboarding;
+    }
+    showToast(result?.human_summary || `已经切到 ${provider}`);
+    if (result?.onboarding) {
+      state.onboarding = result.onboarding;
+    }
+    state.selectedTranscriptionProvider = provider;
+    rerenderHomeOnboardingSlot();
+    if (options.closeSettings) closeSettingsOverlay();
+  } catch (error) {
+    showToast(`设置失败：${error.message}`);
+  }
 }
 
 function renderHomePage() {
@@ -486,7 +550,7 @@ function renderHomePage() {
       <div class="home-page">
         <h1>OpenMy</h1>
         <div class="home-meta">还没有可读数据。先把首配路线定下来，再跑第一次 quick-start（快速开始）。</div>
-        ${renderOnboardingCard()}
+        <div id="homeOnboardingSlot">${renderOnboardingCard()}</div>
       </div>
     `;
     return;
@@ -504,7 +568,7 @@ function renderHomePage() {
       <h1>OpenMy</h1>
       <div class="home-meta">本周 ${formatRangeLabel(weekDates[weekDates.length - 1]?.date || latest.date, weekDates[0]?.date || latest.date)} · ${weekDates.length}天 · ${weekDates.reduce((sum, item) => sum + (item.segments || 0), 0)}条记录</div>
 
-      ${renderOnboardingCard()}
+      <div id="homeOnboardingSlot">${renderOnboardingCard()}</div>
 
       <div class="home-block">
         <div class="section-kicker">待办</div>
@@ -1214,12 +1278,21 @@ async function handleJobCompletion(job) {
 
 // === Settings Page ===
 function openSettings() {
+  const section = arguments[0] || '';
   const overlay = document.getElementById('settingsOverlay');
   const content = document.getElementById('settingsContent');
+  state.settingsSection = section;
+  if (!state.selectedTranscriptionProvider) {
+    state.selectedTranscriptionProvider = state.onboarding?.current_provider || state.onboarding?.recommended_provider || '';
+  }
   document.getElementById('settingsBtn')?.classList.add('active');
+  document.getElementById('transcriptionBtn')?.classList.add('active');
   content.innerHTML = renderSettingsHTML();
   overlay.classList.add('active');
   applySettingsUI();
+  if (section === 'transcription') {
+    document.getElementById('transcriptionSettingsSection')?.scrollIntoView({ block: 'start' });
+  }
 }
 
 function closeSettingsOverlay(e) {
@@ -1227,6 +1300,7 @@ function closeSettingsOverlay(e) {
   const overlay = document.getElementById('settingsOverlay');
   overlay.classList.remove('active');
   document.getElementById('settingsBtn')?.classList.remove('active');
+  document.getElementById('transcriptionBtn')?.classList.remove('active');
 }
 
 function renderSettingsHTML() {
@@ -1236,6 +1310,8 @@ function renderSettingsHTML() {
       <h2 style="margin:0;font-size:20px;">设置</h2>
       <button class="cp-close" onclick="closeSettingsOverlay()" style="background:none;border:none;font-size:14px;color:var(--text-secondary);cursor:pointer;line-height:1">关闭</button>
     </div>
+
+    ${renderTranscriptionSettings()}
 
     <div class="settings-section">
       <div class="settings-section-title">外观模式</div>

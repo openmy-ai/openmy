@@ -57,9 +57,13 @@ class TestFrontendShell(unittest.TestCase):
 
     def test_home_page_contains_onboarding_card(self):
         self.assertIn("renderOnboardingCard", self.content)
-        self.assertIn("onboarding-card", self.content)
+        self.assertIn("renderTranscriptionSettings", self.content)
         self.assertIn("网页首配入口", self.content)
-        self.assertIn("onboarding-command", self.content)
+        self.assertIn("homeOnboardingSlot", self.content)
+        self.assertIn("selectOnboardingProvider", self.content)
+        self.assertIn("selectTranscriptionOption", self.content)
+        self.assertIn("confirmTranscriptionProvider", self.content)
+        self.assertIn("transcriptionSettingsSection", self.content)
 
     def test_index_renders_meta_panels_inside_day_view(self):
         self.assertIn("renderMetaPanels", self.content)
@@ -174,6 +178,11 @@ class TestFrontendShell(unittest.TestCase):
         self.assertIn("function closeCorrectionPopover()", self.content)
         self.assertIn("async function submitInlineCorrection()", self.content)
         self.assertIn("correction-popover", self.content)
+
+    def test_sidebar_contains_transcription_entry(self):
+        self.assertIn('transcriptionBtn', self.content)
+        self.assertIn('转写模型', self.content)
+        self.assertIn("openSettings('transcription')", self.content)
 
     def test_settings_page_exists(self):
         """设置页面的 DOM 和相关 JS 必须存在"""

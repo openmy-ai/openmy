@@ -2,13 +2,36 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
-from openmy.services.onboarding.state import load_onboarding_state
+from openmy.config import DEFAULT_STT_MODELS, LOCAL_STT_PROVIDERS, get_stt_api_key, get_stt_provider_name, stt_provider_requires_api_key
 from openmy.services.screen_recognition.settings import (
     ScreenContextSettings,
     load_screen_context_settings,
     save_screen_context_settings,
 )
+
+
+LABELS = {
+    'funasr': '本地中文优先',
+    'faster-whisper': '本地通用优先',
+    'dashscope': '云端中文优先',
+    'gemini': '云端省事优先',
+    'groq': '云端速度优先',
+    'deepgram': '云端英文优先',
+}
+DESCRIPTIONS = {
+    'funasr': '中文录音优先，而且不用密钥。',
+    'faster-whisper': '本地就能跑，先成功最稳。',
+    'dashscope': '中文精度更强，但要先填一次密钥。',
+    'gemini': '少折腾，适合先跑通云端路线。',
+    'groq': '速度快，但也要先填一次密钥。',
+    'deepgram': '更偏英文场景，也要先填一次密钥。',
+}
+CHOICE_GROUPS = {
+    'local': ['funasr', 'faster-whisper'],
+    'cloud': ['dashscope', 'gemini', 'groq', 'deepgram'],
+}
 
 
 def _server():
@@ -24,9 +47,129 @@ def load_active_context_snapshot() -> dict:
 
 
 
-def get_onboarding_payload() -> dict:
+
+
+def _upsert_project_env(key: str, value: str) -> Path:
     server = _server()
-    return load_onboarding_state(server.DATA_ROOT) or {}
+    env_path = server.ROOT_DIR / '.env'
+    lines: list[str] = []
+    if env_path.exists():
+        lines = env_path.read_text(encoding='utf-8').splitlines()
+
+    replaced = False
+    for index, raw_line in enumerate(lines):
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith('#') or '=' not in stripped:
+            continue
+        existing_key = stripped.split('=', 1)[0].strip()
+        if existing_key != key:
+            continue
+        lines[index] = f"{key}={value}"
+        replaced = True
+        break
+
+    if not replaced:
+        if lines and lines[-1].strip():
+            lines.append('')
+        lines.append(f"{key}={value}")
+
+    env_path.write_text("\n".join(lines).rstrip() + "\n", encoding='utf-8')
+    return env_path
+
+
+def _provider_view(name: str, stt_providers: list[dict], recommended: str) -> dict:
+    match = next((item for item in stt_providers if item.get('name') == name), {})
+    return {
+        'name': name,
+        'label': LABELS.get(name, name),
+        'description': DESCRIPTIONS.get(name, ''),
+        'type': match.get('type', ''),
+        'ready': bool(match.get('ready')),
+        'is_active': bool(match.get('is_active')),
+        'is_recommended': name == recommended,
+        'needs_api_key': bool(match.get('needs_api_key')),
+    }
+
+
+def _build_choice_groups(stt_providers: list[dict], recommended: str) -> dict:
+    return {group: [_provider_view(name, stt_providers, recommended) for name in names] for group, names in CHOICE_GROUPS.items()}
+
+
+def _build_current_onboarding_payload(provider_override: str | None = None) -> dict:
+    server = _server()
+    current_stt = (provider_override or get_stt_provider_name()).strip().lower()
+    stt_providers: list[dict[str, object]] = []
+    for name, default_model in DEFAULT_STT_MODELS.items():
+        needs_key = stt_provider_requires_api_key(name)
+        stt_providers.append({
+            'name': name,
+            'type': 'local' if name in LOCAL_STT_PROVIDERS else 'api',
+            'default_model': default_model,
+            'needs_api_key': needs_key,
+            'api_key_configured': bool(get_stt_api_key(name)) if needs_key else True,
+            'is_active': name == current_stt,
+            'ready': bool(get_stt_api_key(name)) if needs_key else True,
+        })
+
+    recommended = current_stt or next((name for name in CHOICE_GROUPS['local'] if any(item['name']==name and item['ready'] for item in stt_providers)), 'funasr')
+    profile_exists = (server.DATA_ROOT / 'profile.json').exists()
+    vocab_exists = (server.ROOT_DIR / 'src' / 'openmy' / 'resources' / 'corrections.json').exists() and (server.ROOT_DIR / 'src' / 'openmy' / 'resources' / 'vocab.txt').exists()
+
+    if not current_stt:
+        stage = 'choose_provider'
+        headline = f'先别自己挑，先按推荐路线走：{LABELS.get(recommended, recommended)}'
+        next_step = '先选转写引擎，再开始第一次转写。'
+        primary_action = f'先运行 openmy skill profile.set --stt-provider {recommended} --json，先把推荐路线定下来。'
+    elif not profile_exists:
+        stage = 'complete_profile'
+        headline = f'转写模型已经定了：{LABELS.get(current_stt, current_stt)}'
+        next_step = '先补个人资料，再开始第一次转写。'
+        primary_action = '先补个人资料，再开始第一次转写。'
+    elif not vocab_exists:
+        stage = 'init_vocab'
+        headline = f'转写模型已经定了：{LABELS.get(current_stt, current_stt)}'
+        next_step = '先补词库，再开始第一次转写。'
+        primary_action = '先补词库，再开始第一次转写。'
+    else:
+        stage = 'ready'
+        headline = f'现在可以直接开始第一次转写：{LABELS.get(current_stt, current_stt)}'
+        next_step = '现在可以直接开始第一次转写。'
+        primary_action = f'现在就可以直接试：openmy quick-start --stt-provider {current_stt} <你的音频路径>'
+
+    return {
+        'stage': stage,
+        'completed': stage == 'ready',
+        'recommended_provider': recommended,
+        'recommended_label': LABELS.get(recommended, ''),
+        'recommended_reason': DESCRIPTIONS.get(recommended, ''),
+        'headline': headline,
+        'primary_action': primary_action,
+        'choices': _build_choice_groups(stt_providers, recommended),
+        'current_provider': current_stt,
+        'next_step': next_step,
+        'state_path': str(server.DATA_ROOT / 'onboarding_state.json'),
+    }
+
+
+def update_onboarding_provider_payload(data: dict) -> dict:
+    provider = str((data or {}).get('provider', '')).strip().lower()
+    if not provider:
+        return {'success': False, 'error': '缺少 provider'}
+    if provider not in DEFAULT_STT_MODELS:
+        return {'success': False, 'error': '未知 provider'}
+
+    _upsert_project_env('OPENMY_STT_PROVIDER', provider)
+    onboarding = _build_current_onboarding_payload(provider_override=provider)
+    return {
+        'success': True,
+        'provider': provider,
+        'onboarding': onboarding,
+        'human_summary': f'STT provider set to {provider}.',
+    }
+
+
+def get_onboarding_payload() -> dict:
+    return _build_current_onboarding_payload()
 
 def get_context_payload() -> dict:
     snapshot = load_active_context_snapshot()

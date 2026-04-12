@@ -32,6 +32,7 @@ from app.payloads import (
     get_stats,
     handle_correction,
     search_content,
+    update_onboarding_provider_payload,
     update_screen_context_settings_payload,
 )
 from app.pipeline_api import (
@@ -182,6 +183,9 @@ class BrainHandler(SimpleHTTPRequestHandler):
         elif path == "/api/pipeline/jobs":
             payload = handle_create_pipeline_job(data)
             send_json(self, payload, status=200 if payload.get("job_id") else 400)
+        elif path == "/api/onboarding/select":
+            payload = update_onboarding_provider_payload(data)
+            send_json(self, payload, status=200 if payload.get('success') else 400)
         elif path == "/api/settings/screen-context":
             send_json(self, update_screen_context_settings_payload(data))
         else:

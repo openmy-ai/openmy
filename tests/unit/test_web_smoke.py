@@ -32,6 +32,7 @@ class TestWebSmoke(unittest.TestCase):
         patches = [
             patch.object(app_server, "DATA_ROOT", data_root),
             patch.object(app_server, "LEGACY_ROOT", legacy_root),
+            patch.object(app_server, "ROOT_DIR", legacy_root),
             patch.object(app_server, "JOB_RUNNER", runner),
         ]
         for item in patches:
@@ -138,6 +139,31 @@ class TestWebSmoke(unittest.TestCase):
 
             self.assertEqual(payload["headline"], "先别自己挑，先按推荐路线走：本地中文优先")
             self.assertIn("profile.set", payload["primary_action"])
+
+    def test_server_updates_onboarding_provider(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            self.seed_onboarding(data_root)
+
+            runner = JobRunner()
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                request = Request(
+                    f"{base_url}/api/onboarding/select",
+                    data=json.dumps({"provider": "funasr"}).encode("utf-8"),
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urlopen(request, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+            finally:
+                self.stop_server(server, patches)
+
+            self.assertTrue(payload["success"])
+            self.assertEqual(payload["provider"], "funasr")
+            self.assertEqual(payload["onboarding"]["current_provider"], "funasr")
 
     def test_server_serves_context_and_pipeline_contract(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

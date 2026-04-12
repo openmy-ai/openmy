@@ -2,32 +2,29 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from http.server import SimpleHTTPRequestHandler
 
 
-def send_options(handler) -> None:
-    handler.send_response(204)
-    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-    handler.send_header("Access-Control-Allow-Headers", "Content-Type")
-    handler.end_headers()
-
-
-def send_json(handler, data, status: int = 200) -> None:
-    response = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+def send_json(handler: SimpleHTTPRequestHandler, payload: dict | list, status: int = 200) -> None:
+    body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
     handler.send_response(status)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header("Content-Length", str(len(response)))
+    handler.send_header('Content-Type', 'application/json; charset=utf-8')
+    handler.send_header('Content-Length', str(len(body)))
     handler.end_headers()
-    handler.wfile.write(response)
+    handler.wfile.write(body)
 
 
-def serve_index(handler) -> None:
-    index_path = Path(__file__).parent / "index.html"
-    if not index_path.exists():
-        handler.send_error(404, "index.html 不存在")
-        return
-    content = index_path.read_bytes()
+def send_options(handler: SimpleHTTPRequestHandler) -> None:
+    handler.send_response(204)
+    handler.send_header('Allow', 'GET,POST,OPTIONS')
+    handler.end_headers()
+
+
+def serve_index(handler: SimpleHTTPRequestHandler) -> None:
+    root = Path(__file__).parent
+    body = (root / 'index.html').read_bytes()
     handler.send_response(200)
-    handler.send_header("Content-Type", "text/html; charset=utf-8")
-    handler.send_header("Content-Length", str(len(content)))
+    handler.send_header('Content-Type', 'text/html; charset=utf-8')
+    handler.send_header('Content-Length', str(len(body)))
     handler.end_headers()
-    handler.wfile.write(content)
+    handler.wfile.write(body)

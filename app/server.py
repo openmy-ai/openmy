@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpenMy — 本地 Web 服务（OpenMy package 版）
+OpenMy — 本地网页服务（OpenMy package 版）
 
 默认只绑定本机：
   python3 app/server.py
@@ -45,6 +45,7 @@ from app.payloads import (
     get_date_briefing_payload,
     get_date_detail,
     get_date_meta_payload,
+    get_onboarding_payload,
     get_stats,
     handle_correction,
     load_active_context_snapshot,
@@ -220,7 +221,8 @@ def main(argv: list[str] | None = None):
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\n👋 OpenMy 已关闭")
+        print("\n🛑 已停止")
+    finally:
         server.server_close()
 
 
