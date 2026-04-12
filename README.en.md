@@ -74,7 +74,7 @@ Do not start by comparing every engine yourself. Use this order:
 3. If you want the safest local path first, use `faster-whisper`
 4. Only look at cloud options after that, or when local setup is not the right fit
 
-Cloud options (`gemini`, `groq`, `dashscope`, `deepgram`) are there when you want them, but they are not the first thing you need to think about.
+Cloud options: `gemini`, `groq`, `dashscope`, and `deepgram` are there when you want them, but they are not the first thing you need to think about.
 
 - `GEMINI_API_KEY` is **not** required for audio processing; it only affects later LLM-backed cleanup steps
 
@@ -229,17 +229,158 @@ python3 -m pytest tests/ -v
 
 ---
 
-## Repository shape
+## Current technical implementation and architecture tree
 
 ```text
-src/openmy/                core source
-app/                       report UI
-skills/                    agent skill bundle
-docs/                      architecture and extra docs
-tests/                     automated tests
+openmy/
+├── README.md                          # Chinese landing page
+├── README.en.md                       # English landing page
+├── pyproject.toml                     # packaging, dependencies, CLI entrypoints
+├── .github/                           # CI, templates, dependency update config
+├── docs/
+│   ├── architecture.md                # extra architecture notes
+│   ├── images/                        # banner and report screenshots
+│   ├── internal/                      # internal implementation notes
+│   └── plans/                         # historical plans and design drafts
+├── scripts/
+│   └── install-skills.sh              # install skill bundle into common agent tools
+├── skills/                            # agent-facing skill bundle
+│   ├── openmy/                        # top-level router skill
+│   ├── openmy-startup-context/        # load context on startup
+│   ├── openmy-context-read/           # read-only context access
+│   ├── openmy-context-query/          # structured context query
+│   ├── openmy-day-run/                # run one processing day
+│   ├── openmy-day-view/               # inspect one processed day
+│   ├── openmy-correction-apply/       # write correction actions back
+│   ├── openmy-status-review/          # inspect system state
+│   ├── openmy-vocab-init/             # initialize vocabulary files
+│   ├── openmy-profile-init/           # initialize user profile
+│   ├── openmy-screen-recognition/     # screen recognition guidance
+│   ├── openmy-distill/                # scene distillation guidance
+│   ├── openmy-extract/                # structured extraction guidance
+│   ├── openmy-export/                 # export guidance
+│   └── openmy-aggregate/              # weekly and monthly aggregation guidance
+├── app/                               # local report web app
+│   ├── server.py                      # web server entrypoint
+│   ├── payloads.py                    # payload assembly for the UI
+│   ├── context_api.py                 # context read API
+│   ├── pipeline_api.py                # rerun pipeline API
+│   ├── job_runner.py                  # background task execution
+│   ├── http_handlers.py               # route handlers
+│   ├── http_responses.py              # response helpers
+│   ├── index.html                     # page shell
+│   └── static/                        # frontend scripts and static assets
+├── src/openmy/                        # main program code
+│   ├── __main__.py                    # module entrypoint
+│   ├── cli.py                         # top-level CLI entrypoint
+│   ├── config.py                      # environment variables and defaults
+│   ├── skill_dispatch.py              # skill command dispatcher with JSON output
+│   ├── commands/                      # command action layer
+│   │   ├── run.py                     # quick-start, day.run, main pipeline
+│   │   ├── context.py                 # context commands
+│   │   └── correct.py                 # correction commands
+│   ├── domain/                        # domain models and intent models
+│   │   ├── models.py                  # core data structures
+│   │   └── intent.py                  # intent-related models
+│   ├── adapters/                      # external adaptation layer
+│   │   ├── transcription/             # transcription adapters
+│   │   │   └── gemini_cli.py          # Gemini CLI adapter
+│   │   └── screen_recognition/
+│   │       └── client.py              # screen recognition client adapter
+│   ├── providers/                     # pluggable capability providers
+│   │   ├── base.py                    # shared provider base class
+│   │   ├── registry.py                # provider registry
+│   │   ├── llm/
+│   │   │   └── gemini.py              # LLM integration
+│   │   ├── stt/
+│   │   │   ├── faster_whisper.py      # local English-first transcription
+│   │   │   ├── funasr.py              # local Chinese-first transcription
+│   │   │   ├── gemini.py              # Gemini speech transcription
+│   │   │   ├── groq_whisper.py        # Groq speech transcription
+│   │   │   ├── dashscope_asr.py       # DashScope speech transcription
+│   │   │   └── deepgram.py            # Deepgram speech transcription
+│   │   └── export/
+│   │       ├── obsidian.py            # export to Obsidian
+│   │       └── notion.py              # export to Notion
+│   ├── services/                      # pipeline and system services
+│   │   ├── ingest/
+│   │   │   ├── audio_pipeline.py      # audio read, chunk, transcribe pipeline
+│   │   │   └── transcription_enrichment.py # transcript enrichment
+│   │   ├── cleaning/
+│   │   │   └── cleaner.py             # rule-based cleanup and dictionary application
+│   │   ├── segmentation/
+│   │   │   └── segmenter.py           # scene segmentation
+│   │   ├── roles/
+│   │   │   └── resolver.py            # scene role resolution
+│   │   ├── distillation/
+│   │   │   └── distiller.py           # scene summary generation
+│   │   ├── extraction/
+│   │   │   └── extractor.py           # day-level structured extraction
+│   │   ├── briefing/
+│   │   │   ├── generator.py           # daily briefing generation
+│   │   │   └── cli.py                 # briefing CLI
+│   │   ├── context/
+│   │   │   ├── active_context.py      # active-context read/write
+│   │   │   ├── consolidation.py       # cross-day merge and open-loop handling
+│   │   │   ├── corrections.py         # correction writeback
+│   │   │   └── renderer.py            # compact context rendering
+│   │   ├── query/
+│   │   │   ├── context_query.py       # context query entrypoint
+│   │   │   └── search_index.py        # search index
+│   │   ├── aggregation/
+│   │   │   ├── weekly.py              # weekly aggregation
+│   │   │   └── monthly.py             # monthly aggregation
+│   │   ├── onboarding/
+│   │   │   └── state.py               # first-run state tracking
+│   │   ├── screen_recognition/
+│   │   │   ├── capture.py             # screen capture pipeline
+│   │   │   ├── provider.py            # screen capability entrypoint
+│   │   │   ├── settings.py            # screen settings read/write
+│   │   │   ├── align.py               # audio/screen alignment
+│   │   │   ├── enrich.py              # inject screen context into extraction output
+│   │   │   ├── hints.py               # project hints and clue extraction
+│   │   │   ├── privacy.py             # privacy filtering
+│   │   │   ├── sessionize.py          # screen session grouping
+│   │   │   ├── summary.py             # screen summary generation
+│   │   │   ├── frontmost_context.swift# foreground-window reader
+│   │   │   └── apple_vision_ocr.swift # Apple Vision OCR helper
+│   │   ├── scene_quality.py           # crosstalk and low-signal detection
+│   │   └── watcher.py                 # folder watcher
+│   ├── resources/                     # default vocabulary and correction resources
+│   └── utils/
+│       ├── io.py                      # file I/O helpers
+│       └── time.py                    # time helpers
+├── data/                              # local runtime output and state
+│   ├── YYYY-MM-DD/                    # one-day result directories
+│   ├── runtime/                       # screen settings, jobs, runtime state
+│   ├── weekly/                        # weekly aggregates
+│   ├── monthly/                       # monthly aggregates
+│   ├── profile.json                   # user profile
+│   ├── onboarding_state.json          # first-run progress
+│   └── search_index.json              # cached search index
+└── tests/
+    ├── fixtures/                      # sample audio and scene fixtures
+    ├── unit/                          # unit tests
+    ├── test_weekly_aggregation.py     # weekly aggregation tests
+    └── test_monthly_aggregation.py    # monthly aggregation tests
 ```
 
-For the deeper module layout, see [docs/architecture.md](docs/architecture.md).
+### Main processing chain
+
+```text
+quick-start / day.run
+└── ingest — audio transcription
+    └── cleaning — text cleanup
+        └── segmentation — scene split
+            └── roles — role resolution
+                └── distillation — scene summaries
+                    └── extraction — structured extraction
+                        └── briefing — daily report generation
+                            └── context — active-context update
+                                └── export / app / skills — export, UI, agent access
+```
+
+For deeper supporting notes, see [docs/architecture.md](docs/architecture.md).
 
 ---
 

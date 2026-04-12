@@ -231,17 +231,158 @@ python3 -m pytest tests/ -v
 
 ---
 
-## 仓库大致结构
+## 当前技术实现与技术架构树
 
 ```text
-src/openmy/                核心源码
-app/                       报告页面
-skills/                    Agent 技能说明
-docs/                      设计与补充文档
-tests/                     自动化测试
+openmy/
+├── README.md                          # 中文首页说明
+├── README.en.md                       # 英文首页说明
+├── pyproject.toml                     # 打包、依赖、命令入口配置
+├── .github/                           # 持续集成、模板、依赖更新配置
+├── docs/
+│   ├── architecture.md                # 额外架构说明
+│   ├── images/                        # 首页横幅、报告截图
+│   ├── internal/                      # 内部实现文档
+│   └── plans/                         # 历史计划与设计草稿
+├── scripts/
+│   └── install-skills.sh              # 给常见智能助手安装技能说明
+├── skills/                            # 面向智能助手的技能说明目录
+│   ├── openmy/                        # 总路由技能
+│   ├── openmy-startup-context/        # 启动时读取上下文
+│   ├── openmy-context-read/           # 只读上下文
+│   ├── openmy-context-query/          # 结构化查询
+│   ├── openmy-day-run/                # 处理某一天音频
+│   ├── openmy-day-view/               # 查看某一天结果
+│   ├── openmy-correction-apply/       # 写回纠错动作
+│   ├── openmy-status-review/          # 查看系统状态
+│   ├── openmy-vocab-init/             # 初始化词库
+│   ├── openmy-profile-init/           # 初始化用户资料
+│   ├── openmy-screen-recognition/     # 屏幕识别说明
+│   ├── openmy-distill/                # 场景摘要说明
+│   ├── openmy-extract/                # 结构化提取说明
+│   ├── openmy-export/                 # 导出说明
+│   └── openmy-aggregate/              # 周报、月报聚合说明
+├── app/                               # 报告页面与本地网页接口
+│   ├── server.py                      # 网页服务入口
+│   ├── payloads.py                    # 页面读到的数据组装
+│   ├── context_api.py                 # 上下文读取接口
+│   ├── pipeline_api.py                # 管线重跑接口
+│   ├── job_runner.py                  # 后台任务执行
+│   ├── http_handlers.py               # 路由分发
+│   ├── http_responses.py              # 响应封装
+│   ├── index.html                     # 页面骨架
+│   └── static/                        # 前端脚本和静态资源
+├── src/openmy/                        # 主程序代码
+│   ├── __main__.py                    # 模块入口
+│   ├── cli.py                         # 命令行总入口
+│   ├── config.py                      # 环境变量与默认配置
+│   ├── skill_dispatch.py              # skill 子命令分发与 JSON 输出
+│   ├── commands/                      # 命令行动作层
+│   │   ├── run.py                     # quick-start、day.run、主处理链路
+│   │   ├── context.py                 # context 相关命令
+│   │   └── correct.py                 # correction 相关命令
+│   ├── domain/                        # 领域模型与意图模型
+│   │   ├── models.py                  # 核心数据结构
+│   │   └── intent.py                  # 意图相关模型
+│   ├── adapters/                      # 对外适配层
+│   │   ├── transcription/             # 转写外部适配
+│   │   │   └── gemini_cli.py          # Gemini 命令行适配
+│   │   └── screen_recognition/
+│   │       └── client.py              # 屏幕识别客户端适配
+│   ├── providers/                     # 可插拔能力提供层
+│   │   ├── base.py                    # 提供层公共基类
+│   │   ├── registry.py                # 提供层注册中心
+│   │   ├── llm/
+│   │   │   └── gemini.py              # 大模型能力接入
+│   │   ├── stt/
+│   │   │   ├── faster_whisper.py      # 本地英文优先转写
+│   │   │   ├── funasr.py              # 本地中文优先转写
+│   │   │   ├── gemini.py              # Gemini 语音转写
+│   │   │   ├── groq_whisper.py        # Groq 语音转写
+│   │   │   ├── dashscope_asr.py       # 通义语音转写
+│   │   │   └── deepgram.py            # Deepgram 语音转写
+│   │   └── export/
+│   │       ├── obsidian.py            # 导出到 Obsidian
+│   │       └── notion.py              # 导出到 Notion
+│   ├── services/                      # 处理链路与系统服务
+│   │   ├── ingest/
+│   │   │   ├── audio_pipeline.py      # 音频读取、切块、转写主链
+│   │   │   └── transcription_enrichment.py # 转写补强
+│   │   ├── cleaning/
+│   │   │   └── cleaner.py             # 规则清洗、纠错词典应用
+│   │   ├── segmentation/
+│   │   │   └── segmenter.py           # 场景切分
+│   │   ├── roles/
+│   │   │   └── resolver.py            # 场景角色识别
+│   │   ├── distillation/
+│   │   │   └── distiller.py           # 场景摘要生成
+│   │   ├── extraction/
+│   │   │   └── extractor.py           # 日级结构化提取
+│   │   ├── briefing/
+│   │   │   ├── generator.py           # 日报生成
+│   │   │   └── cli.py                 # 日报命令入口
+│   │   ├── context/
+│   │   │   ├── active_context.py      # 活跃上下文读写
+│   │   │   ├── consolidation.py       # 跨天合并与 open loop 处理
+│   │   │   ├── corrections.py         # 纠错动作回写
+│   │   │   └── renderer.py            # 紧凑上下文文本渲染
+│   │   ├── query/
+│   │   │   ├── context_query.py       # 上下文查询入口
+│   │   │   └── search_index.py        # 搜索索引
+│   │   ├── aggregation/
+│   │   │   ├── weekly.py              # 周聚合
+│   │   │   └── monthly.py             # 月聚合
+│   │   ├── onboarding/
+│   │   │   └── state.py               # 首配状态记录
+│   │   ├── screen_recognition/
+│   │   │   ├── capture.py             # 屏幕捕获主链
+│   │   │   ├── provider.py            # 屏幕能力入口
+│   │   │   ├── settings.py            # 屏幕设置读写
+│   │   │   ├── align.py               # 音频与屏幕时间对齐
+│   │   │   ├── enrich.py              # 屏幕上下文补进提取结果
+│   │   │   ├── hints.py               # 项目提示与线索抽取
+│   │   │   ├── privacy.py             # 隐私过滤
+│   │   │   ├── sessionize.py          # 屏幕片段归并
+│   │   │   ├── summary.py             # 屏幕摘要生成
+│   │   │   ├── frontmost_context.swift# 前台窗口读取
+│   │   │   └── apple_vision_ocr.swift # 苹果视觉识别脚本
+│   │   ├── scene_quality.py           # 串台和低信号检测
+│   │   └── watcher.py                 # 自动监听目录
+│   ├── resources/                     # 默认词库、示例纠错资源
+│   └── utils/
+│       ├── io.py                      # 文件读写辅助
+│       └── time.py                    # 时间处理辅助
+├── data/                              # 本地运行产物与状态
+│   ├── YYYY-MM-DD/                    # 单日处理结果目录
+│   ├── runtime/                       # 屏幕设置、作业状态等运行时数据
+│   ├── weekly/                        # 周聚合结果
+│   ├── monthly/                       # 月聚合结果
+│   ├── profile.json                   # 用户资料
+│   ├── onboarding_state.json          # 首配进度
+│   └── search_index.json              # 搜索索引缓存
+└── tests/
+    ├── fixtures/                      # 测试样本音频与场景样本
+    ├── unit/                          # 单元测试
+    ├── test_weekly_aggregation.py     # 周聚合测试
+    └── test_monthly_aggregation.py    # 月聚合测试
 ```
 
-更细的实现结构可以看 [docs/architecture.md](docs/architecture.md)。
+### 主处理链路
+
+```text
+quick-start / day.run
+└── ingest（音频转写）
+    └── cleaning（文本清洗）
+        └── segmentation（场景切分）
+            └── roles（角色识别）
+                └── distillation（场景摘要）
+                    └── extraction（结构化提取）
+                        └── briefing（日报生成）
+                            └── context（活跃上下文更新）
+                                └── export / app / skills（导出、页面、Agent 读取）
+```
+
+更细的补充说明可以看 [docs/architecture.md](docs/architecture.md)。
 
 ---
 
