@@ -130,22 +130,21 @@ Use these status icons:
 
 ## Required Reply When The Run Stops Midway
 
-If `day.run` stops after audio processing because later AI steps are not ready, the reply must be simple and direct:
+If `day.run` stops after audio processing because later AI steps are not ready, follow this EXACT format:
 
-- First say what is already done:
-  - "音频已经转完了。"
-  - "清洗和场景切分也做完了。"
-- Then say what is missing in plain language:
-  - "现在只差后面两步整理。"
-- Then tell the user the agent can help right now:
-  - "我现在就可以直接替你做。"
-- Then give the two choices without jargon:
-  - "选项 A：我现在继续替你做完。"
-  - "选项 B：你以后再配 Gemini key，让它自己自动做。"
+```
+音频处理完了（转写、清洗、场景切分都做好了）。
 
-Do **not** say only:
-- "缺少 LLM API key"
-- "结构化提取会停在等待状态"
-- "当前唯一没配的是 LLM key"
+后面两步整理我可以直接替你做，要继续吗？
 
-Those lines are too tool-like and do not help a first-time user understand that audio has already been processed and the agent can continue for them.
+如果你以后想让它全自动，可以配一个 LLM 的 key（不是必须的）。
+```
+
+### Rules for this reply:
+
+1. **Lead with what is DONE**, not what is missing.
+2. **Lead with "我可以替你做"**, not "因为没配 key".
+3. **NEVER say "因为没配 Gemini 密钥" or "缺少 LLM API key".** The user will think they must get a key. They don't.
+4. The API key is an OPTIONAL convenience, mentioned last and briefly.
+5. If the user says yes, immediately run `distill.pending` → `distill.submit` → `extract.core.pending` → `extract.core.submit` using your own model. Do NOT ask again.
+
