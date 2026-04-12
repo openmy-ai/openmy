@@ -23,13 +23,15 @@ Turns raw personal signals such as audio and screen context into state that agen
 git clone https://github.com/openmy-ai/openmy.git && cd openmy
 python3 -m venv .venv && source .venv/bin/activate
 pip install .
-echo "GEMINI_API_KEY=your-key" > .env
+openmy skill health.check --json
 openmy skill vocab.init --json
 openmy quick-start path/to/your-audio.wav
 openmy quick-start --demo  # try the bundled sample first
 ```
 
-> Requirements: Python 3.10+, FFmpeg, and a usable provider key. The default path is still Gemini via `GEMINI_API_KEY`.
+> Requirements: Python 3.10+ and FFmpeg. On first run, start with `health.check`, then choose a speech-to-text engine.
+> Local engines `faster-whisper` and `funasr` can process audio without any API key.
+> Gemini keys are only needed later for distillation and extraction, unless you want the agent to handle those steps for you.
 
 **First use: initialize your private vocabulary files**
 ```bash
@@ -41,7 +43,11 @@ These files are ignored by git so you can safely store personal typo fixes and p
 
 ### Provider Config
 
-- Default shortcut: `GEMINI_API_KEY`
+- First-time setup should do two things in order:
+  1. Run `openmy skill health.check --json`
+  2. Choose a speech-to-text engine
+- `GEMINI_API_KEY` is not a prerequisite for audio processing. It only affects LLM-backed steps such as distillation and extraction.
+- Default shortcut when you do want cloud LLM steps: `GEMINI_API_KEY`
 - Provider-neutral keys:
   - `OPENMY_STT_PROVIDER`
   - `OPENMY_STT_MODEL`

@@ -23,13 +23,15 @@
 git clone https://github.com/openmy-ai/openmy.git && cd openmy
 python3 -m venv .venv && source .venv/bin/activate
 pip install .
-echo "GEMINI_API_KEY=你的key" > .env
+openmy skill health.check --json
 openmy skill vocab.init --json
 openmy quick-start path/to/your-audio.wav
 openmy quick-start --demo  # 用内置示例先跑一遍
 ```
 
-> 依赖：Python 3.10+、FFmpeg、一个可用的 provider key。默认推荐 Gemini，直接填 `GEMINI_API_KEY` 即可。
+> 依赖：Python 3.10+、FFmpeg。第一次使用先跑 `health.check`（环境检查），再选转写引擎。
+> 本地引擎 `faster-whisper`（本地英文优先转写引擎）和 `funasr`（本地中文优先转写引擎）都可以先跑，不需要任何 key（密钥）。
+> 只有蒸馏和提取这类大模型步骤，才会在后面问你是配 `Gemini`（谷歌大模型） key（密钥），还是让智能体代做。
 
 **首次使用：初始化你的个人词库**
 ```bash
@@ -41,7 +43,10 @@ openmy skill vocab.init --json
 
 ### Provider 配置
 
-- 默认推荐：`GEMINI_API_KEY`
+- 首次配置先做两件事：
+  1. 跑 `openmy skill health.check --json`（环境检查）
+  2. 选一个转写引擎
+- `GEMINI_API_KEY`（谷歌大模型密钥）不是音频处理的前置条件；它只会影响蒸馏和提取这类大模型步骤。
 - 也支持这些额外转写引擎：
 
 | Provider | 类型 | 更适合谁 | 需要什么 |
