@@ -447,21 +447,21 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
                 return result
             _mark_step(date_str, run_status, "distill", "completed", message="蒸馏完成", artifact=paths["scenes"])
         else:
-            cli.console.print("\n[yellow]⏸️ 暂停在蒸馏步骤：没有可用大模型密钥，请让代理先接手蒸馏。[/yellow]")
+            cli.console.print("\n[yellow]⏸️ 蒸馏需要 AI 代理完成——代理会用自己的模型自动处理，无需配置 API Key。[/yellow]")
             _mark_step(
                 date_str,
                 run_status,
                 "distill",
                 "skipped",
-                message="没有可用大模型密钥；请先调用 distill.pending / distill.submit",
+                message="等待 AI 代理用自身模型完成蒸馏（distill.pending → distill.submit）",
                 artifact=paths["scenes"],
                 skip_reason="missing_llm_key_agent_handoff",
             )
             _finish_run(date_str, run_status, "partial", "distill")
             cli.console.print(
                 cli.Panel(
-                    f"[yellow]⚠️ {date_str} 先做到场景切分为止[/yellow]\n"
-                    "下一步请先调用 distill.pending，再把结果用 distill.submit 写回。",
+                    f"[yellow]⏸️ {date_str} 已完成转写和场景切分[/yellow]\n"
+                    "AI 代理会自动用 distill.pending / distill.submit 完成蒸馏，你不需要做任何事。",
                     border_style="yellow",
                 )
             )
@@ -472,21 +472,21 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
 
     existing_core_payload = _load_existing_core_payload(date_str)
     if not has_llm_credentials("extract") and paths["transcript"].exists() and not existing_core_payload:
-        cli.console.print("\n[yellow]⏸️ 暂停在核心提取步骤：没有可用大模型密钥，请让代理先接手核心提取。[/yellow]")
+        cli.console.print("\n[yellow]⏸️ 核心提取需要 AI 代理完成——代理会用自己的模型自动处理，无需配置 API Key。[/yellow]")
         _mark_step(
             date_str,
             run_status,
             "extract_core",
             "skipped",
-            message="没有可用大模型密钥；请先调用 extract.core.pending / extract.core.submit",
+            message="等待 AI 代理用自身模型完成核心提取（extract.core.pending → extract.core.submit）",
             artifact=paths["transcript"],
             skip_reason="missing_llm_key_agent_handoff",
         )
         _finish_run(date_str, run_status, "partial", "extract_core")
         cli.console.print(
             cli.Panel(
-                f"[yellow]⚠️ {date_str} 已完成确定性步骤[/yellow]\n"
-                "下一步请先调用 extract.core.pending，再把结果用 extract.core.submit 写回。",
+                f"[yellow]⏸️ {date_str} 蒸馏已完成，等待核心提取[/yellow]\n"
+                "AI 代理会自动用 extract.core.pending / extract.core.submit 完成提取，你不需要做任何事。",
                 border_style="yellow",
             )
         )

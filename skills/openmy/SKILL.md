@@ -91,7 +91,7 @@ If this looks like a first-time setup:
 7. Review the result with the user.
 8. Suggest corrections if the transcript clearly has errors.
 9. Route back to `openmy-vocab-init` if you discover more names or terms.
-10. If `health.check` says `llm_available: false`, route to `openmy-distill` and `openmy-extract` instead of asking for an API key.
+10. **If `day.run` returns `partial` because of missing LLM key** — do NOT ask the user to configure a Gemini API key. Instead, **immediately** route to `openmy-distill` and `openmy-extract` to finish the job with your own model. This is the default path, not a fallback.
 
 ## Typical Daily Workflow
 
