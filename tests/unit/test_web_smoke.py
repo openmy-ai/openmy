@@ -49,6 +49,25 @@ class TestWebSmoke(unittest.TestCase):
         for item in reversed(patches):
             item.stop()
 
+    def seed_onboarding(self, data_root: Path) -> None:
+        (data_root / "onboarding_state.json").write_text(
+            json.dumps(
+                {
+                    "completed": False,
+                    "headline": "先别自己挑，先按推荐路线走：本地中文优先",
+                    "recommended_reason": "中文录音优先，而且不用密钥。",
+                    "primary_action": "先运行 openmy skill profile.set --stt-provider funasr --json，先把推荐路线定下来。",
+                    "choices": {
+                        "local": [{"label": "本地中文优先", "description": "中文录音优先，而且不用密钥。", "is_recommended": True}],
+                        "cloud": [{"label": "云端省事优先", "description": "后面再看。", "is_recommended": False}],
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
     def seed_context(self, data_root: Path) -> None:
         (data_root / "active_context.json").write_text(
             json.dumps(
@@ -102,6 +121,23 @@ class TestWebSmoke(unittest.TestCase):
             ),
             encoding="utf-8",
         )
+
+    def test_server_serves_onboarding_payload(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            self.seed_onboarding(data_root)
+
+            runner = JobRunner()
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                payload = self.fetch_json(base_url, "/api/onboarding")
+            finally:
+                self.stop_server(server, patches)
+
+            self.assertEqual(payload["headline"], "先别自己挑，先按推荐路线走：本地中文优先")
+            self.assertIn("profile.set", payload["primary_action"])
 
     def test_server_serves_context_and_pipeline_contract(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

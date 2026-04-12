@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 
+from openmy.services.onboarding.state import load_onboarding_state
 from openmy.services.screen_recognition.settings import (
     ScreenContextSettings,
     load_screen_context_settings,
@@ -20,6 +21,12 @@ def load_active_context_snapshot() -> dict:
     server = _server()
     return server.load_json(server.DATA_ROOT / "active_context.json") or {}
 
+
+
+
+def get_onboarding_payload() -> dict:
+    server = _server()
+    return load_onboarding_state(server.DATA_ROOT) or {}
 
 def get_context_payload() -> dict:
     snapshot = load_active_context_snapshot()

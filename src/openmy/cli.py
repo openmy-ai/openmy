@@ -377,17 +377,17 @@ def missing_stt_key_message() -> str:
 
 def missing_stt_key_hint() -> str:
     return (
-        "如果你要走 API 转写，请在当前项目根目录 `.env` 填 `GEMINI_API_KEY` 或 "
-        "`OPENMY_STT_API_KEY`；如果你是通过 Skill 接入，让 Agent 提醒你补这个 key。"
+        "如果你要走云端转写，先运行 `openmy skill profile.set --stt-provider gemini --json`，"
+        "再把对应 key 补进这个项目的 `.env`。"
     )
 
 
 def missing_provider_key_message(has_env_file: bool) -> str:
     prefix = "已读取项目根目录 `.env`，但" if has_env_file else "没找到项目根目录 `.env`，而且"
     return (
-        f"{prefix}缺少可用的 provider key。至少要有语音转写 KEY；如果你要走 API 转写，"
-        "推荐把 `GEMINI_API_KEY` 写进这个项目的 `.env`，或分别填写 "
-        "`OPENMY_STT_API_KEY` / `OPENMY_LLM_API_KEY`。如果你是通过 Skill 接入，让 Agent 提醒你补这个 key。"
+        f"{prefix}缺少可用的转写或整理 key。"
+        "如果你要走云端转写，先用 `openmy skill profile.set --stt-provider gemini --json` 定路线，"
+        "再把对应 key 写进这个项目的 `.env`。"
     )
 
 
@@ -407,14 +407,13 @@ def ensure_runtime_dependencies(*, stt_provider: str | None = None) -> None:
     if stt_provider_requires_api_key(final_stt_provider) and not stt_api_key:
         if has_env_file:
             raise FriendlyCliError(
-                "已读取项目根目录 `.env`，但里面缺少可用的语音转写 provider key。"
-                "如果继续用 Gemini，可直接填 `GEMINI_API_KEY`；"
-                "如果想走本地转写，可把 `OPENMY_STT_PROVIDER` 设成 `faster-whisper` 或 `funasr`。"
+                "已读取项目根目录 `.env`，但当前这条云端语音转写路线还缺 key。"
+                "如果继续走云端，先确认你已经运行过 `openmy skill profile.set --stt-provider gemini --json`，"
+                "再把对应 key 补进 `.env`；如果想先跑通，改走本地路线更省事。"
             )
         raise FriendlyCliError(
-            "没找到项目根目录 `.env`，也没有检测到可用的语音转写 provider key。"
-            "先 `cp .env.example .env` 并填写 `GEMINI_API_KEY`，"
-            "或在运行时改用 `--stt-provider faster-whisper` / `--stt-provider funasr`。"
+            "没找到项目根目录 `.env`，当前这条云端语音转写路线也没有可用 key。"
+            "先复制 `.env.example` 成 `.env`，再补对应 key；如果想先跑通，直接改走 `--stt-provider funasr` 或 `--stt-provider faster-whisper`。"
         )
 
 

@@ -478,7 +478,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
                 )
             )
             _mark_step(date_str, run_status, "transcribe", "failed",
-                       message="未选择转写引擎：请先配置 OPENMY_STT_PROVIDER")
+                       message="未选择转写引擎：请先运行 profile.set 选定推荐路线")
             _finish_run(date_str, run_status, "failed", "transcribe")
             return 1
         _mark_step(date_str, run_status, "transcribe", "running", message="正在转写音频")

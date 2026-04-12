@@ -27,6 +27,7 @@ from app.payloads import (
     get_date_briefing_payload,
     get_date_detail,
     get_date_meta_payload,
+    get_onboarding_payload,
     get_screen_context_settings_payload,
     get_stats,
     handle_correction,
@@ -57,6 +58,8 @@ class BrainHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/context":
             send_json(self, get_context_payload())
+        elif path == "/api/onboarding":
+            send_json(self, get_onboarding_payload())
         elif path == "/api/context/loops":
             send_json(self, get_context_loops_payload())
         elif path == "/api/context/projects":

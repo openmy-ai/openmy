@@ -23,6 +23,7 @@ const state = {
   currentMeta: null,
   currentBriefing: null,
   context: {},
+  onboarding: {},
   loops: [],
   projects: [],
   decisions: [],
@@ -372,6 +373,7 @@ async function init() {
   await loadSidebar();
   await Promise.all([
     loadContext(),
+    loadOnboarding(),
     loadScreenContextSettings(),
     refreshCorrectionsFeed(),
     refreshPipelineJobs(),
@@ -379,6 +381,14 @@ async function init() {
   renderHomePage();
 
   setInterval(refreshPipelineJobs, 5000);
+}
+
+
+async function loadOnboarding() {
+  state.onboarding = await fetchJson('/api/onboarding', {});
+  if (state.route === 'home') {
+    renderHomePage();
+  }
 }
 
 async function loadScreenContextSettings() {
@@ -430,6 +440,41 @@ function renderSidebar() {
   `).join('');
 }
 
+
+function renderOnboardingCard() {
+  const onboarding = state.onboarding || {};
+  if (!onboarding || onboarding.completed) return '';
+  const localChoices = onboarding.choices?.local || [];
+  const cloudChoices = onboarding.choices?.cloud || [];
+  const renderChoice = (item) => `
+    <div class="onboarding-choice ${item.is_recommended ? 'recommended' : ''}">
+      <div class="onboarding-choice-title">${escapeHtml(item.label || item.name)}</div>
+      <div class="onboarding-choice-desc">${escapeHtml(item.description || '')}</div>
+    </div>
+  `;
+
+  return `
+    <section class="callout onboarding-card">
+      <div class="callout-body">
+        <div class="section-kicker">网页首配入口</div>
+        <h2 class="onboarding-title">${escapeHtml(onboarding.headline || '先按推荐路线走')}</h2>
+        <p class="onboarding-copy">${escapeHtml(onboarding.recommended_reason || onboarding.next_step || '')}</p>
+        <div class="onboarding-command">${escapeHtml(onboarding.primary_action || '')}</div>
+        <div class="onboarding-grid">
+          <div>
+            <div class="onboarding-group-title">本地</div>
+            ${localChoices.length ? localChoices.map(renderChoice).join('') : renderEmptyState('暂无本地路线')}
+          </div>
+          <div>
+            <div class="onboarding-group-title">云端</div>
+            ${cloudChoices.length ? cloudChoices.map(renderChoice).join('') : renderEmptyState('暂无云端路线')}
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderHomePage() {
   closeSidebar();
   setRoute('home');
@@ -440,7 +485,8 @@ function renderHomePage() {
     main.innerHTML = `
       <div class="home-page">
         <h1>OpenMy</h1>
-        <div class="home-meta">还没有可读数据。先跑一次 quick-start（快速开始）把录音喂进来。</div>
+        <div class="home-meta">还没有可读数据。先把首配路线定下来，再跑第一次 quick-start（快速开始）。</div>
+        ${renderOnboardingCard()}
       </div>
     `;
     return;
@@ -457,6 +503,8 @@ function renderHomePage() {
     <div class="home-page">
       <h1>OpenMy</h1>
       <div class="home-meta">本周 ${formatRangeLabel(weekDates[weekDates.length - 1]?.date || latest.date, weekDates[0]?.date || latest.date)} · ${weekDates.length}天 · ${weekDates.reduce((sum, item) => sum + (item.segments || 0), 0)}条记录</div>
+
+      ${renderOnboardingCard()}
 
       <div class="home-block">
         <div class="section-kicker">待办</div>

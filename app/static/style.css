@@ -464,3 +464,16 @@ body {
   .settings-query-grid { grid-template-columns: 1fr; }
   .settings-memory-grid { grid-template-columns: 1fr; }
 }
+
+
+.onboarding-card { margin-bottom: 24px; }
+.onboarding-title { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+.onboarding-copy { color: var(--text-secondary); margin-bottom: 14px; }
+.onboarding-command { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 16px; color: var(--text); }
+.onboarding-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.onboarding-group-title { font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+.onboarding-choice { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; background: var(--bg); margin-bottom: 8px; }
+.onboarding-choice.recommended { border-color: var(--accent); background: var(--accent-light); }
+.onboarding-choice-title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.onboarding-choice-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+@media (max-width: 900px) { .onboarding-grid { grid-template-columns: 1fr; } }

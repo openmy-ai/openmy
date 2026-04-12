@@ -45,6 +45,7 @@ class TestFrontendShell(unittest.TestCase):
 
     def test_index_fetches_context_and_day_payloads(self):
         self.assertIn("/api/context", self.content)
+        self.assertIn("/api/onboarding", self.content)
         self.assertIn("/api/context/loops", self.content)
         self.assertIn("/api/context/projects", self.content)
         self.assertIn("/api/context/decisions", self.content)
@@ -53,6 +54,12 @@ class TestFrontendShell(unittest.TestCase):
         self.assertRegex(self.content, r"/api/date/\$\{[^}]+\}/briefing")
         self.assertIn('/static/vendor/chart.umd.js', self.content)
         self.assertNotIn('cdn.jsdelivr.net/npm/chart.js', self.content)
+
+    def test_home_page_contains_onboarding_card(self):
+        self.assertIn("renderOnboardingCard", self.content)
+        self.assertIn("onboarding-card", self.content)
+        self.assertIn("网页首配入口", self.content)
+        self.assertIn("onboarding-command", self.content)
 
     def test_index_renders_meta_panels_inside_day_view(self):
         self.assertIn("renderMetaPanels", self.content)
