@@ -60,10 +60,22 @@ OpenMy works out of the box with local speech-to-text engines.
 No API key is needed to process audio.
 - `faster-whisper` and `funasr` run locally and are always ready.
 - API-based engines (`gemini`, `groq`, `dashscope`, `deepgram`) need keys, but they are optional upgrades.
-- LLM keys (`GEMINI_API_KEY`) are only needed for distillation and extraction. The core pipeline (`transcribe -> clean -> segment -> briefing`) works without them.
+- LLM keys (`GEMINI_API_KEY`) are needed for distillation and extraction, but there are TWO ways to handle this — let the user choose.
 **Never tell the user they must configure an API key before processing audio.**
 Run `health.check` first. It shows which engines are already ready.
-If no LLM key is configured, agents can still finish distillation and extraction with `distill.pending -> distill.submit` and `extract.core.pending -> extract.core.submit`.
+
+### Distillation & Extraction: Two Options
+
+When `llm_available` is false, **always present both options and let the user decide:**
+
+| Option | How | Cost | Speed |
+|--------|-----|------|-------|
+| **A. Configure a Gemini API key** | Add `GEMINI_API_KEY` to `.env`. OpenMy calls `gemini-flash-lite` directly. | Very cheap (~$0.01/day, free tier available) | Fast, fully automated |
+| **B. Let me (the agent) do it** | Agent reads scenes via `distill.pending`, writes summaries with its own LLM, submits via `distill.submit`. | Uses YOUR agent token budget (Claude/GPT tokens are expensive) | Slower, but zero config |
+
+**Present both options clearly. Do NOT decide for the user.**
+If the user picks A, help them get a Gemini API key and add it to `.env`.
+If the user picks B, proceed with `distill.pending` → `distill.submit` and `extract.core.pending` → `extract.core.submit` immediately.
 
 ## Communication Style
 
@@ -91,7 +103,7 @@ If this looks like a first-time setup:
 7. Review the result with the user.
 8. Suggest corrections if the transcript clearly has errors.
 9. Route back to `openmy-vocab-init` if you discover more names or terms.
-10. **If `day.run` returns `partial` because of missing LLM key** — do NOT ask the user to configure a Gemini API key. Instead, **immediately** route to `openmy-distill` and `openmy-extract` to finish the job with your own model. This is the default path, not a fallback.
+10. **If `day.run` returns `partial` because of missing LLM key** — present the two distillation options (A: configure cheap Gemini API key vs B: agent does it with its own expensive tokens). Let the user choose. See the "Distillation & Extraction: Two Options" section above.
 
 ## Typical Daily Workflow
 

@@ -447,13 +447,13 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
                 return result
             _mark_step(date_str, run_status, "distill", "completed", message="蒸馏完成", artifact=paths["scenes"])
         else:
-            cli.console.print("\n[yellow]⏸️ 蒸馏需要 AI 代理完成——代理会用自己的模型自动处理，无需配置 API Key。[/yellow]")
+            cli.console.print("\n[yellow]⏸️ 蒸馏需要 LLM，有两种方式完成：[/yellow]")
             _mark_step(
                 date_str,
                 run_status,
                 "distill",
                 "skipped",
-                message="等待 AI 代理用自身模型完成蒸馏（distill.pending → distill.submit）",
+                message="等待选择蒸馏方式：配置 Gemini API Key（便宜自动）或让 AI 代理用自身模型完成（花 agent token）",
                 artifact=paths["scenes"],
                 skip_reason="missing_llm_key_agent_handoff",
             )
@@ -461,7 +461,8 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             cli.console.print(
                 cli.Panel(
                     f"[yellow]⏸️ {date_str} 已完成转写和场景切分[/yellow]\n"
-                    "AI 代理会自动用 distill.pending / distill.submit 完成蒸馏，你不需要做任何事。",
+                    "方式 A：配置 Gemini API Key → 用 flash-lite 小模型自动蒸馏（极便宜，有免费额度）\n"
+                    "方式 B：让 AI 代理用自己的模型完成 → 零配置但消耗 agent token 预算",
                     border_style="yellow",
                 )
             )
@@ -472,13 +473,13 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
 
     existing_core_payload = _load_existing_core_payload(date_str)
     if not has_llm_credentials("extract") and paths["transcript"].exists() and not existing_core_payload:
-        cli.console.print("\n[yellow]⏸️ 核心提取需要 AI 代理完成——代理会用自己的模型自动处理，无需配置 API Key。[/yellow]")
+        cli.console.print("\n[yellow]⏸️ 核心提取需要 LLM，有两种方式完成：[/yellow]")
         _mark_step(
             date_str,
             run_status,
             "extract_core",
             "skipped",
-            message="等待 AI 代理用自身模型完成核心提取（extract.core.pending → extract.core.submit）",
+            message="等待选择提取方式：配置 Gemini API Key（便宜自动）或让 AI 代理用自身模型完成（花 agent token）",
             artifact=paths["transcript"],
             skip_reason="missing_llm_key_agent_handoff",
         )
@@ -486,7 +487,8 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         cli.console.print(
             cli.Panel(
                 f"[yellow]⏸️ {date_str} 蒸馏已完成，等待核心提取[/yellow]\n"
-                "AI 代理会自动用 extract.core.pending / extract.core.submit 完成提取，你不需要做任何事。",
+                "方式 A：配置 Gemini API Key → 用 flash-lite 小模型自动提取（极便宜，有免费额度）\n"
+                "方式 B：让 AI 代理用自己的模型完成 → 零配置但消耗 agent token 预算",
                 border_style="yellow",
             )
         )
