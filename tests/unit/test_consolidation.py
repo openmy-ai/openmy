@@ -640,6 +640,30 @@ class TestRenderer(unittest.TestCase):
             self.assertIn("这周把聚合链路搭起来了。", content)
             self.assertIn("这个月主要在把 OpenMy 的上下文链路做扎实。", content)
 
+    def test_render_compact_md_ignores_future_last_processed_date_for_aggregate_lookup(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            (data_root / "weekly").mkdir(parents=True, exist_ok=True)
+            (data_root / "monthly").mkdir(parents=True, exist_ok=True)
+            (data_root / "weekly" / "2026-W15.json").write_text(
+                json.dumps({"summary": "这周回顾可见。", "next_week_focus": "继续补聚合"}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (data_root / "monthly" / "2026-04.json").write_text(
+                json.dumps({"summary": "这个月方向可见。", "direction": "继续收口"}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            ctx = self.make_context()
+            ctx.generated_at = "2026-04-12T18:23:08+08:00"
+            ctx.realtime_context.ingestion_health.last_processed_date = "2099-12-31"
+
+            content = render_compact_md(ctx, data_root)
+
+            self.assertIn("## 本月方向", content)
+            self.assertIn("## 本周进展", content)
+            self.assertIn("这个月方向可见。", content)
+
 
 if __name__ == "__main__":
     unittest.main()

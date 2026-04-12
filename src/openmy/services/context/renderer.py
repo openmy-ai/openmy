@@ -21,18 +21,25 @@ def _read_json(path: Path) -> dict:
 
 
 def _reference_date(ctx: ActiveContext) -> datetime.date:
+    generated_date = None
+    raw_generated = str(ctx.generated_at or "").strip()
+    if raw_generated:
+        try:
+            generated_date = datetime.fromisoformat(raw_generated.replace("Z", "+00:00")).date()
+        except ValueError:
+            generated_date = None
+
     raw = str(ctx.realtime_context.ingestion_health.last_processed_date or "").strip()
     if raw:
         try:
-            return datetime.strptime(raw, "%Y-%m-%d").date()
+            candidate = datetime.strptime(raw, "%Y-%m-%d").date()
+            if generated_date is not None and candidate > generated_date:
+                return generated_date
+            return candidate
         except ValueError:
             pass
-    raw = str(ctx.generated_at or "").strip()
-    if raw:
-        try:
-            return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
-        except ValueError:
-            pass
+    if generated_date is not None:
+        return generated_date
     return datetime.now().date()
 
 
