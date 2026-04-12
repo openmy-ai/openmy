@@ -50,6 +50,11 @@ Local engines (`faster-whisper`, `funasr`) work without any key.
 `GEMINI_API_KEY` is only needed for distillation/extraction — and even then, the agent can do it manually.
 **Never tell the user they must configure an API key before processing audio.**
 
+## Audio Processing Rules
+
+- **External storage → copy first.** If audio is on `/Volumes/...` or any external device, ALWAYS copy to local disk before processing.
+- **Cloud engine batch limit.** When using cloud STT (gemini, dashscope, groq, deepgram), NEVER pass more than 5 files at once to `day.run`.
+
 ## Full Skill Reference
 
 For the complete routing map, action contracts, and sub-skill documentation, see:
