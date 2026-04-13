@@ -575,5 +575,5 @@ body {
 .wiki-links a { font-size: 13px; color: var(--accent); text-decoration: none; }
 .wiki-links a:hover { text-decoration: underline; }
 
-.home-help-row { display: flex; justify-content: flex-end; margin-top: 16px; }
+.home-header-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .text-muted { color: var(--text-light); font-style: italic; }

@@ -237,6 +237,11 @@ function formatShortDate(dateStr) {
   return `${date.getMonth() + 1}.${date.getDate()}`;
 }
 
+function formatFriendlyDate(dateStr) {
+  const date = parseIsoDate(dateStr);
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
 function formatRangeLabel(start, end) {
   return `${formatShortDate(start)}–${formatShortDate(end)}`;
 }
@@ -663,19 +668,19 @@ function renderRecentSummaryHome(visibleDates) {
 
   main.innerHTML = `
     <div class="home-page">
-      <h1>OpenMy</h1>
+      <div class="home-header-row">
+        <h1>OpenMy</h1>
+        <button class="report-btn" type="button" onclick="state.showWikiHome=true;renderHomePage()">使用说明</button>
+      </div>
       <div class="home-meta">最近记录</div>
       <div class="daily-link-list">
         ${recentDates.map((item) => `
           <button class="daily-link-item" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
-            <span class="daily-link-date">${escapeHtml(formatShortDate(item.date))}</span>
+            <span class="daily-link-date">${escapeHtml(formatFriendlyDate(item.date))}</span>
             <span class="daily-link-summary">${item.segments ? escapeHtml(truncateSummary(item.summary || item.timeline?.[0]?.preview || '')) : '<span class="text-muted">仅屏幕截图</span>'}</span>
             <span class="daily-link-count">${item.segments ? item.segments + '条' : '截屏'}</span>
           </button>
         `).join('')}
-      </div>
-      <div class="home-help-row">
-        <button class="report-btn" type="button" onclick="state.showWikiHome=true;renderHomePage()">使用说明</button>
       </div>
     </div>
   `;
