@@ -41,6 +41,8 @@ const state = {
   selectedJobId: '',
   selectedJobDetail: null,
   handledCompletedJobs: new Set(),
+  handledTerminalNotices: new Set(),
+  homeJobFocusId: '',
   uploadingHomeFiles: false,
   chartInstances: [],
   contextQuery: {
@@ -232,8 +234,11 @@ function renderPipelineJobDetail() {
   `;
 }
 
-function getActiveHomeJob() {
-  return state.jobs.find((job) => ['queued', 'running', 'paused'].includes(job.status)) || null;
+function getHomeDisplayJob() {
+  const activeJob = state.jobs.find((job) => ['queued', 'running', 'paused'].includes(job.status));
+  if (activeJob) return activeJob;
+  if (!state.homeJobFocusId) return null;
+  return state.jobs.find((job) => job.job_id === state.homeJobFocusId) || null;
 }
 
 function formatDurationSeconds(value) {
@@ -263,18 +268,32 @@ function formatStepVisual(step) {
   return { icon: '○', className: 'step-pending' };
 }
 
+function hasReadyTranscriptionProvider() {
+  return Boolean(state.onboarding?.current_provider);
+}
+
 function renderHomeDropZone() {
-  const disabled = state.uploadingHomeFiles ? 'disabled' : '';
-  const hint = state.uploadingHomeFiles ? '正在上传音频…' : '拖入音频，或者点一下选文件';
+  const providerReady = hasReadyTranscriptionProvider();
+  const disabled = state.uploadingHomeFiles || !providerReady ? 'disabled' : '';
+  const hint = state.uploadingHomeFiles
+    ? '正在上传音频…'
+    : providerReady
+      ? '拖入音频，或者点一下选文件'
+      : '先选转写引擎，再拖入音频';
+  const subtitle = providerReady
+    ? '文件收进来后，才会开始转写、清洗、场景切分和蒸馏。'
+    : '现在先把转写引擎定下来，不然文件收进来也跑不动。';
   return `
     <div class="home-ingest-card">
       <div class="home-ingest-title">开始处理新录音</div>
       <div class="home-ingest-meta">支持 .wav .mp3 .m4a .aac .mp4 .mov .flac .ogg .webm</div>
-      <div class="dropzone-card" id="homeDropzone" ondragover="onHomeDropzoneDragOver(event)" ondragleave="onHomeDropzoneDragLeave(event)" ondrop="onHomeDropzoneDrop(event)" onclick="document.getElementById('homeFileInput').click()">
+      <div class="dropzone-card ${providerReady ? '' : 'is-blocked'}" id="homeDropzone" ondragover="onHomeDropzoneDragOver(event)" ondragleave="onHomeDropzoneDragLeave(event)" ondrop="onHomeDropzoneDrop(event)" onclick="${providerReady ? "document.getElementById('homeFileInput').click()" : "openSettings('transcription')"}">
         <div class="dropzone-icon">＋</div>
         <div class="dropzone-title">${hint}</div>
-        <div class="dropzone-subtitle">上传后会自动开始转写、清洗、场景切分和蒸馏。</div>
-        <button class="action-btn primary" type="button" ${disabled} onclick="event.stopPropagation();document.getElementById('homeFileInput').click()">选择音频</button>
+        <div class="dropzone-subtitle">${subtitle}</div>
+        ${providerReady
+          ? `<button class="action-btn primary" type="button" ${disabled} onclick="event.stopPropagation();document.getElementById('homeFileInput').click()">选择音频</button>`
+          : `<button class="action-btn primary" type="button" onclick="event.stopPropagation();openSettings('transcription')">先选转写引擎</button>`}
         <input id="homeFileInput" type="file" ${disabled} accept=".wav,.mp3,.m4a,.aac,.mp4,.mov,.flac,.ogg,.webm" style="display:none" onchange="onHomeFileInputChange(event)">
       </div>
     </div>
@@ -286,12 +305,16 @@ function renderHomeProgressPanel(job) {
   const steps = job.steps || [];
   const recentLogs = [...(job.log_lines || [])].slice(-3).reverse();
   const isFinished = ['succeeded', 'partial'].includes(job.status);
+  const isFailed = ['failed', 'cancelled', 'interrupted'].includes(job.status);
   const canPause = job.can_pause;
   const canResume = job.status === 'paused';
   const canSkip = job.can_skip;
   const sourceName = job.source_file || (job.target_date ? `${job.target_date} 的处理任务` : '处理中');
+  const summaryText = isFailed
+    ? (job.error || steps.find((step) => step.status === 'failed')?.result_summary || '这次处理没跑通。')
+    : '';
   return `
-    <div class="progress-home-card">
+    <div class="progress-home-card ${isFailed ? 'is-failed' : ''}">
       <div class="progress-home-header">
         <div>
           <div class="progress-home-title">OpenMy — 正在处理 ${escapeHtml(sourceName)}</div>
@@ -304,6 +327,7 @@ function renderHomeProgressPanel(job) {
         <span>${escapeHtml(formatEtaSeconds(job.eta_seconds))}</span>
         <span>${escapeHtml(job.source_file || '等待任务推进')}</span>
       </div>
+      ${isFailed ? `<div class="progress-home-failure">${escapeHtml(summaryText)}</div>` : ''}
       <div class="progress-home-steps">
         ${steps.map((step, index) => {
           const visual = formatStepVisual(step);
@@ -333,7 +357,9 @@ function renderHomeProgressPanel(job) {
         ${canResume ? `<button class="action-btn" type="button" onclick="runPipelineAction('${escapeHtml(job.job_id)}','resume')">继续</button>` : ''}
         ${canSkip ? `<button class="action-btn" type="button" onclick="runPipelineAction('${escapeHtml(job.job_id)}','skip')">跳过当前步骤</button>` : ''}
         ${!isFinished ? `<button class="action-btn danger" type="button" onclick="runPipelineAction('${escapeHtml(job.job_id)}','cancel')">取消</button>` : ''}
+        ${isFailed ? `<button class="action-btn" type="button" onclick="openSettings('transcription')">去选转写引擎</button>` : ''}
         ${isFinished && job.target_date ? `<button class="action-btn primary" type="button" onclick="loadDate('${escapeHtml(job.target_date)}')">查看日报</button>` : ''}
+        ${(isFinished || isFailed) ? `<button class="action-btn" type="button" onclick="clearHomeJobFocus()">收起结果</button>` : ''}
       </div>
     </div>
   `;
@@ -343,7 +369,12 @@ function rerenderHomePipelineSlot() {
   if (state.route !== 'home') return;
   const slot = document.getElementById('homePipelineSlot');
   if (!slot) return;
-  slot.innerHTML = renderHomeProgressPanel(getActiveHomeJob());
+  slot.innerHTML = renderHomeProgressPanel(getHomeDisplayJob());
+}
+
+function clearHomeJobFocus() {
+  state.homeJobFocusId = '';
+  rerenderHomePipelineSlot();
 }
 
 function parseIsoDate(dateStr) {
@@ -694,7 +725,7 @@ function renderWikiHome() {
       ${setupNotice}
       <h1>OpenMy</h1>
       <div class="home-meta">把你每天说的话变成可搜索、可回顾的个人上下文。<br>录音 → 转写 → 整理 → 浏览，全部在本地完成。</div>
-      <div id="homePipelineSlot">${renderHomeProgressPanel(getActiveHomeJob())}</div>
+      <div id="homePipelineSlot">${renderHomeProgressPanel(getHomeDisplayJob())}</div>
 
       <div class="wiki-section">
         <div class="section-kicker">快速开始</div>
@@ -798,7 +829,7 @@ function renderRecentSummaryHome(visibleDates) {
         <button class="report-btn" type="button" onclick="state.showWikiHome=true;renderHomePage()">使用说明</button>
       </div>
       <div class="home-meta">最近记录</div>
-      <div id="homePipelineSlot">${renderHomeProgressPanel(getActiveHomeJob())}</div>
+      <div id="homePipelineSlot">${renderHomeProgressPanel(getHomeDisplayJob())}</div>
       <div class="daily-link-list">
         ${recentDates.map((item) => `
           <button class="daily-link-item" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
@@ -1439,6 +1470,7 @@ async function createPipelineJob(kind) {
   try {
     const job = await postJson('/api/pipeline/jobs', payload);
     state.selectedJobId = job.job_id;
+    state.homeJobFocusId = job.job_id;
     showToast(`已开始：${formatPipelineKind(kind)}`);
     await refreshPipelineJobs();
   } catch (error) {
@@ -1447,6 +1479,11 @@ async function createPipelineJob(kind) {
 }
 
 async function uploadHomeAudioFiles(fileList) {
+  if (!hasReadyTranscriptionProvider()) {
+    showToast('先选转写引擎，再上传音频。');
+    openSettings('transcription');
+    return;
+  }
   const files = Array.from(fileList || []);
   if (!files.length) return;
   const file = files[0];
@@ -1467,6 +1504,7 @@ async function uploadHomeAudioFiles(fileList) {
       source_size_bytes: upload.size_bytes,
     });
     state.selectedJobId = job.job_id;
+    state.homeJobFocusId = job.job_id;
     showToast(`已开始处理：${upload.filename}`);
     await refreshPipelineJobs();
   } catch (error) {
@@ -1503,6 +1541,7 @@ async function runPipelineAction(jobId, action) {
   try {
     const payload = await postJson(`/api/pipeline/jobs/${jobId}/${action}`, {});
     state.selectedJobId = jobId;
+    state.homeJobFocusId = jobId;
     state.selectedJobDetail = payload;
     showToast(`已执行：${action === 'pause' ? '暂停' : action === 'resume' ? '继续' : action === 'cancel' ? '取消' : '跳过'}`);
     await refreshPipelineJobs();
@@ -1519,6 +1558,9 @@ async function refreshPipelineJobs() {
   }
   if (!state.selectedJobId && state.jobs.length) {
     state.selectedJobId = state.jobs[0].job_id;
+  }
+  if (state.homeJobFocusId && !state.jobs.find((job) => job.job_id === state.homeJobFocusId)) {
+    state.homeJobFocusId = '';
   }
   if (state.selectedJobId) {
     await loadPipelineJobDetail(state.selectedJobId, false);
@@ -1559,10 +1601,17 @@ async function loadPipelineJobDetail(jobId, rerender = true) {
   if (!detail) return;
   state.selectedJobId = jobId;
   state.selectedJobDetail = detail;
+  if (state.homeJobFocusId === jobId || ['queued', 'running', 'paused'].includes(detail.status)) {
+    state.homeJobFocusId = jobId;
+  }
 
   if (detail.status === 'succeeded' && !state.handledCompletedJobs.has(detail.job_id)) {
     state.handledCompletedJobs.add(detail.job_id);
     await handleJobCompletion(detail);
+  }
+  if (['failed', 'partial', 'cancelled', 'interrupted'].includes(detail.status) && !state.handledTerminalNotices.has(detail.job_id)) {
+    state.handledTerminalNotices.add(detail.job_id);
+    showToast(detail.error || detail.steps?.find((step) => step.status === 'failed')?.result_summary || `处理状态：${formatPipelineStatus(detail.status)}`);
   }
 
   if (rerender) rerenderSettingsOverlay();

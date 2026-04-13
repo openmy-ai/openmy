@@ -179,9 +179,6 @@ def update_onboarding_provider_payload(data: dict) -> dict:
 
 def get_onboarding_payload() -> dict:
     server = _server()
-    existing = load_onboarding_state(server.DATA_ROOT) or {}
-    if existing:
-        return _public_onboarding_payload(existing)
     payload = _build_current_onboarding_payload()
     save_onboarding_state(server.DATA_ROOT, payload)
     return _public_onboarding_payload(payload)

@@ -94,10 +94,17 @@ class TestFrontendShell(unittest.TestCase):
     def test_home_page_contains_dropzone_and_progress_panel(self):
         self.assertIn("renderHomeDropZone", self.content)
         self.assertIn("renderHomeProgressPanel", self.content)
+        self.assertIn("hasReadyTranscriptionProvider", self.content)
+        self.assertIn("getHomeDisplayJob", self.content)
+        self.assertIn("homeJobFocusId", self.content)
+        self.assertIn("clearHomeJobFocus", self.content)
         self.assertIn("homeDropzone", self.content)
         self.assertIn("/api/upload", self.content)
         self.assertIn("runPipelineAction", self.content)
         self.assertIn("['queued', 'running', 'paused'].includes(job.status)", self.content)
+        self.assertIn("先选转写引擎，再上传音频", self.content)
+        self.assertIn("openSettings('transcription')", self.content)
+        self.assertNotIn("['queued', 'running', 'paused', 'failed', 'partial', 'cancelled', 'interrupted', 'succeeded'].includes(detail.status)", self.content)
 
     def test_timeline_distillation_uses_plain_summary_fallback(self):
         match = re.search(

@@ -494,6 +494,16 @@ body {
   background: var(--accent-light);
 }
 
+.dropzone-card.is-blocked {
+  border-color: rgba(217, 119, 6, 0.35);
+  background: color-mix(in srgb, var(--warning-bg) 60%, var(--bg) 40%);
+}
+
+.dropzone-card.is-blocked:hover {
+  border-color: var(--warning);
+  background: color-mix(in srgb, var(--warning-bg) 75%, var(--bg) 25%);
+}
+
 .dropzone-icon {
   width: 42px;
   height: 42px;
@@ -517,6 +527,11 @@ body {
   padding: 20px 22px;
   border-color: rgba(37, 99, 235, 0.35);
   box-shadow: 0 0 0 3px var(--accent-light), var(--shadow-sm);
+}
+
+.progress-home-card.is-failed {
+  border-color: rgba(220, 38, 38, 0.3);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--error-bg) 65%, var(--bg) 35%), var(--shadow-sm);
 }
 
 .progress-home-header,
@@ -555,6 +570,17 @@ body {
   gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 14px;
+}
+
+.progress-home-failure {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--error-bg);
+  color: var(--error);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
 }
 
 .progress-home-steps {
