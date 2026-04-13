@@ -959,10 +959,11 @@ function renderMetaPanels(meta) {
 
   const cards = groups.map((group) => {
     const items = meta?.[group.key] || [];
+    if (!items.length) return '';
     return `<section class="meta-section" style="--section-color:${group.dot}">
       <div class="prop-card">
       <div class="prop-card-title"><span class="dot" style="background:${group.dot}"></span>${group.title} <span class="prop-count">${items.length}</span></div>
-      ${items.length ? items.map((item) => {
+      ${items.map((item) => {
         const time = escapeHtml(item.time || '');
         const project = escapeHtml(item.project || item.topic || '');
         const summary = escapeHtml(plainText(item.summary || item.what || item.task || item.content || item.decision || item.fact || item.intent || ''));
@@ -970,7 +971,7 @@ function renderMetaPanels(meta) {
           ${time ? `<span class="time-tag">${time}</span>` : ''}
           ${summary}${project ? ` <span class="inline-project">(${project})</span>` : ''}
         </div>`;
-      }).join('') : '<div class="empty-state">暂无</div>'}
+      }).join('')}
       </div>
     </section>`;
   }).filter(Boolean);
