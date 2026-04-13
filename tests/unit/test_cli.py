@@ -458,6 +458,20 @@ class TestOpenMyCli(unittest.TestCase):
             if backup_path.exists():
                 backup_path.rename(env_path)
 
+    def test_ensure_runtime_dependencies_checks_project_env_before_ffmpeg(self):
+        import openmy.cli as cli
+
+        with (
+            patch("openmy.cli.prepare_project_runtime_env", return_value=False),
+            patch("openmy.cli.get_stt_provider_name", return_value="gemini"),
+            patch("openmy.cli.get_stt_api_key", return_value=""),
+            patch("openmy.cli.shutil.which", return_value=None),
+        ):
+            with self.assertRaises(cli.FriendlyCliError) as ctx:
+                cli.ensure_runtime_dependencies(stt_provider="gemini")
+
+        self.assertIn(".env", str(ctx.exception))
+
     def test_ensure_runtime_dependencies_allows_local_stt_without_api_key(self):
         import openmy.cli as cli
 

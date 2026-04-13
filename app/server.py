@@ -17,7 +17,7 @@ from datetime import datetime
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-BOOTSTRAP_ROOT = Path(__file__).resolve().parent.parent
+BOOTSTRAP_ROOT = Path.cwd()
 if str(BOOTSTRAP_ROOT) not in sys.path:
     sys.path.insert(0, str(BOOTSTRAP_ROOT))
 SRC_DIR = BOOTSTRAP_ROOT / "src"

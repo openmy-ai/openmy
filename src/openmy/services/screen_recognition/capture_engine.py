@@ -234,6 +234,11 @@ def start_capture_daemon(
         status.running = True
         write_status(status, data_root)
         return status
+    if sys.platform.startswith("win"):
+        status.running = False
+        status.last_error = "内置截屏暂不支持 Windows"
+        write_status(status, data_root)
+        return status
     if not is_capture_supported():
         status.running = False
         status.last_error = "当前机器不支持内置截屏识别"
@@ -253,7 +258,13 @@ def start_capture_daemon(
             str(Path(data_root or DEFAULT_DATA_ROOT)),
         ]
     )
-    shell_script = f"while true; do {tick_cmd}; sleep {max(1, int(interval_seconds))}; done"
+    interval = max(1, int(interval_seconds))
+    shell_script = (
+        "fail=0; "
+        f"while true; do {tick_cmd} && fail=0 || fail=$((fail+1)); "
+        f"if [ \"$fail\" -gt 5 ]; then sleep 60; else sleep {interval}; fi; "
+        "done"
+    )
     cmd = ["/bin/sh", "-lc", shell_script]
     process = subprocess.Popen(
         cmd,

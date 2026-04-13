@@ -400,11 +400,6 @@ def ensure_runtime_dependencies(*, stt_provider: str | None = None) -> None:
     if sys.version_info < (3, 10):
         raise FriendlyCliError("需要 Python 3.10 以上版本。可先运行 `brew install python@3.11`。")
 
-    missing_bins = [name for name in ("ffmpeg", "ffprobe") if shutil.which(name) is None]
-    if missing_bins:
-        missing = "、".join(missing_bins)
-        raise FriendlyCliError(f"缺少 {missing}。macOS 可先运行 `brew install ffmpeg`。")
-
     has_env_file = prepare_project_runtime_env()
     final_stt_provider = (stt_provider or get_stt_provider_name()).lower()
     stt_api_key = get_stt_api_key(final_stt_provider)
@@ -419,6 +414,11 @@ def ensure_runtime_dependencies(*, stt_provider: str | None = None) -> None:
             "没找到项目根目录 `.env`，当前这条云端语音转写路线也没有可用 key。"
             "先复制 `.env.example` 成 `.env`，再补对应 key；如果想先跑通，直接改走 `--stt-provider funasr` 或 `--stt-provider faster-whisper`。"
         )
+
+    missing_bins = [name for name in ("ffmpeg", "ffprobe") if shutil.which(name) is None]
+    if missing_bins:
+        missing = "、".join(missing_bins)
+        raise FriendlyCliError(f"缺少 {missing}。macOS 可先运行 `brew install ffmpeg`。")
 
 
 def add_stt_runtime_args(parser: argparse.ArgumentParser) -> None:

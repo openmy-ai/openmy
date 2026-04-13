@@ -212,6 +212,21 @@ class TestCaptureWorkerIsolation(unittest.TestCase):
         self.assertIn("openmy.services.screen_recognition.capture_tick", launched_cmd)
         self.assertEqual(status.pid, 12345)
 
+    def test_start_capture_daemon_backoff_after_repeated_failures(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            with (
+                patch("openmy.services.screen_recognition.capture_engine.is_capture_supported", return_value=True),
+                patch("openmy.services.screen_recognition.capture_engine._pid_is_running", return_value=False),
+                patch("openmy.services.screen_recognition.capture_engine.subprocess.Popen") as popen_mock,
+            ):
+                popen_mock.return_value.pid = 12345
+                start_capture_daemon(data_root=data_root, interval_seconds=15, retention_hours=24)
+
+        launched_cmd = " ".join(popen_mock.call_args.args[0])
+        self.assertIn("fail=0;", launched_cmd)
+        self.assertIn("sleep 60", launched_cmd)
+
 
 if __name__ == "__main__":
     unittest.main()
