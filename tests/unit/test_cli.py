@@ -17,6 +17,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class TestOpenMyCli(unittest.TestCase):
+    def subprocess_env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        env["OPENMY_PROJECT_ROOT"] = str(PROJECT_ROOT)
+        env["OPENMY_DATA_DIR"] = str(PROJECT_ROOT / "data")
+        return env
+
     def read_optional_text(self, path: Path) -> str | None:
         return path.read_text(encoding="utf-8") if path.exists() else None
 
@@ -678,6 +684,7 @@ class TestOpenMyCli(unittest.TestCase):
                 text=True,
                 timeout=60,
                 cwd=PROJECT_ROOT,
+                env=self.subprocess_env(),
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue((output_dir / "daily_briefing.json").exists())
@@ -828,6 +835,7 @@ class TestOpenMyCli(unittest.TestCase):
                 text=True,
                 timeout=60,
                 cwd=PROJECT_ROOT,
+                env=self.subprocess_env(),
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("示例正名", transcript_path.read_text(encoding="utf-8"))
@@ -859,6 +867,7 @@ class TestOpenMyCli(unittest.TestCase):
                 text=True,
                 timeout=60,
                 cwd=PROJECT_ROOT,
+                env=self.subprocess_env(),
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("示例正名", transcript_path.read_text(encoding="utf-8"))
@@ -869,6 +878,8 @@ class TestOpenMyCli(unittest.TestCase):
 
     def test_correct_close_loop(self):
         """openmy correct close-loop 应该追加 correction 事件。"""
+        import openmy.cli as cli
+
         corrections_path = PROJECT_ROOT / "data" / "corrections.jsonl"
         context_path = PROJECT_ROOT / "data" / "active_context.json"
         original_corrections = corrections_path.read_text(encoding="utf-8") if corrections_path.exists() else None
@@ -881,14 +892,10 @@ class TestOpenMyCli(unittest.TestCase):
         )
 
         try:
-            result = subprocess.run(
-                [sys.executable, "-m", "openmy", "correct", "close-loop", "README"],
-                capture_output=True,
-                text=True,
-                timeout=60,
-                cwd=PROJECT_ROOT,
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
+            parser = cli.build_parser()
+            args = parser.parse_args(["correct", "close-loop", "README"])
+            result = cli.main_with_args(args)
+            self.assertEqual(result, 0)
             payload = corrections_path.read_text(encoding="utf-8")
             self.assertIn("close_loop", payload)
             self.assertIn("loop_readme", payload)
@@ -906,6 +913,8 @@ class TestOpenMyCli(unittest.TestCase):
 
     def test_correct_list(self):
         """openmy correct list 应该列出修正历史。"""
+        import openmy.cli as cli
+
         corrections_path = PROJECT_ROOT / "data" / "corrections.jsonl"
         original_corrections = corrections_path.read_text(encoding="utf-8") if corrections_path.exists() else None
         corrections_path.parent.mkdir(parents=True, exist_ok=True)
@@ -928,16 +937,21 @@ class TestOpenMyCli(unittest.TestCase):
         )
 
         try:
-            result = subprocess.run(
-                [sys.executable, "-m", "openmy", "correct", "list"],
-                capture_output=True,
-                text=True,
-                timeout=60,
-                cwd=PROJECT_ROOT,
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("reject_project", result.stdout)
-            self.assertIn("代理配置", result.stdout)
+            parser = cli.build_parser()
+            args = parser.parse_args(["correct", "list"])
+            output = io.StringIO()
+            with patch.object(cli, "console") as fake_console, patch(
+                "openmy.commands.correct.Table",
+                side_effect=lambda *table_args, **table_kwargs: argparse.Namespace(
+                    add_column=lambda *args, **kwargs: None,
+                    add_row=lambda *args, **kwargs: output.write(" ".join(str(item) for item in args)),
+                ),
+            ):
+                fake_console.print.side_effect = lambda *items, **kwargs: output.write(" ".join(str(item) for item in items))
+                result = cli.main_with_args(args)
+            self.assertEqual(result, 0)
+            self.assertIn("reject_project", output.getvalue())
+            self.assertIn("代理配置", output.getvalue())
         finally:
             if original_corrections is None:
                 corrections_path.unlink(missing_ok=True)
@@ -1754,6 +1768,7 @@ class TestOpenMyCli(unittest.TestCase):
                 text=True,
                 timeout=60,
                 cwd=PROJECT_ROOT,
+                env=self.subprocess_env(),
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             payload = json.loads(result.stdout)

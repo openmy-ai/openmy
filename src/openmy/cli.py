@@ -31,64 +31,66 @@ from openmy.utils.paths import DATA_ROOT, LEGACY_ROOT as _LEGACY_ROOT, PROJECT_E
 from openmy.services.feedback import ensure_install_time
 
 console = common_cmd.console
-Console = _RichConsole
-Markdown = _RichMarkdown
-Panel = _RichPanel
-PROJECT_ENV_PATH = _PROJECT_ENV_PATH
-ROOT_DIR = _ROOT_DIR
-LEGACY_ROOT = _LEGACY_ROOT
-
-DATE_RE = common_cmd.DATE_RE
-DATE_MD_RE = common_cmd.DATE_MD_RE
-AUDIO_TIME_RE = common_cmd.AUDIO_TIME_RE
-DATE_IN_FILENAME_RE = common_cmd.DATE_IN_FILENAME_RE
-ROLE_COLORS = common_cmd.ROLE_COLORS
+for _name, _value in {
+    "Console": _RichConsole,
+    "Markdown": _RichMarkdown,
+    "Panel": _RichPanel,
+    "PROJECT_ENV_PATH": _PROJECT_ENV_PATH,
+    "ROOT_DIR": _ROOT_DIR,
+    "LEGACY_ROOT": _LEGACY_ROOT,
+}.items():
+    globals()[_name] = _value
+for _name in ("DATE_RE", "DATE_MD_RE", "AUDIO_TIME_RE", "DATE_IN_FILENAME_RE", "ROLE_COLORS"):
+    globals()[_name] = getattr(common_cmd, _name)
 common_cmd.HELP_IN_ENGLISH = common_cmd._prefers_english_help()
 HELP_IN_ENGLISH = common_cmd.HELP_IN_ENGLISH
-_prefers_english_help = common_cmd._prefers_english_help
-_help_text = common_cmd._help_text
-render_friendly_error = common_cmd.render_friendly_error
-project_version = common_cmd.project_version
-maybe_get_update_hint = common_cmd.maybe_get_update_hint
+for _name in (
+    "_prefers_english_help",
+    "_help_text",
+    "render_friendly_error",
+    "project_version",
+    "maybe_get_update_hint",
+    "clear_project_runtime_env",
+    "load_project_env",
+    "prepare_project_runtime_env",
+    "missing_stt_key_message",
+    "missing_stt_key_hint",
+    "missing_provider_key_message",
+    "add_stt_runtime_args",
+    "get_stt_provider_name",
+    "get_stt_api_key",
+    "get_llm_api_key",
+    "stt_provider_requires_api_key",
+    "_local_report_health_url",
+    "is_local_report_running",
+    "is_local_report_healthy",
+    "find_report_pids",
+    "kill_report_processes",
+    "wait_for_local_report",
+    "write_json",
+    "get_screen_client",
+):
+    globals()[_name] = getattr(common_cmd, _name)
+for _name, _module in {
+    "_show_main_menu": menu_cmd,
+    "_render_review": show_cmd,
+    "_cmd_correct_typo": correct_cmd,
+    "_load_context_snapshot": correct_cmd,
+    "_normalize_match_text": correct_cmd,
+    "_score_match": correct_cmd,
+    "_resolve_item": correct_cmd,
+    "_append_context_correction": correct_cmd,
+    "_cmd_correct_scene_role": correct_cmd,
+    "cmd_correct_list": correct_cmd,
+    "transcribe_audio_files": run_cmd,
+    "cmd_run": run_cmd,
+    "cmd_quick_start": run_cmd,
+}.items():
+    globals()[_name] = getattr(_module, _name)
+
 def _upsert_project_env(key: str, value: str):
     common_cmd.PROJECT_ENV_PATH = PROJECT_ENV_PATH
     return common_cmd._upsert_project_env(key, value)
-
-clear_project_runtime_env = common_cmd.clear_project_runtime_env
-load_project_env = common_cmd.load_project_env
-prepare_project_runtime_env = common_cmd.prepare_project_runtime_env
-missing_stt_key_message = common_cmd.missing_stt_key_message
-missing_stt_key_hint = common_cmd.missing_stt_key_hint
-missing_provider_key_message = common_cmd.missing_provider_key_message
-add_stt_runtime_args = common_cmd.add_stt_runtime_args
-get_stt_provider_name = common_cmd.get_stt_provider_name
-get_stt_api_key = common_cmd.get_stt_api_key
-get_llm_api_key = common_cmd.get_llm_api_key
-stt_provider_requires_api_key = common_cmd.stt_provider_requires_api_key
-
-_local_report_health_url = common_cmd._local_report_health_url
-is_local_report_running = common_cmd.is_local_report_running
-is_local_report_healthy = common_cmd.is_local_report_healthy
-find_report_pids = common_cmd.find_report_pids
-kill_report_processes = common_cmd.kill_report_processes
-wait_for_local_report = common_cmd.wait_for_local_report
-write_json = common_cmd.write_json
-get_screen_client = common_cmd.get_screen_client
-
-_show_main_menu = menu_cmd._show_main_menu
-_render_review = show_cmd._render_review
-
-_cmd_correct_typo = correct_cmd._cmd_correct_typo
-_load_context_snapshot = correct_cmd._load_context_snapshot
-_normalize_match_text = correct_cmd._normalize_match_text
-_score_match = correct_cmd._score_match
-_resolve_item = correct_cmd._resolve_item
-_append_context_correction = correct_cmd._append_context_correction
-_cmd_correct_scene_role = correct_cmd._cmd_correct_scene_role
-cmd_correct_list = correct_cmd.cmd_correct_list
-transcribe_audio_files = run_cmd.transcribe_audio_files
-cmd_run = run_cmd.cmd_run
-cmd_quick_start = run_cmd.cmd_quick_start
 
 
 def _sync_runtime_overrides() -> None:
@@ -121,150 +123,36 @@ def launch_local_report(host: str = "127.0.0.1", port: int = 8420) -> None:
     _sync_runtime_overrides()
     return common_cmd.launch_local_report(host=host, port=port)
 
-
-def find_all_dates():
-    _sync_runtime_overrides()
-    return show_cmd.find_all_dates()
+def _sync_wrapper(func):
+    return lambda *args, **kwargs: (_sync_runtime_overrides(), func(*args, **kwargs))[1]
 
 
-def ensure_day_dir(date_str: str):
-    _sync_runtime_overrides()
-    return show_cmd.ensure_day_dir(date_str)
-
-
-def read_json(path, default):
-    return show_cmd.read_json(path, default)
-
-
-def strip_document_header(markdown: str) -> str:
-    return show_cmd.strip_document_header(markdown)
-
-
-def get_date_status(date_str: str):
-    _sync_runtime_overrides()
-    return show_cmd.get_date_status(date_str)
-
-
-def resolve_day_paths(date_str: str):
-    _sync_runtime_overrides()
-    return show_cmd.resolve_day_paths(date_str)
-
-
-def stage_label(status):
-    return show_cmd.stage_label(status)
-
-
-def role_bar(distribution, width: int = 20):
-    return show_cmd.role_bar(distribution, width=width)
-
-
-def read_scenes_payload(date_str: str):
-    _sync_runtime_overrides()
-    return show_cmd.read_scenes_payload(date_str)
-
-
-def parse_audio_time(audio_path):
-    return show_cmd.parse_audio_time(audio_path)
-
-
-def infer_date_from_path(path):
-    return show_cmd.infer_date_from_path(path)
-
-
-def infer_scene_role_profile(addressed_to: str):
-    return show_cmd.infer_scene_role_profile(addressed_to)
-
-
-def rebuild_scene_stats(data):
-    return show_cmd.rebuild_scene_stats(data)
-
-
-def build_frozen_scene_stats(data):
-    return show_cmd.build_frozen_scene_stats(data)
-
-
-def freeze_scene_roles(data):
-    return show_cmd.freeze_scene_roles(data)
-
-
-def build_segmented_scenes_payload(markdown: str):
-    _sync_runtime_overrides()
-    return show_cmd.build_segmented_scenes_payload(markdown)
-
-
-def cmd_status(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return show_cmd.cmd_status(args)
-
-
-def cmd_view(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return show_cmd.cmd_view(args)
-
-
-def cmd_clean(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return show_cmd.cmd_clean(args)
-
-
-def cmd_roles(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return show_cmd.cmd_roles(args)
-
-
-def cmd_distill(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return show_cmd.cmd_distill(args)
-
-
-def cmd_briefing(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return show_cmd.cmd_briefing(args)
-
-
-def cmd_extract(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return show_cmd.cmd_extract(args)
-
-
-def cmd_query(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return show_cmd.cmd_query(args)
-
-
-def cmd_weekly(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return show_cmd.cmd_weekly(args)
-
-
-def cmd_monthly(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return show_cmd.cmd_monthly(args)
-
-
-def cmd_watch(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return show_cmd.cmd_watch(args)
-
-
-def cmd_feedback(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return show_cmd.cmd_feedback(args)
-
-
-def cmd_screen(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return screen_cmd.cmd_screen(args)
-
-
-def cmd_correct(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return correct_cmd.cmd_correct(args)
-
-
-def cmd_context(args: argparse.Namespace) -> int:
-    _sync_runtime_overrides()
-    return context_cmd.cmd_context(args)
+for _name in (
+    "find_all_dates",
+    "ensure_day_dir",
+    "get_date_status",
+    "resolve_day_paths",
+    "read_scenes_payload",
+    "build_segmented_scenes_payload",
+    "cmd_status",
+    "cmd_view",
+    "cmd_clean",
+    "cmd_roles",
+    "cmd_distill",
+    "cmd_briefing",
+    "cmd_extract",
+    "cmd_query",
+    "cmd_weekly",
+    "cmd_monthly",
+    "cmd_watch",
+    "cmd_feedback",
+):
+    globals()[_name] = _sync_wrapper(getattr(show_cmd, _name))
+for _name in ("read_json", "strip_document_header", "stage_label", "role_bar", "parse_audio_time", "infer_date_from_path", "infer_scene_role_profile", "rebuild_scene_stats", "build_frozen_scene_stats", "freeze_scene_roles"):
+    globals()[_name] = getattr(show_cmd, _name)
+cmd_screen = _sync_wrapper(screen_cmd.cmd_screen)
+cmd_correct = _sync_wrapper(correct_cmd.cmd_correct)
+cmd_context = _sync_wrapper(context_cmd.cmd_context)
 
 def _print_json(payload: Any) -> None:
     sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")

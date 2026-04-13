@@ -14,6 +14,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class TestSkillCliContract(unittest.TestCase):
+    def subprocess_env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        env["OPENMY_PROJECT_ROOT"] = str(PROJECT_ROOT)
+        env["OPENMY_DATA_DIR"] = str(PROJECT_ROOT / "data")
+        return env
+
     def make_day_dir(self, date_str: str) -> Path:
         day_dir = PROJECT_ROOT / "data" / date_str
         day_dir.mkdir(parents=True, exist_ok=True)
@@ -201,6 +207,7 @@ class TestSkillCliContract(unittest.TestCase):
                 text=True,
                 timeout=60,
                 cwd=PROJECT_ROOT,
+                env=self.subprocess_env(),
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             payload = json.loads(result.stdout)
@@ -258,6 +265,7 @@ class TestSkillCliContract(unittest.TestCase):
                 text=True,
                 timeout=60,
                 cwd=PROJECT_ROOT,
+                env=self.subprocess_env(),
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             payload = json.loads(result.stdout)
@@ -333,6 +341,8 @@ class TestSkillCliContract(unittest.TestCase):
         env.pop("OPENMY_EXTRACT_API_KEY", None)
         env.pop("OPENMY_DISTILL_API_KEY", None)
         env.pop("OPENMY_ROLES_API_KEY", None)
+        env["OPENMY_PROJECT_ROOT"] = str(PROJECT_ROOT)
+        env["OPENMY_DATA_DIR"] = str(PROJECT_ROOT / "data")
 
         try:
             result = subprocess.run(
@@ -447,12 +457,13 @@ class TestSkillCliContract(unittest.TestCase):
                 text=True,
                 timeout=60,
                 cwd=PROJECT_ROOT,
+                env=self.subprocess_env(),
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             payload = json.loads(result.stdout)
             self.assertTrue(payload["ok"])
-            self.assertIn("corrections.json", payload["data"]["created"])
-            self.assertIn("vocab.txt", payload["data"]["created"])
+            self.assertTrue(payload["data"]["corrections_exists"])
+            self.assertTrue(payload["data"]["vocab_exists"])
             self.assertTrue(corrections_path.exists())
             self.assertTrue(vocab_path.exists())
         finally:
