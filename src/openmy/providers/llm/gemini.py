@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from openmy.providers.base import TextGenerationProvider
+from openmy.utils.errors import FriendlyCliError, doc_url
 
 try:
     from google import genai
@@ -29,9 +30,23 @@ class GeminiLLMProvider(TextGenerationProvider):
 
     def _client(self):
         if getattr(genai, "Client", None) is None:
-            raise RuntimeError("Gemini SDK 不可用：缺少 google-genai")
+            raise FriendlyCliError(
+                "Gemini 依赖没装好，当前不能走这条整理路线。",
+                code="gemini_llm_sdk_missing",
+                fix='先运行 `pip install google-genai`，再重试。',
+                doc_url=doc_url("语音转写"),
+                message_en="Gemini SDK is unavailable.",
+                fix_en="Run pip install google-genai, then retry.",
+            )
         if not self.api_key:
-            raise RuntimeError("缺少 Gemini API key")
+            raise FriendlyCliError(
+                "缺少 Gemini 的 API key（访问口令）。",
+                code="missing_gemini_llm_key",
+                fix='先把 `GEMINI_API_KEY` 写进项目的 `.env（环境文件）`，再重试。',
+                doc_url=doc_url("语音转写"),
+                message_en="Missing Gemini API key.",
+                fix_en="Add GEMINI_API_KEY to the project .env file, then retry.",
+            )
         return genai.Client(api_key=self.api_key)
 
     def generate_text(
@@ -58,7 +73,14 @@ class GeminiLLMProvider(TextGenerationProvider):
         response = client.models.generate_content(**kwargs)
         text = response.text.strip() if response.text else ""
         if not text:
-            raise RuntimeError(f"Gemini 没有返回 {task} 文本结果")
+            raise FriendlyCliError(
+                f"Gemini 没有返回 {task} 的文本结果。",
+                code="gemini_text_empty",
+                fix="先稍后再试；如果一直复现，就换一个模型。",
+                doc_url=doc_url("语音转写"),
+                message_en=f"Gemini returned no text for {task}.",
+                fix_en="Retry later. If it keeps failing, switch to another model.",
+            )
         return text
 
     def generate_json(
@@ -102,8 +124,22 @@ class GeminiLLMProvider(TextGenerationProvider):
         )
         text = _strip_code_fences(response.text.strip() if response.text else "")
         if not text:
-            raise RuntimeError(f"Gemini 没有返回 {task} JSON 结果")
+            raise FriendlyCliError(
+                f"Gemini 没有返回 {task} 的 JSON 结果。",
+                code="gemini_json_empty",
+                fix="先稍后再试；如果一直复现，就换一个模型。",
+                doc_url=doc_url("语音转写"),
+                message_en=f"Gemini returned no JSON for {task}.",
+                fix_en="Retry later. If it keeps failing, switch to another model.",
+            )
         try:
             return json.loads(text)
         except json.JSONDecodeError as exc:
-            raise RuntimeError(f"Gemini 返回的 {task} JSON 无法解析: {text[:200]}") from exc
+            raise FriendlyCliError(
+                f"Gemini 返回的 {task} 结果不是合法 JSON。",
+                code="gemini_json_invalid",
+                fix="先重试一次；如果还是不对，就换模型再试。",
+                doc_url=doc_url("语音转写"),
+                message_en=f"Gemini returned invalid JSON for {task}.",
+                fix_en="Retry once. If it still fails, switch to another model.",
+            ) from exc

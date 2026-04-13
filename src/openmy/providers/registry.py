@@ -21,7 +21,6 @@ from openmy.providers.stt.funasr import FunASRSTTProvider
 from openmy.providers.stt.gemini import GeminiSTTProvider
 from openmy.providers.stt.groq_whisper import GroqWhisperSTTProvider
 
-
 STT_PROVIDERS = {
     "gemini": GeminiSTTProvider,
     "faster-whisper": FasterWhisperSTTProvider,

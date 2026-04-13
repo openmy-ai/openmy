@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from openmy.utils.errors import FriendlyCliError, doc_url
 from openmy.utils.io import safe_write_json
 
 try:
@@ -140,16 +141,37 @@ def plan_transcription_enrichment(
 
 def run_transcription_enrichment(day_dir: Path, *, diarize: bool = False) -> dict[str, Any]:
     if whisperx is None:
-        raise RuntimeError("WhisperX 精标层不可用：缺少依赖 whisperx。可先运行 `uv pip install whisperx`。")
+        raise FriendlyCliError(
+            "WhisperX 精标层没装好，当前不能做精标。",
+            code="whisperx_missing",
+            fix='先运行 `pip install "openmy[transcription-enrich]"`，再重试。',
+            doc_url=doc_url("语音转写"),
+            message_en="WhisperX is unavailable.",
+            fix_en='Run pip install "openmy[transcription-enrich]" and retry.',
+        )
 
     transcription_path = _transcription_path(day_dir)
     payload = _load_json(transcription_path)
     if not payload:
-        raise RuntimeError("缺少 transcript.transcription.json，无法执行精标。")
+        raise FriendlyCliError(
+            "缺少 transcript.transcription.json（转写中间结果），现在没法做精标。",
+            code="transcription_payload_missing",
+            fix="先重新跑一次 `openmy run 日期 --audio 音频路径`。",
+            doc_url=doc_url("语音转写"),
+            message_en="Missing transcript.transcription.json, so alignment cannot run.",
+            fix_en="Run openmy run DATE --audio AUDIO_PATH again.",
+        )
 
     chunks = payload.get("chunks", [])
     if not isinstance(chunks, list) or not chunks:
-        raise RuntimeError("当前没有可精标的转写 chunk。")
+        raise FriendlyCliError(
+            "当前没有可精标的转写分段。",
+            code="transcription_chunks_missing",
+            fix="先重新跑一次转写，确认中间结果已经写出来。",
+            doc_url=doc_url("语音转写"),
+            message_en="No transcription chunks are available for alignment.",
+            fix_en="Run transcription again and make sure the intermediate output exists.",
+        )
 
     device = os.getenv("OPENMY_WHISPERX_DEVICE", "cpu") or "cpu"
     diarization_token = os.getenv("HF_TOKEN", "") or os.getenv("HUGGINGFACE_TOKEN", "")
@@ -162,7 +184,14 @@ def run_transcription_enrichment(day_dir: Path, *, diarize: bool = False) -> dic
     for chunk in chunks:
         chunk_path = Path(str(chunk.get("chunk_path", "") or ""))
         if not chunk_path.exists():
-            raise RuntimeError(f"精标所需 chunk 不存在: {chunk_path}")
+            raise FriendlyCliError(
+                "精标要用的音频分段文件找不到了。",
+                code="transcription_chunk_file_missing",
+                fix="先重新跑一次 `openmy run 日期 --audio 音频路径`，把分段文件补回来。",
+                doc_url=doc_url("语音转写"),
+                message_en=f"Alignment chunk file is missing: {chunk_path}",
+                fix_en="Run openmy run DATE --audio AUDIO_PATH again to recreate chunk files.",
+            )
 
         audio = whisperx.load_audio(str(chunk_path))
         raw_segments = []

@@ -98,6 +98,16 @@ OpenMy can act as a long-term context layer so your agent reads what happened in
 ### 3. Developers building personal-context workflows
 You can plug the stable actions into your own CLI, desktop tool, or automation flow.
 
+## Real examples
+
+- [How I use OpenMy to keep daily context under control](docs/examples/daily-context-workflow.en.md)
+- [How to let your agent read your context first](docs/examples/agent-context-handoff.en.md)
+- [User story template](docs/examples/owner-story-template.en.md)
+
+## Community
+
+- GitHub Discussions: https://github.com/openmy-ai/openmy/discussions
+
 ---
 
 ## What the output looks like

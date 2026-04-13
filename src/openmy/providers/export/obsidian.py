@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from openmy.providers.export.base import ExportProvider
+from openmy.utils.errors import FriendlyCliError, doc_url
 
 
 class ObsidianExportProvider(ExportProvider):
@@ -16,7 +17,14 @@ class ObsidianExportProvider(ExportProvider):
 
     def _require_vault(self) -> Path:
         if not self.vault_path:
-            raise RuntimeError("Obsidian export missing vault_path.")
+            raise FriendlyCliError(
+                "还没配置 Obsidian 笔记库路径，所以现在没法导出。",
+                code="obsidian_vault_missing",
+                fix="先把 vault_path（笔记库路径）配好，再重试导出。",
+                doc_url=doc_url("readme"),
+                message_en="Obsidian export is missing the vault path.",
+                fix_en="Configure the vault_path first, then retry the export.",
+            )
         self.vault_path.mkdir(parents=True, exist_ok=True)
         return self.vault_path
 

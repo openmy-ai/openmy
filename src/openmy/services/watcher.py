@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from openmy.config import get_audio_source_dir
+from openmy.utils.errors import FriendlyCliError, doc_url
 
 try:
     from watchdog.events import FileSystemEventHandler
@@ -142,10 +143,24 @@ def create_observer(path: Path, handler: AudioFileHandler):
 def resolve_watch_directory(directory: str | None = None) -> Path:
     raw = str(directory or "").strip() or get_audio_source_dir()
     if not raw:
-        raise ValueError("未提供监控目录，也没有配置 OPENMY_AUDIO_SOURCE_DIR。")
+        raise FriendlyCliError(
+            "还没告诉我该监控哪个录音目录。",
+            code="watch_directory_missing",
+            fix="运行 `openmy skill profile.set --audio-source 你的录音目录 --json`，或者直接给 `openmy watch 目录路径`。",
+            doc_url=doc_url("一分钟跑起来"),
+            message_en="No watch directory was provided and OPENMY_AUDIO_SOURCE_DIR is not configured.",
+            fix_en="Run openmy skill profile.set --audio-source YOUR_DIRECTORY --json or pass a directory to openmy watch.",
+        )
     path = Path(raw).expanduser().resolve()
     if not path.exists():
-        raise ValueError(f"目录不存在: {path}")
+        raise FriendlyCliError(
+            "你给的录音目录不存在。",
+            code="watch_directory_not_found",
+            fix="先确认目录路径写对了，再重试。",
+            doc_url=doc_url("一分钟跑起来"),
+            message_en=f"The watch directory does not exist: {path}",
+            fix_en="Check the directory path and retry.",
+        )
     return path
 
 
@@ -153,7 +168,7 @@ def watch(directory: str | None = None, cooldown: int = 30):
     """启动监控。"""
     try:
         path = resolve_watch_directory(directory)
-    except ValueError as exc:
+    except FriendlyCliError as exc:
         print(f"❌ {exc}")
         sys.exit(1)
 

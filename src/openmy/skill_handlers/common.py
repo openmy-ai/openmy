@@ -5,8 +5,9 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
+from openmy.utils.errors import DEFAULT_DOC_URL, skill_error
+
 SKILL_CONTRACT_VERSION = "v1"
-DEFAULT_DOC_URL = "https://github.com/openmy-ai/openmy#readme"
 
 
 class SkillDispatchError(RuntimeError):
@@ -59,13 +60,14 @@ def build_error_payload(
 ) -> dict[str, Any]:
     payload = {
         "ok": False,
-        "error": True,
         "action": action,
         "version": SKILL_CONTRACT_VERSION,
-        "error_code": error_code,
-        "message": message,
-        "fix": hint,
-        "doc_url": doc_url,
+        **skill_error(
+            code=error_code,
+            message=message,
+            fix=hint,
+            doc_url=doc_url,
+        ),
     }
     if hint:
         payload["hint"] = hint

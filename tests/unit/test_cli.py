@@ -279,6 +279,25 @@ class TestOpenMyCli(unittest.TestCase):
         self.assertIn("Available commands", help_text)
         self.assertIn("Upgrade the current OpenMy installation", help_text)
 
+    def test_cli_help_uses_chinese_when_locale_is_chinese(self):
+        import openmy.cli as cli
+
+        original_lang = os.environ.get("LANG")
+        os.environ["LANG"] = "zh_CN.UTF-8"
+        try:
+            cli = importlib.reload(cli)
+            parser = cli.build_parser()
+            help_text = parser.format_help()
+        finally:
+            if original_lang is None:
+                os.environ.pop("LANG", None)
+            else:
+                os.environ["LANG"] = original_lang
+            importlib.reload(cli)
+
+        self.assertIn("可用命令", help_text)
+        self.assertIn("升级当前 OpenMy 安装", help_text)
+
     def test_cli_self_update_runs_pip_upgrade(self):
         import openmy.cli as cli
 

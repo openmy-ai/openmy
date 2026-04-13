@@ -16,6 +16,7 @@ import time
 import webbrowser
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import date, datetime
+import locale
 from pathlib import Path
 from typing import Any
 from urllib import error as urllib_error
@@ -42,6 +43,7 @@ from openmy.config import (
     stt_provider_requires_api_key,
 )
 from openmy.utils.io import safe_write_json
+from openmy.utils.errors import FriendlyCliError, doc_url
 from openmy.utils.paths import (
     DATA_ROOT,
     LEGACY_ROOT,
@@ -49,6 +51,14 @@ from openmy.utils.paths import (
     PROJECT_ROOT as ROOT_DIR,
 )
 from openmy.services.onboarding.state import load_onboarding_state
+from openmy.services.feedback import (
+    ask_feedback_opt_in,
+    delete_feedback_data,
+    ensure_install_time,
+    load_settings as load_feedback_settings,
+    load_telemetry,
+    set_feedback_opt_in,
+)
 from openmy.services.query.context_query import query_context, render_query_result
 from openmy.services.query.search_index import get_day_status_from_index, list_index_dates
 
@@ -71,16 +81,20 @@ AUDIO_TIME_RE = re.compile(r".*?(\d{8})_(\d{2})(\d{2})(\d{2}).*")
 DATE_IN_FILENAME_RE = re.compile(r"(?P<iso>\d{4}-\d{2}-\d{2})|(?P<compact>\d{8})")
 
 
-class FriendlyCliError(RuntimeError):
-    """给最终用户看的中文错误。"""
-
-
 def _prefers_english_help() -> bool:
+    saw_non_chinese = False
     for env_name in ("LC_ALL", "LC_MESSAGES", "LANG"):
         value = str(os.getenv(env_name, "") or "").strip().lower()
         if not value:
             continue
-        return not value.startswith("zh")
+        if value.startswith("zh"):
+            return False
+        saw_non_chinese = True
+    if saw_non_chinese:
+        return True
+    current_locale = locale.getlocale()[0]
+    if current_locale:
+        return not str(current_locale).lower().startswith("zh")
     return False
 
 
@@ -89,6 +103,14 @@ HELP_IN_ENGLISH = _prefers_english_help()
 
 def _help_text(zh: str, en: str) -> str:
     return en if HELP_IN_ENGLISH else zh
+
+
+def render_friendly_error(exc: FriendlyCliError) -> None:
+    console.print(f"[red]❌ {exc.message}[/red]")
+    if getattr(exc, "fix", ""):
+        console.print(f"[yellow]怎么修：{exc.fix}[/yellow]")
+    if getattr(exc, "doc_url", ""):
+        console.print(f"[dim]文档：{exc.doc_url}[/dim]")
 
 
 def project_version() -> str:
@@ -477,7 +499,14 @@ def missing_provider_key_message(has_env_file: bool) -> str:
 def ensure_runtime_dependencies(*, stt_provider: str | None = None) -> None:
     """给 quick-start 做最小依赖自检。"""
     if sys.version_info < (3, 10):
-        raise FriendlyCliError("需要 Python 3.10 以上版本。可先运行 `brew install python@3.11`。")
+        raise FriendlyCliError(
+            "需要 Python 3.10 以上版本。",
+            code="python_version_too_low",
+            fix="先运行 `brew install python@3.11`，再重试。",
+            doc_url=doc_url("一分钟跑起来"),
+            message_en="Python 3.10 or newer is required.",
+            fix_en="Run brew install python@3.11, then retry.",
+        )
 
     has_env_file = prepare_project_runtime_env()
     final_stt_provider = (stt_provider or get_stt_provider_name()).lower()
@@ -487,17 +516,34 @@ def ensure_runtime_dependencies(*, stt_provider: str | None = None) -> None:
             raise FriendlyCliError(
                 "已读取项目根目录 `.env`，但当前这条云端语音转写路线还缺 key。"
                 "如果继续走云端，先确认你已经运行过 `openmy skill profile.set --stt-provider gemini --json`，"
-                "再把对应 key 补进 `.env`；如果想先跑通，改走本地路线更省事。"
+                "再把对应 key 补进 `.env`；如果想先跑通，改走本地路线更省事。",
+                code="stt_cloud_key_missing",
+                fix="先补 `.env（环境文件）` 里的 key，或者改走本地转写路线。",
+                doc_url=doc_url("语音转写"),
+                message_en="The selected cloud speech-to-text route is missing its API key.",
+                fix_en="Add the key to the project .env file, or switch to a local speech-to-text route.",
             )
         raise FriendlyCliError(
             "没找到项目根目录 `.env`，当前这条云端语音转写路线也没有可用 key。"
-            "先复制 `.env.example` 成 `.env`，再补对应 key；如果想先跑通，直接改走 `--stt-provider funasr` 或 `--stt-provider faster-whisper`。"
+            "先复制 `.env.example` 成 `.env`，再补对应 key；如果想先跑通，直接改走 `--stt-provider funasr` 或 `--stt-provider faster-whisper`。",
+            code="project_env_missing",
+            fix="先复制 `.env.example（示例环境文件）` 成 `.env（环境文件）`，再补 key。",
+            doc_url=doc_url("一分钟跑起来"),
+            message_en="The project .env file is missing and this cloud speech-to-text route has no API key.",
+            fix_en="Copy .env.example to .env and add the matching API key.",
         )
 
     missing_bins = [name for name in ("ffmpeg", "ffprobe") if shutil.which(name) is None]
     if missing_bins:
         missing = "、".join(missing_bins)
-        raise FriendlyCliError(f"缺少 {missing}。macOS 可先运行 `brew install ffmpeg`。")
+        raise FriendlyCliError(
+            f"缺少 {missing}。",
+            code="ffmpeg_missing",
+            fix="macOS（苹果系统）先运行 `brew install ffmpeg`，再重试。",
+            doc_url=doc_url("一分钟跑起来"),
+            message_en=f"Missing required binary tools: {missing}.",
+            fix_en="On macOS, run brew install ffmpeg, then retry.",
+        )
 
 
 def add_stt_runtime_args(parser: argparse.ArgumentParser) -> None:
@@ -639,7 +685,14 @@ def launch_local_report(host: str = "127.0.0.1", port: int = 8420) -> None:
             start_new_session=True,
         )
     if not wait_for_local_report(host=host, port=port):
-        raise FriendlyCliError("本地网页没能正常启动，请稍后再试。")
+        raise FriendlyCliError(
+            "本地网页没能正常启动。",
+            code="local_report_start_failed",
+            fix="先确认 8420 端口没被别的进程占住，再重试。",
+            doc_url=doc_url("readme"),
+            message_en="The local web report failed to start.",
+            fix_en="Make sure port 8420 is free, then retry.",
+        )
     webbrowser.open(url)
 
 
@@ -1432,6 +1485,58 @@ def cmd_watch(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_feedback(args: argparse.Namespace) -> int:
+    if getattr(args, "delete", False):
+        delete_feedback_data()
+        console.print("[green]✅ 本地反馈记录已经删掉了。[/green]")
+        return 0
+
+    if getattr(args, "show", False):
+        settings = load_feedback_settings()
+        telemetry = load_telemetry()
+        console.print(
+            Panel(
+                "\n".join(
+                    [
+                        f"已同意：{'是' if settings.get('feedback_opt_in') else '否'}",
+                        f"首次安装时间：{telemetry.get('first_install_time', '还没记')}",
+                        f"首次成功处理时间：{telemetry.get('first_successful_processing_time', '还没记')}",
+                        f"TTHW：{telemetry.get('tthw_seconds', '还没记')} 秒",
+                        f"转写引擎：{telemetry.get('stt_provider', '还没记')}",
+                        f"系统：{telemetry.get('os', '还没记')}",
+                    ]
+                ),
+                title="本地反馈记录",
+                border_style="cyan",
+            )
+        )
+        return 0
+
+    if getattr(args, "opt_in", False):
+        set_feedback_opt_in(True)
+        console.print("[green]✅ 已开启本地反馈记录。只记这台机器上的匿名使用指标，不上传。[/green]")
+        return 0
+
+    if getattr(args, "opt_out", False):
+        set_feedback_opt_in(False)
+        console.print("[green]✅ 已关闭本地反馈记录。旧数据还在，你随时可以删。[/green]")
+        return 0
+
+    settings = load_feedback_settings()
+    if settings.get("feedback_opt_in") is None:
+        decision = ask_feedback_opt_in()
+        if decision is None:
+            return 0
+        set_feedback_opt_in(bool(decision))
+        return 0
+
+    if settings.get("feedback_opt_in"):
+        console.print("[green]✅ 你已经开启了本地反馈记录。想看详情就运行 `openmy feedback --show`。[/green]")
+    else:
+        console.print("[yellow]ℹ️ 你现在没开本地反馈记录。想开启就运行 `openmy feedback --opt-in`。[/yellow]")
+    return 0
+
+
 def cmd_screen(args: argparse.Namespace) -> int:
     from pathlib import Path
 
@@ -1457,7 +1562,14 @@ def cmd_screen(args: argparse.Namespace) -> int:
         save_screen_context_settings(settings, data_root=DATA_ROOT)
         _upsert_project_env("SCREEN_RECOGNITION_ENABLED", "true")
         if not is_capture_supported():
-            raise FriendlyCliError("当前机器不支持内置屏幕识别，只支持 macOS + 系统自带截屏")
+            raise FriendlyCliError(
+                "当前机器不支持内置屏幕识别。",
+                code="screen_capture_unsupported",
+                fix="这块先在 macOS（苹果系统）上用；别的系统先跳过屏幕采集。",
+                doc_url=doc_url("readme"),
+                message_en="Built-in screen recognition is not supported on this machine.",
+                fix_en="Use this feature on macOS for now, or skip screen capture on this system.",
+            )
         status = start_capture_daemon(
             data_root=DATA_ROOT,
             interval_seconds=settings.capture_interval_seconds,
@@ -1490,7 +1602,14 @@ def cmd_screen(args: argparse.Namespace) -> int:
         )
         return 0
 
-    raise FriendlyCliError("screen 只支持 on / off / status")
+    raise FriendlyCliError(
+        "screen 只支持 on、off、status 这三个动作。",
+        code="screen_action_invalid",
+        fix="改成 `openmy screen on`、`openmy screen off` 或 `openmy screen status`。",
+        doc_url=doc_url("readme"),
+        message_en="screen only supports on, off, and status.",
+        fix_en="Use openmy screen on, openmy screen off, or openmy screen status.",
+    )
 
 
 def cmd_self_update(args: argparse.Namespace) -> int:
@@ -1507,10 +1626,12 @@ def cmd_self_update(args: argparse.Namespace) -> int:
     result = subprocess.run(command, check=False)
     if result.returncode != 0:
         raise FriendlyCliError(
-            _help_text(
-                "升级没跑成。请检查网络，或者稍后再试。",
-                "The update did not finish. Check your network connection and try again.",
-            )
+            _help_text("升级没跑成。", "The update did not finish."),
+            code="self_update_failed",
+            fix=_help_text("先检查网络，再运行 `openmy self-update` 重试。", "Check your network connection, then run openmy self-update again."),
+            doc_url=doc_url("readme"),
+            message_en="The update did not finish.",
+            fix_en="Check your network connection, then run openmy self-update again.",
         )
     console.print(
         _help_text(
@@ -1588,6 +1709,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_watch = sub.add_parser("watch", help=_help_text("监控录音文件夹", "Watch an audio folder for new recordings."))
     p_watch.add_argument("directory", nargs="?", help=_help_text("监控目录；不传就用已配置的录音固定目录", "Directory to watch. Defaults to the configured audio source folder."))
 
+    p_feedback = sub.add_parser("feedback", help=_help_text("管理本地反馈记录", "Manage local feedback tracking."))
+    p_feedback.add_argument("--show", action="store_true", help=_help_text("查看当前本地反馈记录", "Show the current local feedback record."))
+    p_feedback.add_argument("--opt-in", action="store_true", help=_help_text("开启本地反馈记录", "Enable local feedback tracking."))
+    p_feedback.add_argument("--opt-out", action="store_true", help=_help_text("关闭本地反馈记录", "Disable local feedback tracking."))
+    p_feedback.add_argument("--delete", action="store_true", help=_help_text("删除本地反馈记录", "Delete local feedback records."))
+
     p_screen = sub.add_parser("screen", help=_help_text("开关屏幕识别", "Turn screen recognition on or off."))
     p_screen.add_argument("action", choices=["on", "off", "status"], help=_help_text("on=开启，off=关闭，status=查看状态", "Use on to enable, off to disable, and status to inspect the current state."))
 
@@ -1662,6 +1789,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | None = None) -> int:
     parser = parser or build_parser()
     prepare_project_runtime_env()
+    ensure_install_time()
     if not args.command:
         latest_version = maybe_get_update_hint()
         if latest_version:
@@ -1679,6 +1807,7 @@ def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | N
         "correct": cmd_correct,
         "distill": cmd_distill,
         "extract": cmd_extract,
+        "feedback": cmd_feedback,
         "query": cmd_query,
         "quick-start": cmd_quick_start,
         "roles": cmd_roles,
@@ -1711,7 +1840,7 @@ def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | N
         console.print("\n[yellow]已中断[/yellow]")
         return 130
     except FriendlyCliError as exc:
-        console.print(f"[red]❌ {exc}[/red]")
+        render_friendly_error(exc)
         return 1
     except Exception:
         console.print_exception(show_locals=False)

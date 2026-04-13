@@ -25,6 +25,7 @@ from openmy.config import (
     get_stt_word_timestamps_enabled,
     stt_provider_requires_api_key,
 )
+from openmy.utils.errors import FriendlyCliError, doc_url
 from openmy.providers.base import TranscriptionResult, TranscriptionSegment, TranscriptionWord
 from openmy.providers.registry import ProviderRegistry
 from openmy.services.cleaning.cleaner import VOCAB_EXAMPLE_FILE, VOCAB_FILE, resolve_resource_path
@@ -429,15 +430,27 @@ def transcribe_audio_files(
         for index, audio_name in enumerate(audio_files, start=1):
             audio_path = Path(audio_name).expanduser().resolve()
             if not audio_path.is_file():
-                raise FileNotFoundError(f"音频文件不存在: {audio_path}")
+                raise FriendlyCliError(
+                    "音频文件不存在，没法开始处理。",
+                    code="audio_file_missing",
+                    fix="先确认音频路径写对了，再重试。",
+                    doc_url=doc_url("一分钟跑起来"),
+                    message_en=f"Audio file does not exist: {audio_path}",
+                    fix_en="Check the audio file path and retry.",
+                )
 
             if stt_provider_requires_api_key(final_provider_name) and not api_key:
                 sidecar_transcript = load_sidecar_transcript(audio_path)
                 if sidecar_transcript:
                     rendered_parts.extend([f"## {offset_time_label(parse_audio_time(audio_path), 0)}", "", sidecar_transcript, ""])
                     continue
-                raise RuntimeError(
-                    f"缺少 {final_provider_name} STT 所需 API key，请检查 `OPENMY_STT_API_KEY` / `GEMINI_API_KEY`。"
+                raise FriendlyCliError(
+                    f"缺少 {final_provider_name} 转写路线要用的 API key（访问口令）。",
+                    code="stt_api_key_missing",
+                    fix="先把对应 key 写进项目 `.env（环境文件）`，再重试。",
+                    doc_url=doc_url("语音转写"),
+                    message_en=f"Missing API key for the {final_provider_name} speech-to-text route.",
+                    fix_en="Add the matching API key to the project .env file, then retry.",
                 )
 
             chunks = prepare_audio_chunks(

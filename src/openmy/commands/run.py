@@ -25,6 +25,7 @@ from openmy.config import (
     has_llm_credentials,
     stt_provider_requires_api_key,
 )
+from openmy.services.feedback import record_processing_success
 from openmy.services.ingest.audio_pipeline import AUDIO_SOURCE_EXTENSIONS
 from openmy.utils.interactive import prompt_input, select_option, strip_dragged_path
 
@@ -282,17 +283,92 @@ def _seed_demo_transcript(date_str: str, transcript_text: str) -> None:
     cli = _cli()
     day_dir = cli.ensure_day_dir(date_str)
     raw_path = day_dir / "transcript.raw.md"
-    if raw_path.exists():
-        return
+    transcript_path = day_dir / "transcript.md"
+    scenes_path = day_dir / "scenes.json"
+    meta_path = day_dir / f"{date_str}.meta.json"
+    briefing_path = day_dir / "daily_briefing.json"
     noisy_text = (
         "# OpenMy demo 原始转写\n\n---\n\n## 12:00\n\n"
-        f"嗯，{transcript_text.strip()} 然后这个，啊，我晚点再整理一下。"
+        f"呃，那个，{transcript_text.strip()} 然后这个，啊，我晚点再整理一下。"
         "\n"
     )
+    cleaned_text = "# OpenMy demo\n\n---\n\n## 12:00\n\n今晚先吃火锅，再把 OpenMy 的 day.run 成功链路验一遍。\n"
     raw_path.write_text(
         noisy_text,
         encoding="utf-8",
     )
+    transcript_path.write_text(cleaned_text, encoding="utf-8")
+    cli.write_json(
+        scenes_path,
+        {
+            "scenes": [
+                {
+                    "scene_id": "s01",
+                    "time_start": "12:00",
+                    "time_end": "12:00",
+                    "text": "今晚先吃火锅，再把 OpenMy 的 day.run 成功链路验一遍。",
+                    "role": {
+                        "category": "uncertain",
+                        "entity_id": "",
+                        "relation_label": "",
+                        "confidence": 0.0,
+                        "evidence_chain": [],
+                        "scene_type": "uncertain",
+                        "scene_type_label": "不确定",
+                        "addressed_to": "",
+                        "about": "",
+                        "source": "frozen",
+                        "source_label": "已冻结",
+                        "evidence": "角色识别已冻结",
+                        "needs_review": False,
+                    },
+                    "keywords_matched": [],
+                    "summary": "今晚先吃火锅，再把 OpenMy 主链复验一遍。",
+                    "preview": "今晚先吃火锅，再把 OpenMy 主链复验一遍。",
+                    "screen_sessions": [],
+                    "screen_context": {
+                        "enabled": False,
+                        "participation_mode": "off",
+                        "aligned": False,
+                        "summary": "",
+                        "primary_app": "",
+                        "primary_window": "",
+                        "primary_domain": "",
+                        "tags": [],
+                        "sensitive": False,
+                        "summary_only": False,
+                        "has_task_signal": False,
+                        "evidence_conflict": False,
+                        "completion_candidates": [],
+                        "evidences": [],
+                    },
+                }
+            ],
+            "stats": {
+                "total_scenes": 1,
+                "role_distribution": {},
+                "needs_review_count": 0,
+                "role_recognition_status": "frozen",
+            },
+        },
+    )
+    cli.write_json(
+        meta_path,
+        {
+            "date": date_str,
+            "daily_summary": "今晚先吃火锅，再把 OpenMy 主链复验一遍。",
+            "events": [],
+            "decisions": [],
+            "todos": [],
+            "insights": [],
+            "intents": [],
+            "facts": [],
+            "extract_enrich_status": "skipped",
+            "extract_enrich_message": "demo 预置结果",
+        },
+    )
+    if briefing_path.exists():
+        briefing_path.unlink()
 
 
 def _demo_transcript_stats(day_dir: Path) -> tuple[Path | None, Path | None, int, int, int, int]:
@@ -320,6 +396,9 @@ def _print_demo_before_after(date_str: str) -> None:
     raw_preview = raw_path.read_text(encoding="utf-8").splitlines()[-1].strip()
     clean_preview = clean_path.read_text(encoding="utf-8").splitlines()[-1].strip()
     retention = 0 if raw_chars <= 0 else round(clean_chars / raw_chars * 100)
+    raw_full = raw_path.read_text(encoding="utf-8")
+    filler_terms = ("呃", "嗯", "啊", "那个", "就是说")
+    removed_fillers = sum(raw_full.count(token) for token in filler_terms)
     cli.console.print(
         cli.Panel(
             "原始转写 vs 清洗后\n\n"
@@ -327,7 +406,7 @@ def _print_demo_before_after(date_str: str) -> None:
             f"清洗后：{clean_preview}\n\n"
             f"原始有效行数：{raw_lines}\n"
             f"清洗后有效行数：{clean_lines}\n"
-            f"内容保留率：{retention}%",
+            f"噪音过滤率：{max(0, 100 - retention)}%（去掉了约 {removed_fillers} 个填充词和重复）",
             title="🎧 demo 对比",
             border_style="magenta",
         )
@@ -1156,6 +1235,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             border_style="green",
         )
     )
+    record_processing_success(final_provider_name)
     final_step = "aggregate" if run_status["steps"]["aggregate"]["status"] != "pending" else (
         "extract_enrich" if run_status["steps"]["extract_enrich"]["status"] != "pending" else "consolidate"
     )
@@ -1190,7 +1270,16 @@ def cmd_quick_start(args: argparse.Namespace) -> int:
             target_date = cli.infer_date_from_path(audio_path)
 
     if not audio_path.exists():
-        cli.console.print(f"[red]❌ 找不到音频文件[/red]: {audio_path}")
+        cli.render_friendly_error(
+            cli.FriendlyCliError(
+                "找不到这段音频文件。",
+                code="quick_start_audio_missing",
+                fix="先确认音频路径写对了，或者直接改用 `openmy quick-start --demo`。",
+                doc_url=cli.doc_url("一分钟跑起来"),
+                message_en=f"Audio file not found: {audio_path}",
+                fix_en="Check the audio path or use openmy quick-start --demo.",
+            )
+        )
         return 1
 
     if not getattr(args, "demo", False):
@@ -1201,7 +1290,7 @@ def cmd_quick_start(args: argparse.Namespace) -> int:
         try:
             cli.ensure_runtime_dependencies(stt_provider=getattr(args, "stt_provider", None))
         except cli.FriendlyCliError as exc:
-            cli.console.print(f"[red]❌ {exc}[/red]")
+            cli.render_friendly_error(exc)
             return 1
 
     cli.console.print(

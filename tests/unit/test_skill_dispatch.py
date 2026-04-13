@@ -72,6 +72,8 @@ class TestSkillDispatch(unittest.TestCase):
         self.assertEqual(payload["action"], "unknown.action")
         self.assertEqual(payload["error_code"], "unknown_action")
         self.assertIn("fix", payload)
+        self.assertIn("message_en", payload)
+        self.assertIn("fix_en", payload)
         self.assertIn("doc_url", payload)
         self.assertEqual(payload["version"], "v1")
 

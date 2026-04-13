@@ -13,6 +13,7 @@ from pathlib import Path
 from openmy.config import GEMINI_MODEL, TRANSCRIBE_TIMEOUT, get_stt_api_key, get_stt_model
 from openmy.providers.registry import ProviderRegistry
 from openmy.providers.stt.gemini import build_prompt as build_gemini_stt_prompt
+from openmy.utils.errors import FriendlyCliError, doc_url
 
 
 def load_vocab_terms(vocab_file: Path) -> str:
@@ -62,7 +63,14 @@ def run_gemini_cli(
     """向后兼容旧接口。内部已改用 SDK。"""
     api_key = get_stt_api_key()
     if not api_key:
-        raise RuntimeError("缺少 GEMINI_API_KEY 环境变量")
+        raise FriendlyCliError(
+            "缺少 Gemini 的 API key（访问口令）。",
+            code="missing_gemini_key",
+            fix='先把 `GEMINI_API_KEY` 写进项目的 `.env（环境文件）`，再重试。',
+            doc_url=doc_url("语音转写"),
+            message_en="Missing Gemini API key.",
+            fix_en="Add GEMINI_API_KEY to the project .env file, then retry.",
+        )
     return transcribe_audio(
         audio_path=audio_path,
         api_key=api_key,

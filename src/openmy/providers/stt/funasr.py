@@ -10,6 +10,7 @@ from openmy.providers.base import (
     TranscriptionSegment,
     TranscriptionWord,
 )
+from openmy.utils.errors import FriendlyCliError, doc_url
 
 try:
     from funasr import AutoModel
@@ -33,9 +34,13 @@ def _get_model(model_name: str, device: str, vad_filter: bool):
     if cached is not None:
         return cached
     if AutoModel is None:
-        raise RuntimeError(
-            "本地转写后端 FunASR 不可用：缺少 `funasr` 依赖。"
-            "可先运行 `uv pip install 'funasr>=1.2.6' modelscope`。"
+        raise FriendlyCliError(
+            "FunASR 依赖没装好，当前不能走这条本地转写路线。",
+            code="funasr_dependency_missing",
+            fix='先运行 `pip install "openmy[transcription-zh]"`，或者执行 `uv pip install \'funasr>=1.2.6\' modelscope`，再重试。',
+            doc_url=doc_url("语音转写"),
+            message_en="FunASR dependencies are missing.",
+            fix_en='Run pip install "openmy[transcription-zh]" or uv pip install \'funasr>=1.2.6\' modelscope, then retry.',
         )
 
     kwargs: dict[str, Any] = {
@@ -138,7 +143,14 @@ class FunASRSTTProvider(SpeechToTextProvider):
 
         text = str(payload.get("text", "") or "").strip()
         if not text:
-            raise RuntimeError(f"FunASR 没有返回转写内容: {audio_path.name}")
+            raise FriendlyCliError(
+                f"FunASR 没有返回这段音频的转写结果：{audio_path.name}",
+                code="funasr_empty_transcript",
+                fix="先换一段更短、更清晰的音频试一次。",
+                doc_url=doc_url("语音转写"),
+                message_en=f"FunASR returned no transcript for {audio_path.name}.",
+                fix_en="Try a shorter and clearer audio file, then retry.",
+            )
 
         segments = _normalize_segments(payload)
         duration = max((segment.end for segment in segments), default=0.0)

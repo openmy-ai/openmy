@@ -98,6 +98,16 @@ openmy quick-start path/to/your-audio.wav
 ### 3. 想做个人上下文工作流的开发者
 你可以把现成的稳定动作接到自己的命令行、桌面工具、自动流程里。
 
+## 真实用例
+
+- [我每天怎么用 OpenMy 收上下文](docs/examples/daily-context-workflow.md)
+- [怎么让 Agent 直接读你的上下文](docs/examples/agent-context-handoff.md)
+- [用户故事模板](docs/examples/owner-story-template.md)
+
+## 社区
+
+- GitHub Discussions（仓库讨论区）：https://github.com/openmy-ai/openmy/discussions
+
 ---
 
 ## 最后产物长什么样
