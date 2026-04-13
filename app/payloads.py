@@ -528,6 +528,7 @@ def handle_correction(data: dict) -> dict:
         for extra_path in (
             server.DATA_ROOT / date / "scenes.json",
             server.DATA_ROOT / date / "daily_briefing.json",
+            server.DATA_ROOT / date / f"{date}.meta.json",
         ):
             if not extra_path.exists():
                 continue
