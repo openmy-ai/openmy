@@ -54,6 +54,7 @@ class ScreenEventRecord:
     screenshot_path: str
     content_hash: str
     ocr_engine: str
+    screen_locked: bool = False
     ocr_text_json: list[dict[str, str]] = field(default_factory=list)
 
     @classmethod
@@ -68,6 +69,7 @@ class ScreenEventRecord:
             screenshot_path=str(payload.get("screenshot_path", "") or ""),
             content_hash=str(payload.get("content_hash", "") or ""),
             ocr_engine=str(payload.get("ocr_engine", "") or ""),
+            screen_locked=bool(payload.get("screen_locked", False)),
             ocr_text_json=[item for item in payload.get("ocr_text_json", []) if isinstance(item, dict)],
         )
 

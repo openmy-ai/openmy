@@ -40,6 +40,7 @@ from openmy.services.screen_recognition.capture_common import (
 )
 from openmy.services.screen_recognition.capture_engine import (
     OcrCache,
+    capture_once,
     capture_screen_event,
     run_capture_loop,
     start_capture_daemon,
@@ -86,6 +87,7 @@ __all__ = [
     "ScreenEventRecord",
     "activity_summary",
     "append_event",
+    "capture_once",
     "capture_screen_event",
     "capture_screenshot",
     "cleanup_old_snapshots",

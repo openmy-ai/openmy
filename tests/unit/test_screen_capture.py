@@ -11,6 +11,7 @@ from openmy.services.screen_recognition.capture import (
     ScreenEventRecord,
     activity_summary,
     append_event,
+    capture_once,
     capture_screen_event,
     query_events,
     search_elements,
@@ -226,6 +227,21 @@ class TestCaptureWorkerIsolation(unittest.TestCase):
         launched_cmd = " ".join(popen_mock.call_args.args[0])
         self.assertIn("fail=0;", launched_cmd)
         self.assertIn("sleep 60", launched_cmd)
+
+    def test_capture_once_skips_event_when_screen_is_locked(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            with (
+                patch("openmy.services.screen_recognition.capture_engine._is_screen_locked", return_value=True),
+                patch("openmy.services.screen_recognition.capture_engine.capture_screen_event") as capture_mock,
+            ):
+                event, window_id, is_duplicate = capture_once(data_root=data_root)
+
+        capture_mock.assert_not_called()
+        self.assertTrue(event.screen_locked)
+        self.assertEqual(window_id, "")
+        self.assertFalse(is_duplicate)
+        self.assertFalse((data_root / "screen_events.json").exists())
 
 
 if __name__ == "__main__":

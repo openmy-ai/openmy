@@ -109,6 +109,18 @@ def _release_memory_pressure() -> None:
         return
 
 
+def _is_screen_locked() -> bool:
+    if sys.platform != "darwin":
+        return False
+    try:
+        import Quartz  # type: ignore
+
+        session = Quartz.CGSessionCopyCurrentDictionary() or {}
+        return bool(session.get("CGSSessionScreenIsLocked", False))
+    except Exception:
+        return False
+
+
 def _run_ocr_in_subprocess(
     screenshot_path: Path,
     *,
@@ -192,6 +204,7 @@ def capture_screen_event(
         screenshot_path=str(shot_path),
         content_hash=content_hash,
         ocr_engine=ocr.engine,
+        screen_locked=False,
         ocr_text_json=ocr.text_json,
     )
 
@@ -204,6 +217,26 @@ def capture_once(
 ) -> tuple[ScreenEventRecord, str, bool]:
     root = Path(data_root or DEFAULT_DATA_ROOT)
     status = read_status(root)
+    if _is_screen_locked():
+        status.last_error = ""
+        write_status(status, root)
+        _release_memory_pressure()
+        return (
+            ScreenEventRecord(
+                frame_id=0,
+                timestamp="",
+                app_name="",
+                window_name="",
+                browser_url="",
+                text="",
+                screenshot_path="",
+                content_hash="",
+                ocr_engine="",
+                screen_locked=True,
+            ),
+            "",
+            False,
+        )
     event = capture_screen_event(data_root=root, ocr_cache=ocr_cache)
     window_id = f"{event.app_name}::{event.window_name}"
     is_duplicate = window_id == status.last_window_id and event.content_hash == status.last_content_hash
