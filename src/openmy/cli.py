@@ -6,1637 +6,306 @@ from __future__ import annotations
 import argparse
 import io
 import json
-import os
-import re
-import shutil
-import socket
-import subprocess
+import shutil  # noqa: F401
+import subprocess  # noqa: F401
 import sys
-import time
-import webbrowser
+import webbrowser  # noqa: F401
 from contextlib import redirect_stderr, redirect_stdout
-from datetime import date, datetime
-import locale
-from pathlib import Path
 from typing import Any
-from urllib import error as urllib_error
-from urllib import request as urllib_request
 
-from rich import box
-from rich.console import Console
-from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
-from rich.table import Table
-
-from openmy.config import (
-    GEMINI_MODEL,
-    get_llm_api_key,
-    get_stt_api_key,
-    get_stt_align_enabled,
-    get_stt_diarization_enabled,
-    get_stt_enrich_mode,
-    get_stt_provider_name,
-    stt_provider_requires_api_key,
-)
-from openmy.utils.io import safe_write_json
-from openmy.utils.errors import FriendlyCliError, doc_url
-from openmy.utils.paths import (
-    DATA_ROOT,
-    LEGACY_ROOT,
-    PROJECT_ENV_PATH,
-    PROJECT_ROOT as ROOT_DIR,
-)
-from openmy.services.onboarding.state import load_onboarding_state
-from openmy.services.feedback import (
-    ask_feedback_opt_in,
-    delete_feedback_data,
-    ensure_install_time,
-    load_settings as load_feedback_settings,
-    load_telemetry,
-    set_feedback_opt_in,
-)
-from openmy.services.query.context_query import query_context, render_query_result
-from openmy.services.query.search_index import get_day_status_from_index, list_index_dates
-
-
-console = Console()
-
-ROLE_COLORS = {
-    "AI助手": "cyan",
-    "商家": "yellow",
-    "伴侣": "magenta",
-    "宠物": "green",
-    "自己": "blue",
-    "朋友": "bright_blue",
-    "未识别": "dim",
-}
-
-DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-DATE_MD_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
-AUDIO_TIME_RE = re.compile(r".*?(\d{8})_(\d{2})(\d{2})(\d{2}).*")
-DATE_IN_FILENAME_RE = re.compile(r"(?P<iso>\d{4}-\d{2}-\d{2})|(?P<compact>\d{8})")
-
-
-def _prefers_english_help() -> bool:
-    saw_non_chinese = False
-    for env_name in ("LC_ALL", "LC_MESSAGES", "LANG"):
-        value = str(os.getenv(env_name, "") or "").strip().lower()
-        if not value:
-            continue
-        if value.startswith("zh"):
-            return False
-        saw_non_chinese = True
-    if saw_non_chinese:
-        return True
-    current_locale = locale.getlocale()[0]
-    if current_locale:
-        return not str(current_locale).lower().startswith("zh")
-    return False
-
-
-HELP_IN_ENGLISH = _prefers_english_help()
-
-
-def _help_text(zh: str, en: str) -> str:
-    return en if HELP_IN_ENGLISH else zh
-
-
-def render_friendly_error(exc: FriendlyCliError) -> None:
-    console.print(f"[red]❌ {exc.message}[/red]")
-    if getattr(exc, "fix", ""):
-        console.print(f"[yellow]怎么修：{exc.fix}[/yellow]")
-    if getattr(exc, "doc_url", ""):
-        console.print(f"[dim]文档：{exc.doc_url}[/dim]")
-
-
-def project_version() -> str:
-    try:
-        content = (ROOT_DIR / "pyproject.toml").read_text(encoding="utf-8")
-    except Exception:
-        return "0.x.x"
-    match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
-    return match.group(1) if match else "0.x.x"
-
-
-def _version_key(version: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in re.findall(r"\d+", str(version)))
-
-
-def _update_check_cache_path() -> Path:
-    return DATA_ROOT / ".update-check.json"
-
-
-def _load_cached_update_hint(now_ts: float) -> str | None:
-    cache_path = _update_check_cache_path()
-    try:
-        payload = json.loads(cache_path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    checked_at = float(payload.get("checked_at", 0) or 0)
-    if now_ts - checked_at > 6 * 3600:
-        return None
-    latest = str(payload.get("latest_version", "") or "").strip()
-    if latest and _version_key(latest) > _version_key(project_version()):
-        return latest
-    return ""
-
-
-def _store_update_hint(now_ts: float, latest_version: str) -> None:
-    cache_path = _update_check_cache_path()
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    safe_write_json(
-        cache_path,
-        {
-            "checked_at": now_ts,
-            "latest_version": latest_version,
-            "current_version": project_version(),
-        },
-    )
-
-
-def maybe_get_update_hint() -> str | None:
-    if not sys.stdout.isatty():
-        return None
-    if os.getenv("OPENMY_SKIP_UPDATE_CHECK", "").strip() == "1":
-        return None
-
-    now_ts = time.time()
-    cached = _load_cached_update_hint(now_ts)
-    if cached is not None:
-        return cached or None
-
-    latest_version = ""
-    request = urllib_request.Request("https://pypi.org/pypi/openmy/json", method="GET")
-    try:
-        with urllib_request.urlopen(request, timeout=0.6) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-            latest_version = str(payload.get("info", {}).get("version", "") or "").strip()
-    except Exception:
-        _store_update_hint(now_ts, "")
-        return None
-
-    _store_update_hint(now_ts, latest_version)
-    if latest_version and _version_key(latest_version) > _version_key(project_version()):
-        return latest_version
-    return None
-
-
-def _show_main_menu() -> None:
-    onboarding = load_onboarding_state(DATA_ROOT)
-    sections = [
-        (
-            "快速开始",
-            [
-                ("openmy quick-start", "首次使用，自动引导"),
-                ("openmy run 2026-04-12", "处理某天的录音"),
-            ],
-        ),
-        (
-            "处理流程",
-            [
-                ("openmy status", "查看所有日期的处理状态"),
-                ("openmy view 2026-04-12", "查看某天的概览"),
-                ("openmy run", "全流程处理"),
-            ],
-        ),
-        (
-            "单步操作",
-            [
-                ("openmy clean", "清洗转写文本"),
-                ("openmy roles", "场景切分 + 角色归因"),
-                ("openmy distill", "蒸馏摘要"),
-                ("openmy briefing", "生成日报"),
-                ("openmy extract", "提取意图 / 事实"),
-            ],
-        ),
-        (
-            "上下文",
-            [
-                ("openmy context", "生成/查看活动上下文"),
-                ("openmy query", "查询项目/人物/待办"),
-                ("openmy weekly", "查看本周回顾"),
-                ("openmy monthly", "查看本月回顾"),
-            ],
-        ),
-        (
-            "工具",
-            [
-                ("openmy correct", "纠正转写错误"),
-                ("openmy watch", "监控录音文件夹"),
-                ("openmy screen on/off", "开关屏幕识别"),
-            ],
-        ),
-        (
-            "Agent 接口",
-            [
-                ("openmy skill ...", "稳定 JSON 动作入口"),
-            ],
-        ),
-    ]
-
-    grid = Table.grid(expand=True)
-    grid.add_column(justify="left", ratio=1)
-    grid.add_column(justify="left", ratio=2)
-
-    for title, rows in sections:
-        grid.add_row(f"[bold cyan]{title}[/bold cyan]", "")
-        for command, description in rows:
-            grid.add_row(f"  [green]{command}[/green]", f"[white]{description}[/white]")
-        grid.add_row("", "")
-
-    footer = f"v{project_version()} · https://github.com/openmy-ai/openmy"
-    grid.add_row(f"[dim]{footer}[/dim]", "")
-    if onboarding and not onboarding.get("completed", False):
-        recommended = onboarding.get("recommended_label") or onboarding.get("recommended_provider") or "先做环境检查"
-        reason = onboarding.get("recommended_reason") or onboarding.get("next_step") or "先把第一次使用走通。"
-        console.print(Panel(f"下一步建议：{recommended}\n{reason}", title="首次使用引导", border_style="yellow"))
-    console.print(Panel(grid, title="OpenMy — 你的个人上下文引擎", border_style="bright_blue"))
-
-
-def _upsert_project_env(key: str, value: str) -> Path:
-    lines: list[str] = []
-    if PROJECT_ENV_PATH.exists():
-        lines = PROJECT_ENV_PATH.read_text(encoding="utf-8").splitlines()
-
-    replaced = False
-    for index, raw_line in enumerate(lines):
-        stripped = raw_line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        existing_key = stripped.split("=", 1)[0].strip()
-        if existing_key != key:
-            continue
-        lines[index] = f"{key}={value}"
-        replaced = True
-        break
-
-    if not replaced:
-        if lines and lines[-1].strip():
-            lines.append("")
-        lines.append(f"{key}={value}")
-
-    PROJECT_ENV_PATH.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
-    return PROJECT_ENV_PATH
-
-
-def find_all_dates() -> list[str]:
-    """扫描所有可用日期。"""
-    dates: set[str] = set()
-    dates.update(list_index_dates(DATA_ROOT))
-    if DATA_ROOT.exists():
-        for child in DATA_ROOT.iterdir():
-            if child.is_dir() and DATE_RE.match(child.name):
-                dates.add(child.name)
-    for path in LEGACY_ROOT.glob("*.md"):
-        if path.name.endswith(".raw.md"):
-            continue
-        match = DATE_MD_RE.match(path.name)
-        if match:
-            dates.add(match.group(1))
-    return sorted(dates, reverse=True)
-
-
-def ensure_day_dir(date_str: str) -> Path:
-    day_dir = DATA_ROOT / date_str
-    day_dir.mkdir(parents=True, exist_ok=True)
-    return day_dir
-
-
-def read_json(path: Path, default: Any) -> Any:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return default
-
-
-def strip_document_header(markdown: str) -> str:
-    if "---" not in markdown:
-        return markdown
-    parts = markdown.split("---", 2)
-    if len(parts) >= 3:
-        return parts[2].strip()
-    return markdown
-
-
-def get_date_status(date_str: str) -> dict[str, Any]:
-    """获取某一天的处理阶段。"""
-    from openmy.config import ROLE_RECOGNITION_ENABLED
-
-    indexed = get_day_status_from_index(DATA_ROOT, date_str)
-    if indexed is not None:
-        return indexed
-
-    day_dir = DATA_ROOT / date_str
-    legacy = LEGACY_ROOT / f"{date_str}.md"
-
-    status: dict[str, Any] = {
-        "date": date_str,
-        "has_transcript": (day_dir / "transcript.md").exists() or legacy.exists(),
-        "has_raw": (day_dir / "transcript.raw.md").exists() or (LEGACY_ROOT / f"{date_str}.raw.md").exists(),
-        "has_scenes": (day_dir / "scenes.json").exists() or (LEGACY_ROOT / f"{date_str}.scenes.json").exists(),
-        "has_briefing": (day_dir / "daily_briefing.json").exists(),
-        "word_count": 0,
-        "scene_count": 0,
-        "role_distribution": {},
-    }
-
-    transcript = day_dir / "transcript.md"
-    if not transcript.exists():
-        transcript = legacy
-    if transcript.exists():
-        content = transcript.read_text(encoding="utf-8")
-        status["word_count"] = len(re.sub(r"\s+", "", content))
-
-    scenes_path = day_dir / "scenes.json"
-    if not scenes_path.exists():
-        scenes_path = LEGACY_ROOT / f"{date_str}.scenes.json"
-    if scenes_path.exists():
-        data = read_json(scenes_path, {})
-        status["scene_count"] = len(data.get("scenes", []))
-        if ROLE_RECOGNITION_ENABLED:
-            status["role_distribution"] = data.get("stats", {}).get("role_distribution", {})
-
-    return status
-
-
-def resolve_day_paths(date_str: str) -> dict[str, Path]:
-    day_dir = DATA_ROOT / date_str
-    if day_dir.exists():
-        return {
-            "dir": day_dir,
-            "transcript": day_dir / "transcript.md",
-            "raw": day_dir / "transcript.raw.md",
-            "scenes": day_dir / "scenes.json",
-            "briefing": day_dir / "daily_briefing.json",
-        }
-
-    return {
-        "dir": day_dir,
-        "transcript": LEGACY_ROOT / f"{date_str}.md",
-        "raw": LEGACY_ROOT / f"{date_str}.raw.md",
-        "scenes": LEGACY_ROOT / f"{date_str}.scenes.json",
-        "briefing": day_dir / "daily_briefing.json",
-    }
-
-
-def stage_label(status: dict[str, Any]) -> str:
-    if status["has_briefing"]:
-        return "[green]✅ 完成[/green]"
-    if status["has_scenes"]:
-        return "[yellow]📊 已归因[/yellow]"
-    if status["has_transcript"]:
-        return "[blue]📝 已转写[/blue]"
-    if status["has_raw"]:
-        return "[dim]🎙️ 已录入[/dim]"
-    return "[dim]❌ 无数据[/dim]"
-
-
-def role_bar(distribution: dict[str, int], width: int = 20) -> str:
-    total = sum(distribution.values())
-    if total == 0:
-        return "[dim]—[/dim]"
-
-    parts: list[str] = []
-    for role, count in sorted(distribution.items(), key=lambda item: -item[1]):
-        color = ROLE_COLORS.get(role, "white")
-        bar_len = max(1, round(count / total * width))
-        parts.append(f"[{color}]{'█' * bar_len}[/{color}]")
-    return "".join(parts)
-
-
-def get_screen_client():
-    try:
-        from openmy.adapters.screen_recognition.client import ScreenRecognitionClient
-
-        client = ScreenRecognitionClient()
-        return client if client.is_available() else None
-    except Exception:
-        return None
-
-
-def read_scenes_payload(date_str: str) -> tuple[Path, dict[str, Any]]:
-    paths = resolve_day_paths(date_str)
-    return paths["scenes"], read_json(paths["scenes"], {})
-
-
-def parse_audio_time(audio_path: Path) -> str:
-    match = AUDIO_TIME_RE.match(audio_path.name)
-    if not match:
-        return "00:00"
-    return f"{match.group(2)}:{match.group(3)}"
-
-
-def infer_date_from_path(path: Path) -> str:
-    """优先从父目录，再从文件名推断日期，支持 YYYY-MM-DD / YYYYMMDD。"""
-    parent_name = path.parent.name
-    if DATE_RE.match(parent_name):
-        return parent_name
-
-    match = DATE_IN_FILENAME_RE.search(path.name)
-    if not match:
-        return date.today().isoformat()
-    if match.group("iso"):
-        return match.group("iso")
-    raw = match.group("compact")
-    return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
-
-
-def clear_project_runtime_env() -> None:
-    """CLI 只认当前项目 .env，先清掉 shell 注入的 OpenMy/Gemini 配置。"""
-    for key in list(os.environ):
-        if key.startswith("OPENMY_") or key in {"GEMINI_API_KEY", "GEMINI_MODEL"}:
-            os.environ.pop(key, None)
-
-
-def load_project_env(env_path: Path | None = None, *, override: bool = False) -> bool:
-    """从项目根目录读取 .env。"""
-    final_path = env_path or PROJECT_ENV_PATH
-    if not final_path.exists():
-        return False
-
-    for raw_line in final_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip("'").strip('"')
-        if key and (override or key not in os.environ):
-            os.environ[key] = value
-    return True
-
-
-def prepare_project_runtime_env(env_path: Path | None = None) -> bool:
-    """重置 CLI 运行时 provider 配置，只加载当前项目 .env。"""
-    clear_project_runtime_env()
-    return load_project_env(env_path, override=True)
-
-
-def missing_stt_key_message() -> str:
-    return "缺少语音转写 KEY。"
-
-
-def missing_stt_key_hint() -> str:
-    return (
-        "如果你要走云端转写，先运行 `openmy skill profile.set --stt-provider gemini --json`，"
-        "再把对应 key 补进这个项目的 `.env`。"
-    )
-
-
-def missing_provider_key_message(has_env_file: bool) -> str:
-    prefix = "已读取项目根目录 `.env`，但" if has_env_file else "没找到项目根目录 `.env`，而且"
-    return (
-        f"{prefix}缺少可用的转写或整理 key。"
-        "如果你要走云端转写，先用 `openmy skill profile.set --stt-provider gemini --json` 定路线，"
-        "再把对应 key 写进这个项目的 `.env`。"
-    )
+from rich.console import Console as _RichConsole
+from rich.markdown import Markdown as _RichMarkdown
+from rich.panel import Panel as _RichPanel
+
+
+from openmy.commands import common as common_cmd
+from openmy.commands import context as context_cmd
+from openmy.commands import correct as correct_cmd
+from openmy.commands import menu as menu_cmd
+from openmy.commands import run as run_cmd
+from openmy.commands import screen as screen_cmd
+from openmy.commands import show as show_cmd
+from openmy.commands import self_update as self_update_cmd
+from openmy.utils.errors import FriendlyCliError
+from openmy.utils.paths import DATA_ROOT, PROJECT_ENV_PATH as _PROJECT_ENV_PATH, PROJECT_ROOT as _ROOT_DIR
+from openmy.services.feedback import ensure_install_time
+
+console = common_cmd.console
+Console = _RichConsole
+Markdown = _RichMarkdown
+Panel = _RichPanel
+PROJECT_ENV_PATH = _PROJECT_ENV_PATH
+ROOT_DIR = _ROOT_DIR
+
+DATE_RE = common_cmd.DATE_RE
+DATE_MD_RE = common_cmd.DATE_MD_RE
+AUDIO_TIME_RE = common_cmd.AUDIO_TIME_RE
+DATE_IN_FILENAME_RE = common_cmd.DATE_IN_FILENAME_RE
+ROLE_COLORS = common_cmd.ROLE_COLORS
+common_cmd.HELP_IN_ENGLISH = common_cmd._prefers_english_help()
+HELP_IN_ENGLISH = common_cmd.HELP_IN_ENGLISH
+_prefers_english_help = common_cmd._prefers_english_help
+_help_text = common_cmd._help_text
+render_friendly_error = common_cmd.render_friendly_error
+project_version = common_cmd.project_version
+maybe_get_update_hint = common_cmd.maybe_get_update_hint
+def _upsert_project_env(key: str, value: str):
+    common_cmd.PROJECT_ENV_PATH = PROJECT_ENV_PATH
+    return common_cmd._upsert_project_env(key, value)
+
+clear_project_runtime_env = common_cmd.clear_project_runtime_env
+load_project_env = common_cmd.load_project_env
+prepare_project_runtime_env = common_cmd.prepare_project_runtime_env
+missing_stt_key_message = common_cmd.missing_stt_key_message
+missing_stt_key_hint = common_cmd.missing_stt_key_hint
+missing_provider_key_message = common_cmd.missing_provider_key_message
+add_stt_runtime_args = common_cmd.add_stt_runtime_args
+get_stt_provider_name = common_cmd.get_stt_provider_name
+get_stt_api_key = common_cmd.get_stt_api_key
+get_llm_api_key = common_cmd.get_llm_api_key
+stt_provider_requires_api_key = common_cmd.stt_provider_requires_api_key
+
+_local_report_health_url = common_cmd._local_report_health_url
+is_local_report_running = common_cmd.is_local_report_running
+is_local_report_healthy = common_cmd.is_local_report_healthy
+find_report_pids = common_cmd.find_report_pids
+kill_report_processes = common_cmd.kill_report_processes
+wait_for_local_report = common_cmd.wait_for_local_report
+write_json = common_cmd.write_json
+get_screen_client = common_cmd.get_screen_client
+
+_show_main_menu = menu_cmd._show_main_menu
+find_all_dates = show_cmd.find_all_dates
+ensure_day_dir = show_cmd.ensure_day_dir
+read_json = show_cmd.read_json
+strip_document_header = show_cmd.strip_document_header
+get_date_status = show_cmd.get_date_status
+resolve_day_paths = show_cmd.resolve_day_paths
+stage_label = show_cmd.stage_label
+role_bar = show_cmd.role_bar
+read_scenes_payload = show_cmd.read_scenes_payload
+parse_audio_time = show_cmd.parse_audio_time
+infer_date_from_path = show_cmd.infer_date_from_path
+infer_scene_role_profile = show_cmd.infer_scene_role_profile
+rebuild_scene_stats = show_cmd.rebuild_scene_stats
+build_frozen_scene_stats = show_cmd.build_frozen_scene_stats
+freeze_scene_roles = show_cmd.freeze_scene_roles
+build_segmented_scenes_payload = show_cmd.build_segmented_scenes_payload
+_render_review = show_cmd._render_review
+
+_cmd_correct_typo = correct_cmd._cmd_correct_typo
+_load_context_snapshot = correct_cmd._load_context_snapshot
+_normalize_match_text = correct_cmd._normalize_match_text
+_score_match = correct_cmd._score_match
+_resolve_item = correct_cmd._resolve_item
+_append_context_correction = correct_cmd._append_context_correction
+_cmd_correct_scene_role = correct_cmd._cmd_correct_scene_role
+cmd_correct_list = correct_cmd.cmd_correct_list
+transcribe_audio_files = run_cmd.transcribe_audio_files
+cmd_run = run_cmd.cmd_run
+cmd_quick_start = run_cmd.cmd_quick_start
+
+
+def _sync_runtime_overrides() -> None:
+    _set_console_for_modules(console)
+    common_cmd.get_stt_provider_name = get_stt_provider_name
+    common_cmd.get_stt_api_key = get_stt_api_key
+    common_cmd.get_llm_api_key = get_llm_api_key
+    common_cmd.load_project_env = load_project_env
+    common_cmd.prepare_project_runtime_env = prepare_project_runtime_env
+    common_cmd.shutil = shutil
+    common_cmd.subprocess = subprocess
+    common_cmd.webbrowser = webbrowser
+    common_cmd.is_local_report_running = is_local_report_running
+    common_cmd.is_local_report_healthy = is_local_report_healthy
+    common_cmd.kill_report_processes = kill_report_processes
+    common_cmd.wait_for_local_report = wait_for_local_report
 
 
 def ensure_runtime_dependencies(*, stt_provider: str | None = None) -> None:
-    """给 quick-start 做最小依赖自检。"""
-    if sys.version_info < (3, 10):
-        raise FriendlyCliError(
-            "需要 Python 3.10 以上版本。",
-            code="python_version_too_low",
-            fix="先运行 `brew install python@3.11`，再重试。",
-            doc_url=doc_url("一分钟跑起来"),
-            message_en="Python 3.10 or newer is required.",
-            fix_en="Run brew install python@3.11, then retry.",
-        )
-
-    has_env_file = prepare_project_runtime_env()
-    final_stt_provider = (stt_provider or get_stt_provider_name()).lower()
-    stt_api_key = get_stt_api_key(final_stt_provider)
-    if stt_provider_requires_api_key(final_stt_provider) and not stt_api_key:
-        if has_env_file:
-            raise FriendlyCliError(
-                "已读取项目根目录 `.env`，但当前这条云端语音转写路线还缺 key。"
-                "如果继续走云端，先确认你已经运行过 `openmy skill profile.set --stt-provider gemini --json`，"
-                "再把对应 key 补进 `.env`；如果想先跑通，改走本地路线更省事。",
-                code="stt_cloud_key_missing",
-                fix="先补 `.env（环境文件）` 里的 key，或者改走本地转写路线。",
-                doc_url=doc_url("语音转写"),
-                message_en="The selected cloud speech-to-text route is missing its API key.",
-                fix_en="Add the key to the project .env file, or switch to a local speech-to-text route.",
-            )
-        raise FriendlyCliError(
-            "没找到项目根目录 `.env`，当前这条云端语音转写路线也没有可用 key。"
-            "先复制 `.env.example` 成 `.env`，再补对应 key；如果想先跑通，直接改走 `--stt-provider funasr` 或 `--stt-provider faster-whisper`。",
-            code="project_env_missing",
-            fix="先复制 `.env.example（示例环境文件）` 成 `.env（环境文件）`，再补 key。",
-            doc_url=doc_url("一分钟跑起来"),
-            message_en="The project .env file is missing and this cloud speech-to-text route has no API key.",
-            fix_en="Copy .env.example to .env and add the matching API key.",
-        )
-
-    missing_bins = [name for name in ("ffmpeg", "ffprobe") if shutil.which(name) is None]
-    if missing_bins:
-        missing = "、".join(missing_bins)
-        raise FriendlyCliError(
-            f"缺少 {missing}。",
-            code="ffmpeg_missing",
-            fix="macOS（苹果系统）先运行 `brew install ffmpeg`，再重试。",
-            doc_url=doc_url("一分钟跑起来"),
-            message_en=f"Missing required binary tools: {missing}.",
-            fix_en="On macOS, run brew install ffmpeg, then retry.",
-        )
-
-
-def add_stt_runtime_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--stt-provider",
-        default=None,
-        help=_help_text(
-            "转写后端（如 gemini / faster-whisper / funasr）",
-            "Speech-to-text backend, for example gemini, faster-whisper, or funasr.",
-        ),
-    )
-    parser.add_argument(
-        "--stt-model",
-        default=None,
-        help=_help_text("转写模型名", "Speech-to-text model name."),
-    )
-    parser.add_argument(
-        "--stt-vad",
-        action="store_true",
-        help=_help_text("启用转写后端自带 VAD", "Enable the backend's built-in voice activity detection."),
-    )
-    parser.add_argument(
-        "--stt-word-timestamps",
-        action="store_true",
-        help=_help_text(
-            "保留更细的词级时间信息（如果后端支持）",
-            "Keep word-level timestamps when the backend supports them.",
-        ),
-    )
-    parser.add_argument(
-        "--stt-enrich-mode",
-        default=get_stt_enrich_mode(),
-        choices=["off", "recommended", "force"],
-        help=_help_text(
-            "WhisperX 精标策略：off=关闭，recommended=本地 STT 推荐路径，force=强制尝试",
-            "WhisperX alignment mode: off disables it, recommended follows the local STT recommendation, and force always tries it.",
-        ),
-    )
-    parser.add_argument(
-        "--stt-align",
-        action="store_true",
-        default=get_stt_align_enabled(),
-        help=_help_text(
-            "显式要求在转写后启用 WhisperX 精标层",
-            "Explicitly enable the WhisperX alignment step after transcription.",
-        ),
-    )
-    parser.add_argument(
-        "--stt-diarize",
-        action="store_true",
-        default=get_stt_diarization_enabled(),
-        help=_help_text(
-            "在精标层尝试附加说话人分离（如果环境支持）",
-            "Try speaker diarization during alignment when the environment supports it.",
-        ),
-    )
-
-
-def _local_report_health_url(host: str, port: int) -> str:
-    return f"http://{host}:{port}/api/onboarding"
-
-
-def is_local_report_running(host: str = "127.0.0.1", port: int = 8420) -> bool:
-    try:
-        with socket.create_connection((host, port), timeout=0.3):
-            return True
-    except OSError:
-        return False
-
-
-def is_local_report_healthy(host: str = "127.0.0.1", port: int = 8420) -> bool:
-    health_request = urllib_request.Request(_local_report_health_url(host, port), method="GET")
-    try:
-        with urllib_request.urlopen(health_request, timeout=1.0) as response:
-            return int(getattr(response, "status", 0) or 0) == 200
-    except (urllib_error.URLError, TimeoutError, OSError):
-        return False
-
-
-def find_report_pids(port: int = 8420) -> list[int]:
-    try:
-        result = subprocess.run(
-            ["lsof", "-ti", f"tcp:{port}"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
-        return []
-    pids: list[int] = []
-    for line in result.stdout.splitlines():
-        raw = line.strip()
-        if raw.isdigit():
-            pids.append(int(raw))
-    return pids
-
-
-def kill_report_processes(port: int = 8420) -> bool:
-    killed = False
-    for pid in find_report_pids(port):
-        try:
-            os.kill(pid, 15)
-            killed = True
-        except OSError:
-            continue
-    if killed:
-        time.sleep(0.4)
-    if is_local_report_running(port=port):
-        for pid in find_report_pids(port):
-            try:
-                os.kill(pid, 9)
-            except OSError:
-                continue
-        time.sleep(0.4)
-    return killed
-
-
-def wait_for_local_report(host: str = "127.0.0.1", port: int = 8420, timeout_seconds: float = 8.0) -> bool:
-    deadline = time.time() + timeout_seconds
-    while time.time() < deadline:
-        if is_local_report_healthy(host=host, port=port):
-            return True
-        time.sleep(0.2)
-    return False
+    _sync_runtime_overrides()
+    return common_cmd.ensure_runtime_dependencies(stt_provider=stt_provider)
 
 
 def launch_local_report(host: str = "127.0.0.1", port: int = 8420) -> None:
-    """启动本地网页并打开浏览器；服务已在运行时只打开页面。"""
-    url = f"http://{host}:{port}"
-    if is_local_report_running(host=host, port=port) and not is_local_report_healthy(host=host, port=port):
-        kill_report_processes(port=port)
-    if not is_local_report_running(host=host, port=port):
-        server_entry = ROOT_DIR / "app" / "server.py"
-        subprocess.Popen(
-            [sys.executable, str(server_entry)],
-            cwd=ROOT_DIR,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-    if not wait_for_local_report(host=host, port=port):
-        raise FriendlyCliError(
-            "本地网页没能正常启动。",
-            code="local_report_start_failed",
-            fix="先确认 8420 端口没被别的进程占住，再重试。",
-            doc_url=doc_url("readme"),
-            message_en="The local web report failed to start.",
-            fix_en="Make sure port 8420 is free, then retry.",
-        )
-    webbrowser.open(url)
+    _sync_runtime_overrides()
+    return common_cmd.launch_local_report(host=host, port=port)
 
 
-def write_json(path: Path, payload: Any) -> None:
-    safe_write_json(path, payload)
-
-
-def infer_scene_role_profile(addressed_to: str) -> tuple[str, str]:
-    """根据人工确认的对象名推导场景类别和展示标签。"""
-    normalized = str(addressed_to or "").strip()
-    lowered = normalized.lower()
-    if not normalized:
-        return ("uncertain", "不确定")
-    if lowered in {"ai", "ai助手", "gpt", "chatgpt", "gemini", "claude", "codex"}:
-        return ("ai", "跟AI说")
-    if normalized in {"商家", "客服", "老板", "服务员"}:
-        return ("merchant", "跟商家")
-    if normalized in {"宠物", "小狗", "小猫"}:
-        return ("pet", "跟宠物")
-    if normalized in {"自己", "自言自语"}:
-        return ("self", "自言自语")
-    if normalized in {"未识别", "不确定"}:
-        return ("uncertain", "不确定")
-    return ("interpersonal", "跟人聊")
-
-
-def rebuild_scene_stats(data: dict[str, Any]) -> dict[str, Any]:
-    """根据 scenes 重新计算 role_distribution 和 needs_review_count。"""
-    scenes = data.get("scenes", []) if isinstance(data.get("scenes", []), list) else []
-    distribution: dict[str, int] = {}
-    needs_review_count = 0
-    for scene in scenes:
-        role = scene.get("role", {}) if isinstance(scene.get("role", {}), dict) else {}
-        addressed_to = str(role.get("addressed_to", "")).strip()
-        label = addressed_to or str(role.get("scene_type_label", "")).strip() or "未识别"
-        distribution[label] = distribution.get(label, 0) + 1
-        if bool(role.get("needs_review")):
-            needs_review_count += 1
-    return {
-        "total_scenes": len(scenes),
-        "role_distribution": distribution,
-        "needs_review_count": needs_review_count,
-    }
-
-
-def build_frozen_scene_stats(total_scenes: int) -> dict[str, Any]:
-    return {
-        "total_scenes": total_scenes,
-        "role_distribution": {},
-        "needs_review_count": 0,
-        "role_recognition_status": "frozen",
-    }
-
-
-def freeze_scene_roles(data: dict[str, Any]) -> dict[str, Any]:
-    scenes = data.get("scenes", []) if isinstance(data.get("scenes", []), list) else []
-    frozen_role = {
-        "category": "uncertain",
-        "entity_id": "",
-        "relation_label": "",
-        "confidence": 0.0,
-        "evidence_chain": [],
-        "scene_type": "uncertain",
-        "scene_type_label": "不确定",
-        "addressed_to": "",
-        "about": "",
-        "source": "frozen",
-        "source_label": "已冻结",
-        "evidence": "角色识别已冻结",
-        "needs_review": False,
-    }
-    for scene in scenes:
-        role = scene.get("role", {}) if isinstance(scene.get("role", {}), dict) else {}
-        if str(role.get("source", "")).strip() == "human_confirmed":
-            continue
-        scene["role"] = dict(frozen_role)
-    data["stats"] = build_frozen_scene_stats(len(scenes))
-    return data
-
-
-def build_segmented_scenes_payload(markdown: str) -> dict[str, Any]:
-    from openmy.services.segmentation.segmenter import build_scenes_payload, segment
-
-    payload = build_scenes_payload(segment(markdown))
-    return freeze_scene_roles(payload)
-
-
-def upsert_correction(wrong: str, right: str, context: str = "") -> Path:
-    from openmy.services.cleaning.cleaner import CORRECTIONS_FILE
-
-    payload = {"_comment": "OpenMy 纠错词典", "corrections": []}
-    if CORRECTIONS_FILE.exists():
-        payload = read_json(CORRECTIONS_FILE, payload)
-        payload.setdefault("_comment", "OpenMy 纠错词典")
-        payload.setdefault("corrections", [])
-
-    now = datetime.now().isoformat()
-    today = date.today().isoformat()
-    corrections = payload["corrections"]
-    for item in corrections:
-        if item.get("wrong") == wrong and item.get("right") == right:
-            item["count"] = int(item.get("count", 0)) + 1
-            item["context"] = context or item.get("context", "")
-            item["last_updated"] = now
-            write_json(CORRECTIONS_FILE, payload)
-            return CORRECTIONS_FILE
-
-    corrections.append(
-        {
-            "wrong": wrong,
-            "right": right,
-            "context": context,
-            "count": 1,
-            "first_seen": today,
-            "last_updated": now,
-        }
-    )
-    write_json(CORRECTIONS_FILE, payload)
-    return CORRECTIONS_FILE
-
-
-def _cmd_correct_typo(date_str: str, wrong: str, right: str) -> int:
-    """纠正转写错词。"""
-    paths = resolve_day_paths(date_str)
-    transcript_path = paths["transcript"]
-    if not transcript_path.exists():
-        console.print(f"[red]❌ 找不到 {date_str} 的 transcript.md[/red]")
-        return 1
-
-    from openmy.services.cleaning.cleaner import sync_correction_to_vocab
-
-    content = transcript_path.read_text(encoding="utf-8")
-    replaced_count = content.count(wrong)
-    transcript_path.write_text(content.replace(wrong, right), encoding="utf-8")
-
-    corrections_path = upsert_correction(wrong, right)
-    sync_correction_to_vocab(wrong, right)
-
-    console.print(f"[green]✅ 纠错完成[/green]: {wrong} → {right}，替换 {replaced_count} 处")
-    console.print(f"[dim]词典: {corrections_path}[/dim]")
-    return 0
-
-
-def _load_context_snapshot():
-    from openmy.services.context.active_context import ActiveContext
-
-    ctx_path = DATA_ROOT / "active_context.json"
-    if not ctx_path.exists():
-        console.print("[red]❌ 还没有活动上下文快照，请先运行 `python3 -m openmy context`[/red]")
-        return None
-    return ActiveContext.load(ctx_path)
-
-
-def _normalize_match_text(text: str) -> str:
-    return re.sub(r"\s+", "", str(text or "")).strip().lower()
-
-
-def _score_match(query: str, *candidates: str) -> int:
-    normalized_query = _normalize_match_text(query)
-    if not normalized_query:
-        return -1
-
-    best = -1
-    for candidate in candidates:
-        normalized_candidate = _normalize_match_text(candidate)
-        if not normalized_candidate:
-            continue
-        if normalized_query == normalized_candidate:
-            return 1000 + len(normalized_candidate)
-        if normalized_query in normalized_candidate:
-            best = max(best, 500 - max(0, len(normalized_candidate) - len(normalized_query)))
-        elif normalized_candidate in normalized_query:
-            best = max(best, 100 - max(0, len(normalized_query) - len(normalized_candidate)))
-    return best
-
-
-def _resolve_item(items: list[Any], query: str, candidate_getter) -> Any | None:
-    best_item = None
-    best_score = -1
-    for item in items:
-        score = _score_match(query, *candidate_getter(item))
-        if score > best_score:
-            best_score = score
-            best_item = item
-    if best_score < 0:
-        return None
-    return best_item
-
-
-def _append_context_correction(
-    op: str,
-    target_type: str,
-    target_id: str,
-    payload: dict[str, Any] | None = None,
-    reason: str = "",
-) -> int:
-    from openmy.services.context.corrections import append_correction, create_correction_event
-
-    event = create_correction_event(
-        actor="user",
-        op=op,
-        target_type=target_type,
-        target_id=target_id,
-        payload=payload,
-        reason=reason,
-    )
-    append_correction(DATA_ROOT, event)
-    return 0
-
-
-def _cmd_correct_scene_role(date_str: str, scene_query: str, addressed_to: str) -> int:
-    """人工修正某个场景的角色归因。"""
-    scenes_path, data = read_scenes_payload(date_str)
-    if not scenes_path.exists():
-        console.print(f"[red]❌ 找不到 {date_str}/scenes.json，先运行 openmy roles {date_str}[/red]")
-        return 1
-
-    scenes = data.get("scenes", []) if isinstance(data.get("scenes", []), list) else []
-    target = None
-    for scene in scenes:
-        if _score_match(
-            scene_query,
-            str(scene.get("scene_id", "")),
-            str(scene.get("time_start", "")),
-            str(scene.get("time_end", "")),
-        ) >= 0:
-            target = scene
-            break
-
-    if target is None:
-        console.print(f"[red]❌ 没找到场景：{scene_query}[/red]")
-        return 1
-
-    scene_id = str(target.get("scene_id", "")).strip() or scene_query
-    old_role = target.get("role", {}) if isinstance(target.get("role", {}), dict) else {}
-    old_addressed_to = str(old_role.get("addressed_to", "")).strip() or "未识别"
-    scene_type, scene_type_label = infer_scene_role_profile(addressed_to)
-
-    updated_role = dict(old_role)
-    updated_role.update(
-        {
-            "category": scene_type,
-            "entity_id": addressed_to,
-            "relation_label": addressed_to,
-            "scene_type": scene_type,
-            "scene_type_label": scene_type_label,
-            "addressed_to": addressed_to,
-            "confidence": 1.0,
-            "evidence_chain": [f"人工修正为 {addressed_to}"],
-            "source": "human_confirmed",
-            "source_label": "你确认的",
-            "evidence": f"人工修正为 {addressed_to}",
-            "needs_review": False,
-        }
-    )
-    target["role"] = updated_role
-    data["stats"] = rebuild_scene_stats(data)
-    write_json(scenes_path, data)
-
-    from openmy.services.context.corrections import append_correction, create_correction_event
-
-    event = create_correction_event(
-        actor="user",
-        op="confirm_scene_role",
-        target_type="scene",
-        target_id=f"{date_str}:{scene_id}",
-        payload={
-            "date": date_str,
-            "scene_id": scene_id,
-            "from": old_addressed_to,
-            "to": addressed_to,
-            "time_start": str(target.get("time_start", "")),
-        },
-    )
-    append_correction(DATA_ROOT, event)
-
-    console.print(
-        f"[green]✅ 已修正场景角色[/green]: {date_str} {scene_id} "
-        f"{old_addressed_to} → {addressed_to}"
-    )
-    console.print(
-        "[dim]如需同步到日报，请重新运行 "
-        f"`python3 -m openmy briefing {date_str}` 或完整 "
-        f"`python3 -m openmy run {date_str} --skip-transcribe`。[/dim]"
-    )
-    return 0
-
-
-def cmd_correct_list(_args: argparse.Namespace) -> int:
-    """查看 correction 历史。"""
-    from openmy.services.context.corrections import load_corrections
-
-    corrections = load_corrections(DATA_ROOT)
-    if not corrections:
-        console.print("[dim]还没有任何修正记录[/dim]")
-        return 0
-
-    table = Table(title="📝 修正历史", box=box.ROUNDED)
-    table.add_column("时间")
-    table.add_column("操作")
-    table.add_column("对象")
-    table.add_column("原因")
-    for event in corrections:
-        if event.op == "merge_project":
-            target = f"{event.payload.get('target_title', event.target_id)} → {event.payload.get('merge_into_title', event.payload.get('merge_into', ''))}"
-        else:
-            target = str(event.payload.get("target_title", event.target_id))
-        table.add_row(event.created_at[:16], event.op, target, event.reason or "—")
-    console.print(table)
-    return 0
-
-
-def cmd_status(_args: argparse.Namespace) -> int:
-    """列出所有日期及处理状态。"""
-    dates = find_all_dates()
-    if not dates:
-        console.print("[dim]没有找到任何数据[/dim]")
-        return 0
-
-    table = Table(title="📅 OpenMy 数据总览", box=box.ROUNDED, show_lines=True)
-    table.add_column("日期", style="bold")
-    table.add_column("状态", justify="center")
-    table.add_column("字数", justify="right")
-    table.add_column("场景", justify="right")
-    table.add_column("角色分布", min_width=20)
-
-    for date_str in dates:
-        status = get_date_status(date_str)
-        table.add_row(
-            date_str,
-            stage_label(status),
-            f"{status['word_count']:,}" if status["word_count"] else "—",
-            str(status["scene_count"]) if status["scene_count"] else "—",
-            role_bar(status["role_distribution"]),
-        )
-
-    console.print(table)
-    return 0
+def cmd_status(args: argparse.Namespace) -> int:
+    _sync_runtime_overrides()
+    return show_cmd.cmd_status(args)
 
 
 def cmd_view(args: argparse.Namespace) -> int:
-    """终端查看某天概览。"""
-    date_str = args.date
-    status = get_date_status(date_str)
-    if not status["has_transcript"]:
-        console.print(f"[red]❌ {date_str} 没有数据[/red]")
-        return 1
-
-    paths = resolve_day_paths(date_str)
-    if paths["briefing"].exists():
-        briefing = read_json(paths["briefing"], {})
-        console.print(
-            Panel(
-                briefing.get("summary", "无摘要"),
-                title=f"📋 {date_str} 日报",
-                border_style="magenta",
-                padding=(1, 2),
-            )
-        )
-        console.print()
-
-    if paths["scenes"].exists():
-        data = read_json(paths["scenes"], {})
-        scenes = data.get("scenes", [])
-        for scene in scenes:
-            time_start = scene.get("time_start", "")
-            role = scene.get("role", {})
-            role_label = role.get("addressed_to", "") or role.get("scene_type_label", "未识别")
-            color = ROLE_COLORS.get(role_label, "white")
-            summary = scene.get("summary", "")
-            preview = scene.get("preview") or scene.get("text", "")[:100]
-
-            content_parts = []
-            if summary:
-                content_parts.append(summary)
-            content_parts.append(f"[dim]{preview}[/dim]")
-
-            console.print(
-                Panel(
-                    "\n".join(content_parts),
-                    title=f"🕐 {time_start}  [{color}]{role_label}[/{color}]",
-                    title_align="left",
-                    border_style=color,
-                    padding=(0, 1),
-                )
-            )
-
-        dist = data.get("stats", {}).get("role_distribution", {})
-        if dist:
-            console.print()
-            console.print("[bold]📊 角色分布[/bold]")
-            total = sum(dist.values())
-            max_bar = 30
-            for role_name, count in sorted(dist.items(), key=lambda item: -item[1]):
-                color = ROLE_COLORS.get(role_name, "white")
-                bar_len = max(1, round(count / total * max_bar))
-                pct = count / total * 100
-                console.print(f"  [{color}]{'█' * bar_len}[/{color}] {role_name} {count}段 ({pct:.0f}%)")
-    else:
-        content = paths["transcript"].read_text(encoding="utf-8")
-        console.print(Panel(Markdown(content[:2000]), title=f"📝 {date_str} 转写文本"))
-
-    return 0
+    _sync_runtime_overrides()
+    return show_cmd.cmd_view(args)
 
 
 def cmd_clean(args: argparse.Namespace) -> int:
-    """清洗转写文本。"""
-    date_str = args.date
-    paths = resolve_day_paths(date_str)
-    raw_path = paths["raw"]
-    if not raw_path.exists():
-        console.print(f"[red]❌ 找不到 {date_str} 的原始转写[/red]")
-        return 1
-
-    from openmy.services.cleaning.cleaner import clean_text
-
-    raw_text = raw_path.read_text(encoding="utf-8")
-    with console.status("[bold green]🧹 清洗中..."):
-        cleaned = clean_text(raw_text)
-
-    output_path = ensure_day_dir(date_str) / "transcript.md"
-    output_path.write_text(cleaned, encoding="utf-8")
-
-    before = len(re.sub(r"\s+", "", raw_text))
-    after = len(re.sub(r"\s+", "", cleaned))
-    console.print(f"[green]✅ 清洗完成[/green]: {before:,} → {after:,} 字 (去除 {before - after:,} 字)")
-    console.print(f"[dim]{output_path}[/dim]")
-    return 0
+    _sync_runtime_overrides()
+    return show_cmd.cmd_clean(args)
 
 
 def cmd_roles(args: argparse.Namespace) -> int:
-    """兼容旧命令名：当前只切场景，不再自动角色归因。"""
-    date_str = args.date
-    paths = resolve_day_paths(date_str)
-    transcript_path = paths["transcript"]
-    if not transcript_path.exists():
-        console.print(f"[red]❌ 找不到 {date_str} 的清洗后文本，先运行 openmy clean {date_str}[/red]")
-        return 1
-
-    markdown = strip_document_header(transcript_path.read_text(encoding="utf-8"))
-
-    with console.status("[bold cyan]🔪 场景切分中..."):
-        result = build_segmented_scenes_payload(markdown)
-
-    output_path = ensure_day_dir(date_str) / "scenes.json"
-    write_json(output_path, result)
-
-    stats = result["stats"]
-    console.print(f"[green]✅ 场景切分完成[/green]: {stats['total_scenes']} 个场景")
-    console.print("[dim]ℹ️ 自动角色识别已冻结，当前只生成场景，不做对象识别[/dim]")
-    return 0
+    _sync_runtime_overrides()
+    return show_cmd.cmd_roles(args)
 
 
 def cmd_distill(args: argparse.Namespace) -> int:
-    """蒸馏摘要。"""
-    date_str = args.date
-    api_key = get_llm_api_key("distill")
-    if not api_key:
-        console.print(
-            "[red]❌ 缺少 LLM provider key[/red]：请在当前项目根目录 `.env` 填 "
-            "`GEMINI_API_KEY` 或 `OPENMY_LLM_API_KEY`。"
-        )
-        return 1
-
-    scenes_path, data = read_scenes_payload(date_str)
-    if not scenes_path.exists():
-        console.print(f"[red]❌ 找不到 {date_str}/scenes.json，先运行 openmy roles {date_str}[/red]")
-        return 1
-
-    from openmy.services.distillation.distiller import summarize_scene
-
-    pending = [scene for scene in data.get("scenes", []) if not scene.get("summary")]
-    if not pending:
-        console.print(f"[green]✅ {date_str} 所有场景已有摘要，跳过[/green]")
-        return 0
-
-    console.print(f"[cyan]🧪 蒸馏 {len(pending)} 个场景...[/cyan]")
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("{task.description}"),
-        BarColumn(),
-        TextColumn("{task.completed}/{task.total}"),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("蒸馏中...", total=len(pending))
-        for scene in data.get("scenes", []):
-            if scene.get("summary"):
-                continue
-            text = scene.get("text", "").strip()
-            scene["summary"] = summarize_scene(text, api_key, GEMINI_MODEL) if text else ""
-            progress.advance(task)
-
-    write_json(scenes_path, data)
-    console.print(f"[green]✅ 蒸馏完成[/green]: {len(pending)} 个摘要已写入")
-    return 0
+    _sync_runtime_overrides()
+    return show_cmd.cmd_distill(args)
 
 
 def cmd_briefing(args: argparse.Namespace) -> int:
-    """生成日报。"""
-    date_str = args.date
-    paths = resolve_day_paths(date_str)
-
-    from openmy.services.briefing.generator import generate_briefing, save_briefing
-
-    screen_client = get_screen_client()
-    with console.status("[bold magenta]📋 生成日报中..."):
-        briefing = generate_briefing(paths["scenes"], date_str, screen_client)
-        output_path = ensure_day_dir(date_str) / "daily_briefing.json"
-        save_briefing(briefing, output_path)
-
-    console.print(f"[green]✅ 日报已生成[/green]: {output_path}")
-    console.print(
-        Panel(
-            briefing.summary or f"{date_str} 的记录",
-            title=f"📋 {date_str} 日报摘要",
-            border_style="magenta",
-            padding=(1, 2),
-        )
-    )
-    return 0
+    _sync_runtime_overrides()
+    return show_cmd.cmd_briefing(args)
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
-    """从 transcript 提取 intents / facts 结构。"""
-    from openmy.services.extraction.extractor import run_extraction
-
-    data = run_extraction(
-        args.input_file,
-        date=args.date,
-        model=args.model,
-        vault_path=args.vault_path,
-        api_key=args.api_key,
-        dry_run=args.dry_run,
-    )
-    if data is None:
-        return 1
-
-    if args.dry_run:
-        print(json.dumps(data, ensure_ascii=False, indent=2))
-    else:
-        console.print("[green]✅ 提取完成[/green]")
-    return 0
-
-
-def cmd_correct(args: argparse.Namespace) -> int:
-    from openmy.commands.correct import cmd_correct as _cmd_correct
-
-    return _cmd_correct(args)
-
-
-def cmd_context(args: argparse.Namespace) -> int:
-    from openmy.commands.context import cmd_context as _cmd_context
-
-    return _cmd_context(args)
+    _sync_runtime_overrides()
+    return show_cmd.cmd_extract(args)
 
 
 def cmd_query(args: argparse.Namespace) -> int:
-    result = query_context(
-        DATA_ROOT,
-        kind=args.kind,
-        query=args.query or "",
-        limit=args.limit,
-        include_evidence=args.include_evidence,
-    )
-    if result.get("error"):
-        if getattr(args, "json", False):
-            _print_json(result)
-        else:
-            console.print(f"[red]❌ {result['error']}[/red]")
-        return 1
-
-    if getattr(args, "json", False):
-        _print_json(result)
-    else:
-        console.print(Panel(render_query_result(result), title=f"🔎 {args.kind}", border_style="cyan"))
-    return 0
+    _sync_runtime_overrides()
+    return show_cmd.cmd_query(args)
 
 
-def cmd_agent(args: argparse.Namespace) -> int:
-    """旧 agent 入口：兼容映射到稳定 skill 契约。"""
-    if args.recent:
-        action = "context.get"
-        skill_args = argparse.Namespace(
-            action=action,
-            date=None,
-            audio=None,
-            skip_transcribe=False,
-            correct_args=None,
-            op=None,
-            arg=None,
-            status="done",
-            level=0,
-            compact=False,
-            json=True,
-        )
-    elif args.day:
-        action = "day.get"
-        skill_args = argparse.Namespace(
-            action=action,
-            date=args.day,
-            audio=None,
-            skip_transcribe=False,
-            correct_args=None,
-            op=None,
-            arg=None,
-            status="done",
-            level=1,
-            compact=False,
-            json=True,
-        )
-    elif args.reject_decision:
-        action = "correction.apply"
-        skill_args = argparse.Namespace(
-            action=action,
-            date=None,
-            audio=None,
-            skip_transcribe=False,
-            correct_args=None,
-            op="reject-decision",
-            arg=[args.reject_decision],
-            status="done",
-            level=1,
-            compact=False,
-            json=True,
-        )
-    elif args.query:
-        action = "context.query"
-        skill_args = argparse.Namespace(
-            action=action,
-            date=None,
-            audio=None,
-            skip_transcribe=False,
-            correct_args=None,
-            op=None,
-            arg=None,
-            status="done",
-            level=1,
-            compact=False,
-            json=True,
-            kind=args.query_kind,
-            query=args.query,
-            limit=args.limit,
-            include_evidence=args.include_evidence,
-        )
-    elif args.ingest:
-        action = "day.run"
-        skill_args = argparse.Namespace(
-            action=action,
-            date=args.ingest,
-            audio=args.audio,
-            skip_transcribe=args.skip_transcribe,
-            correct_args=None,
-            op=None,
-            arg=None,
-            status="done",
-            level=1,
-            compact=False,
-            json=True,
-            kind=None,
-            query="",
-            limit=5,
-            include_evidence=False,
-            stt_provider=args.stt_provider,
-            stt_model=args.stt_model,
-            stt_vad=args.stt_vad,
-            stt_word_timestamps=args.stt_word_timestamps,
-            stt_enrich_mode=args.stt_enrich_mode,
-            stt_align=args.stt_align,
-            stt_diarize=args.stt_diarize,
-            payload_json=None,
-            payload_file=None,
-            name=None,
-            language=None,
-            timezone=None,
-        )
-    else:
-        _print_json(
-            {
-                "ok": False,
-                "action": "agent",
-                "version": "v1",
-                "error_code": "missing_action",
-                "message": "agent 入口需要指定动作。",
-                "hint": "请使用 --recent / --day / --ingest / --reject-decision / --query 之一。",
-            }
-        )
-        return 1
+def cmd_weekly(args: argparse.Namespace) -> int:
+    _sync_runtime_overrides()
+    return show_cmd.cmd_weekly(args)
 
-    from openmy.skill_dispatch import dispatch_skill_action
 
-    payload, exit_code = dispatch_skill_action(action, skill_args)
-    _print_json(payload)
-    return exit_code
+def cmd_monthly(args: argparse.Namespace) -> int:
+    _sync_runtime_overrides()
+    return show_cmd.cmd_monthly(args)
 
+
+def cmd_watch(args: argparse.Namespace) -> int:
+    _sync_runtime_overrides()
+    return show_cmd.cmd_watch(args)
+
+
+def cmd_feedback(args: argparse.Namespace) -> int:
+    _sync_runtime_overrides()
+    return show_cmd.cmd_feedback(args)
+
+
+def cmd_screen(args: argparse.Namespace) -> int:
+    _sync_runtime_overrides()
+    return screen_cmd.cmd_screen(args)
+
+
+def cmd_correct(args: argparse.Namespace) -> int:
+    _sync_runtime_overrides()
+    return correct_cmd.cmd_correct(args)
+
+
+def cmd_context(args: argparse.Namespace) -> int:
+    _sync_runtime_overrides()
+    return context_cmd.cmd_context(args)
 
 def _print_json(payload: Any) -> None:
     sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
 
-def _run_with_silent_console(func, *args, **kwargs):
+def _set_console_for_modules(new_console) -> None:
     global console
+    console = new_console
+    common_cmd.console = new_console
+    show_cmd.console = new_console
+    menu_cmd.console = new_console
+    screen_cmd.console = new_console
+    screen_cmd._upsert_project_env = _upsert_project_env
+    correct_cmd.console = new_console
 
+
+def _run_with_silent_console(func, *args, **kwargs):
     original_console = console
-    console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
+    silent_console = common_cmd.Console(file=io.StringIO(), force_terminal=False, color_system=None)
+    _set_console_for_modules(silent_console)
     try:
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             return func(*args, **kwargs)
     finally:
-        console = original_console
+        _set_console_for_modules(original_console)
 
 
 def cmd_skill(args: argparse.Namespace) -> int:
     """稳定 JSON 动作入口。"""
     from openmy.skill_dispatch import dispatch_skill_action
+
     payload, exit_code = dispatch_skill_action(args.action, args)
     _print_json(payload)
     return exit_code
 
 
-def transcribe_audio_files(date_str: str, audio_files: list[str]) -> int:
-    from openmy.commands.run import transcribe_audio_files as _transcribe_audio_files
+def cmd_agent(args: argparse.Namespace) -> int:
+    action = None
+    if getattr(args, "recent", False):
+        action = "context.get"
+    elif getattr(args, "day", None):
+        action = "day.get"
+    elif getattr(args, "ingest", None):
+        action = "day.run"
+    elif getattr(args, "reject_decision", None):
+        action = "correction.apply"
+    elif getattr(args, "query", None) is not None:
+        action = "context.query"
 
-    return _transcribe_audio_files(date_str, audio_files)
+    if action is None:
+        console.print("[red]❌ agent 入口需要指定动作[/red]")
+        return 1
 
+    from openmy.skill_dispatch import dispatch_skill_action
 
-def cmd_run(args: argparse.Namespace, **kwargs: Any) -> int:
-    from openmy.commands.run import cmd_run as _cmd_run
-
-    return _cmd_run(args, **kwargs)
-
-
-def cmd_quick_start(args: argparse.Namespace) -> int:
-    from openmy.commands.run import cmd_quick_start as _cmd_quick_start
-
-    return _cmd_quick_start(args)
-
-
-def _render_review(title: str, payload: dict[str, Any], field_pairs: list[tuple[str, str]]) -> None:
-    lines: list[str] = []
-    summary = str(payload.get("summary", "") or "").strip()
-    if summary:
-        lines.append(summary)
-        lines.append("")
-    for field_name, label in field_pairs:
-        value = payload.get(field_name)
-        if isinstance(value, list) and value:
-            lines.append(f"[bold]{label}[/bold]")
-            lines.extend([f"- {item}" for item in value[:6]])
-            lines.append("")
-        elif isinstance(value, str) and value.strip():
-            lines.append(f"[bold]{label}[/bold]")
-            lines.append(value.strip())
-            lines.append("")
-    console.print(Panel(Markdown("\n".join(lines).strip() or "暂无内容"), title=title, border_style="cyan"))
-
-
-def cmd_weekly(args: argparse.Namespace) -> int:
-    from openmy.services.aggregation.weekly import current_week_str, generate_weekly_review
-
-    week = getattr(args, "week", None) or current_week_str()
-    review = generate_weekly_review(DATA_ROOT, week)
-    _render_review(
-        f"📅 本周回顾 · {review['week']}",
-        review,
-        [("projects", "主要项目"), ("wins", "推进了什么"), ("open_items", "还没收完"), ("next_week_focus", "下周先盯")],
-    )
-    return 0
-
-
-def cmd_monthly(args: argparse.Namespace) -> int:
-    from openmy.services.aggregation.monthly import generate_monthly_review
-    from openmy.services.aggregation.weekly import current_month_str
-
-    month = getattr(args, "month", None) or current_month_str()
-    review = generate_monthly_review(DATA_ROOT, month)
-    _render_review(
-        f"🗓️ 本月回顾 · {review['month']}",
-        review,
-        [("projects", "主要项目"), ("key_decisions", "关键决定"), ("open_items", "还没收完"), ("direction", "接下来")],
-    )
-    return 0
-
-
-def cmd_watch(args: argparse.Namespace) -> int:
-    from openmy.services.watcher import watch
-
-    watch(getattr(args, "directory", None))
-    return 0
-
-
-def cmd_feedback(args: argparse.Namespace) -> int:
-    if getattr(args, "delete", False):
-        delete_feedback_data()
-        console.print("[green]✅ 本地反馈记录已经删掉了。[/green]")
-        return 0
-
-    if getattr(args, "show", False):
-        settings = load_feedback_settings()
-        telemetry = load_telemetry()
-        console.print(
-            Panel(
-                "\n".join(
-                    [
-                        f"已同意：{'是' if settings.get('feedback_opt_in') else '否'}",
-                        f"首次安装时间：{telemetry.get('first_install_time', '还没记')}",
-                        f"首次成功处理时间：{telemetry.get('first_successful_processing_time', '还没记')}",
-                        f"TTHW：{telemetry.get('tthw_seconds', '还没记')} 秒",
-                        f"转写引擎：{telemetry.get('stt_provider', '还没记')}",
-                        f"系统：{telemetry.get('os', '还没记')}",
-                    ]
-                ),
-                title="本地反馈记录",
-                border_style="cyan",
-            )
-        )
-        return 0
-
-    if getattr(args, "opt_in", False):
-        set_feedback_opt_in(True)
-        console.print("[green]✅ 已开启本地反馈记录。只记这台机器上的匿名使用指标，不上传。[/green]")
-        return 0
-
-    if getattr(args, "opt_out", False):
-        set_feedback_opt_in(False)
-        console.print("[green]✅ 已关闭本地反馈记录。旧数据还在，你随时可以删。[/green]")
-        return 0
-
-    settings = load_feedback_settings()
-    if settings.get("feedback_opt_in") is None:
-        decision = ask_feedback_opt_in()
-        if decision is None:
-            return 0
-        set_feedback_opt_in(bool(decision))
-        return 0
-
-    if settings.get("feedback_opt_in"):
-        console.print("[green]✅ 你已经开启了本地反馈记录。想看详情就运行 `openmy feedback --show`。[/green]")
+    skill_args = argparse.Namespace(**vars(args))
+    setattr(skill_args, "compact", getattr(skill_args, "compact", False))
+    setattr(skill_args, "level", getattr(skill_args, "level", 1))
+    setattr(skill_args, "status", getattr(skill_args, "status", "done"))
+    setattr(skill_args, "include_evidence", getattr(skill_args, "include_evidence", False))
+    if action == "day.get":
+        setattr(skill_args, "date", getattr(args, "day", None))
+        payload, exit_code = dispatch_skill_action(action, skill_args)
+    elif action == "day.run":
+        setattr(skill_args, "date", getattr(args, "ingest", None))
+        final_stt_provider = getattr(args, "stt_provider", None) or common_cmd.get_stt_provider_name()
+        common_cmd.prepare_project_runtime_env()
+        try:
+            if not getattr(args, "skip_transcribe", False):
+                common_cmd.ensure_runtime_dependencies(stt_provider=final_stt_provider)
+        except FriendlyCliError as exc:
+            payload = {
+                "ok": False,
+                "action": action,
+                "version": "v1",
+                "error": exc.code or "dependency_check_failed",
+                "message": exc.message,
+                "human_summary": exc.message,
+                "next_actions": [exc.fix] if getattr(exc, "fix", "") else [],
+                "artifacts": {},
+                "data": {},
+            }
+            _print_json(payload)
+            return 1
+        payload, exit_code = dispatch_skill_action(action, skill_args)
+    elif action == "correction.apply":
+        setattr(skill_args, "op", "reject-decision")
+        setattr(skill_args, "arg", [getattr(args, "reject_decision", "")])
+        payload, exit_code = dispatch_skill_action(action, skill_args)
+    elif action == "context.query":
+        setattr(skill_args, "kind", getattr(args, "query_kind", "project"))
+        setattr(skill_args, "query", getattr(args, "query", ""))
+        payload, exit_code = dispatch_skill_action(action, skill_args)
     else:
-        console.print("[yellow]ℹ️ 你现在没开本地反馈记录。想开启就运行 `openmy feedback --opt-in`。[/yellow]")
-    return 0
+        payload, exit_code = dispatch_skill_action(action, skill_args)
+
+    _print_json(payload)
+    return exit_code
 
 
-def cmd_screen(args: argparse.Namespace) -> int:
-    from pathlib import Path
-
-    from openmy.services.screen_recognition.capture import (
-        is_capture_supported,
-        read_status,
-        run_capture_loop,
-        start_capture_daemon,
-        stop_capture_daemon,
-    )
-    from openmy.services.screen_recognition.settings import (
-        load_screen_context_settings,
-        save_screen_context_settings,
-    )
-
-    action = str(getattr(args, "action", "") or "").strip().lower()
-    settings = load_screen_context_settings(data_root=DATA_ROOT)
-
-    if action == "on":
-        settings.enabled = True
-        if settings.participation_mode == "off":
-            settings.participation_mode = "summary_only"
-        save_screen_context_settings(settings, data_root=DATA_ROOT)
-        _upsert_project_env("SCREEN_RECOGNITION_ENABLED", "true")
-        if not is_capture_supported():
-            raise FriendlyCliError(
-                "当前机器不支持内置屏幕识别。",
-                code="screen_capture_unsupported",
-                fix="这块先在 macOS（苹果系统）上用；别的系统先跳过屏幕采集。",
-                doc_url=doc_url("readme"),
-                message_en="Built-in screen recognition is not supported on this machine.",
-                fix_en="Use this feature on macOS for now, or skip screen capture on this system.",
-            )
-        status = start_capture_daemon(
-            data_root=DATA_ROOT,
-            interval_seconds=settings.capture_interval_seconds,
-            retention_hours=settings.screenshot_retention_hours,
-        )
-        console.print(f"[green]✅ 屏幕识别已开启（后台进程 {status.pid}）[/green]")
-        return 0
-
-    if action == "off":
-        settings.enabled = False
-        settings.participation_mode = "off"
-        save_screen_context_settings(settings, data_root=DATA_ROOT)
-        _upsert_project_env("SCREEN_RECOGNITION_ENABLED", "false")
-        stop_capture_daemon(data_root=DATA_ROOT)
-        console.print("[green]✅ 屏幕识别已关闭[/green]")
-        return 0
-
-    if action == "status":
-        status = read_status(DATA_ROOT)
-        running = "运行中" if status.running else "未运行"
-        console.print(f"[cyan]ℹ️ 屏幕识别状态：{running}[/cyan]")
-        return 0
-
-    if action == "daemon":
-        loop_data_root = Path(getattr(args, "data_root", DATA_ROOT) or DATA_ROOT)
-        run_capture_loop(
-            data_root=loop_data_root,
-            interval_seconds=max(1, int(getattr(args, "interval", settings.capture_interval_seconds) or 1)),
-            retention_hours=max(1, int(getattr(args, "retention_hours", settings.screenshot_retention_hours) or 1)),
-        )
-        return 0
-
-    raise FriendlyCliError(
-        "screen 只支持 on、off、status 这三个动作。",
-        code="screen_action_invalid",
-        fix="改成 `openmy screen on`、`openmy screen off` 或 `openmy screen status`。",
-        doc_url=doc_url("readme"),
-        message_en="screen only supports on, off, and status.",
-        fix_en="Use openmy screen on, openmy screen off, or openmy screen status.",
-    )
-
-
-def cmd_self_update(args: argparse.Namespace) -> int:
-    console.print(
-        Panel(
-            _help_text(
-                "准备升级 OpenMy。会直接运行当前 Python 的 pip 安装器。",
-                "Preparing to update OpenMy with pip from the current Python runtime.",
-            ),
-            border_style="bright_blue",
-        )
-    )
-    command = [sys.executable, "-m", "pip", "install", "--upgrade", "openmy"]
-    result = subprocess.run(command, check=False)
-    if result.returncode != 0:
-        raise FriendlyCliError(
-            _help_text("升级没跑成。", "The update did not finish."),
-            code="self_update_failed",
-            fix=_help_text("先检查网络，再运行 `openmy self-update` 重试。", "Check your network connection, then run openmy self-update again."),
-            doc_url=doc_url("readme"),
-            message_en="The update did not finish.",
-            fix_en="Check your network connection, then run openmy self-update again.",
-        )
-    console.print(
-        _help_text(
-            "[green]✅ 已升级完成。重开一个终端窗口再跑 openmy --help 看新版本。[/green]",
-            "[green]✅ Update finished. Open a new shell and run openmy --help to verify the new version.[/green]",
-        )
-    )
-    return 0
-
+cmd_self_update = self_update_cmd.cmd_self_update
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -1685,12 +354,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_correct = sub.add_parser("correct", help=_help_text("纠正转写或活动上下文", "Correct transcripts or active context data."))
     p_correct.add_argument("correct_args", nargs="*", help=_help_text("纠错参数", "Correction arguments."))
-    p_correct.add_argument(
-        "--status",
-        default="done",
-        choices=["done", "abandoned"],
-        help=_help_text("close-loop 的关闭状态", "Status to use when closing a loop."),
-    )
+    p_correct.add_argument("--status", default="done", choices=["done", "abandoned"], help=_help_text("close-loop 的关闭状态", "Status to use when closing a loop."))
 
     p_context = sub.add_parser("context", help=_help_text("生成/查看活动上下文", "Generate or inspect active context."))
     p_context.add_argument("--compact", action="store_true", help=_help_text("输出 Markdown 压缩版", "Render the compact Markdown view."))
@@ -1745,10 +409,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_stt_runtime_args(p_agent)
 
     p_skill = sub.add_parser("skill", help=_help_text("稳定 JSON 动作入口", "Stable JSON action entrypoint."))
-    p_skill.add_argument(
-        "action",
-        help=_help_text("稳定动作名", "Stable action name."),
-    )
+    p_skill.add_argument("action", help=_help_text("稳定动作名", "Stable action name."))
     p_skill.add_argument("--date", help=_help_text("给 day.get / day.run 使用的日期 YYYY-MM-DD", "Date for day.get or day.run in YYYY-MM-DD format."))
     p_skill.add_argument("--audio", nargs="+", help=_help_text("给 day.run 使用的音频文件路径", "Audio file paths for day.run."))
     p_skill.add_argument("--skip-transcribe", action="store_true", help=_help_text("给 day.run 使用：复用已有数据", "Reuse existing data for day.run instead of transcribing again."))
@@ -1757,12 +418,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_skill.add_argument("--correct-args", nargs="*", help=_help_text("给 correction.apply 透传的参数", "Raw correction arguments for correction.apply."))
     p_skill.add_argument("--op", help=_help_text("给 correction.apply 使用的动作名，如 close-loop", "Operation name for correction.apply, for example close-loop."))
     p_skill.add_argument("--arg", action="append", help=_help_text("给 correction.apply 使用的动作参数，可重复", "Repeated operation arguments for correction.apply."))
-    p_skill.add_argument(
-        "--status",
-        default="done",
-        choices=["done", "abandoned"],
-        help=_help_text("给 correction.apply 使用的 close-loop 状态", "Loop-closing status for correction.apply."),
-    )
+    p_skill.add_argument("--status", default="done", choices=["done", "abandoned"], help=_help_text("给 correction.apply 使用的 close-loop 状态", "Loop-closing status for correction.apply."))
     p_skill.add_argument("--kind", choices=["project", "person", "open", "closed", "evidence", "decision"], help=_help_text("给 context.query 使用", "Query kind for context.query."))
     p_skill.add_argument("--query", default="", help=_help_text("给 context.query 使用的查询词", "Search query for context.query."))
     p_skill.add_argument("--limit", type=int, default=5, help=_help_text("给 context.query 使用的最大命中数", "Maximum number of matches for context.query."))
@@ -1794,9 +450,7 @@ def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | N
     if not args.command:
         latest_version = maybe_get_update_hint()
         if latest_version:
-            console.print(
-                f"[dim]有新版本 {latest_version} 可用。想升级就运行 openmy self-update。[/dim]"
-            )
+            console.print(f"[dim]有新版本 {latest_version} 可用。想升级就运行 openmy self-update。[/dim]")
         _show_main_menu()
         return 0
 
@@ -1833,9 +487,7 @@ def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | N
         if args.command not in {"skill", "agent", "_screen-capture-loop", "self-update"}:
             latest_version = maybe_get_update_hint()
             if latest_version:
-                console.print(
-                    f"[dim]有新版本 {latest_version} 可用。想升级就运行 openmy self-update。[/dim]"
-                )
+                console.print(f"[dim]有新版本 {latest_version} 可用。想升级就运行 openmy self-update。[/dim]")
         return handler(args)
     except KeyboardInterrupt:
         console.print("\n[yellow]已中断[/yellow]")
