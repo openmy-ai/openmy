@@ -441,13 +441,13 @@ function renderSidebar() {
   const dateList = document.getElementById('dateList');
   const visibleDates = getVisibleDates();
   if (!visibleDates.length) {
-    dateList.innerHTML = renderEmptyState('暂无可用阅读数据');
+    dateList.innerHTML = renderEmptyState('暂无记录');
     return;
   }
 
   dateList.innerHTML = visibleDates.map((item) => `
     <button class="date-item ${state.route === 'date' && item.date === state.currentDate ? 'active' : ''}" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
-      <span>${escapeHtml(item.date)}</span>
+      <span>${escapeHtml(formatFriendlyDate(item.date))}</span>
       <span class="meta">${item.segments}条</span>
     </button>
   `).join('');
