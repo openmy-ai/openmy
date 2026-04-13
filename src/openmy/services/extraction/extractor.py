@@ -784,8 +784,27 @@ def _insights_from_facts(facts: list[Fact]) -> list[dict[str, Any]]:
     return insights
 
 
-def normalize_extraction_payload(data: dict[str, Any], reference_date: str | None = None) -> dict[str, Any]:
+def _resolve_user_language(user_language: str | None = None) -> str:
+    if str(user_language or "").strip():
+        return str(user_language).strip().lower()
+
+    try:
+        from openmy.services.context.consolidation import load_profile_settings
+        from openmy.utils.paths import DATA_ROOT
+
+        profile = load_profile_settings(DATA_ROOT)
+        return str(profile.get("language", "") or "").strip().lower()
+    except Exception:
+        return ""
+
+
+def normalize_extraction_payload(
+    data: dict[str, Any],
+    reference_date: str | None = None,
+    user_language: str | None = None,
+) -> dict[str, Any]:
     payload = dict(data if isinstance(data, dict) else {})
+    resolved_user_language = _resolve_user_language(user_language)
 
     intent_text_aliases = [
         ("StreamDeck", "技能板"),
@@ -815,6 +834,8 @@ def normalize_extraction_payload(data: dict[str, Any], reference_date: str | Non
 
     def localize_intent_text(text: str) -> str:
         final_text = str(text or "")
+        if not resolved_user_language.startswith("zh"):
+            return final_text.strip()
         for old, new in intent_text_aliases:
             final_text = final_text.replace(old, new)
         return final_text.strip()

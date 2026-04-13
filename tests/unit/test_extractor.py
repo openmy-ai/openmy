@@ -561,12 +561,35 @@ class TestExtractorCallGemini(unittest.TestCase):
                     }
                 ],
                 "facts": [],
-            }
+            },
+            user_language="zh",
         )
 
         self.assertEqual(
             payload["intents"][0]["what"],
             "在所有文档里把 当前项目 的 技能板 界面 改好，并同步到 代码仓库",
+        )
+
+    def test_normalize_extraction_payload_keeps_brand_names_for_english_profile(self):
+        payload = extractor.normalize_extraction_payload(
+            {
+                "daily_summary": "Keep product names as-is.",
+                "intents": [
+                    {
+                        "intent_id": "intent_001",
+                        "kind": "action_item",
+                        "what": "Ask Claude to polish the OpenMy StreamDeck guide and sync it to GitHub",
+                        "status": "open",
+                    }
+                ],
+                "facts": [],
+            },
+            user_language="en",
+        )
+
+        self.assertEqual(
+            payload["intents"][0]["what"],
+            "Ask Claude to polish the OpenMy StreamDeck guide and sync it to GitHub",
         )
 
     def test_normalize_extraction_payload_marks_ongoing_work_as_active(self):
