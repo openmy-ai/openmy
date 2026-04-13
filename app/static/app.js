@@ -878,7 +878,7 @@ function renderDayLayout() {
   const meta = state.currentMeta || {};
   if (!detail) return;
 
-  const summaryText = plainText(state.currentBriefing?.summary || meta.daily_summary || state.context.status_line || '');
+  const summaryText = plainText(meta.daily_summary || state.currentBriefing?.summary || state.context.status_line || '');
   const headerMeta = [
     detail.date,
     `${detail.segments.length}条记录`,
