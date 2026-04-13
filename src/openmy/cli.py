@@ -75,6 +75,22 @@ class FriendlyCliError(RuntimeError):
     """给最终用户看的中文错误。"""
 
 
+def _prefers_english_help() -> bool:
+    for env_name in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        value = str(os.getenv(env_name, "") or "").strip().lower()
+        if not value:
+            continue
+        return not value.startswith("zh")
+    return False
+
+
+HELP_IN_ENGLISH = _prefers_english_help()
+
+
+def _help_text(zh: str, en: str) -> str:
+    return en if HELP_IN_ENGLISH else zh
+
+
 def project_version() -> str:
     try:
         content = (ROOT_DIR / "pyproject.toml").read_text(encoding="utf-8")
@@ -82,6 +98,69 @@ def project_version() -> str:
         return "0.x.x"
     match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
     return match.group(1) if match else "0.x.x"
+
+
+def _version_key(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in re.findall(r"\d+", str(version)))
+
+
+def _update_check_cache_path() -> Path:
+    return DATA_ROOT / ".update-check.json"
+
+
+def _load_cached_update_hint(now_ts: float) -> str | None:
+    cache_path = _update_check_cache_path()
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    checked_at = float(payload.get("checked_at", 0) or 0)
+    if now_ts - checked_at > 6 * 3600:
+        return None
+    latest = str(payload.get("latest_version", "") or "").strip()
+    if latest and _version_key(latest) > _version_key(project_version()):
+        return latest
+    return ""
+
+
+def _store_update_hint(now_ts: float, latest_version: str) -> None:
+    cache_path = _update_check_cache_path()
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    safe_write_json(
+        cache_path,
+        {
+            "checked_at": now_ts,
+            "latest_version": latest_version,
+            "current_version": project_version(),
+        },
+    )
+
+
+def maybe_get_update_hint() -> str | None:
+    if not sys.stdout.isatty():
+        return None
+    if os.getenv("OPENMY_SKIP_UPDATE_CHECK", "").strip() == "1":
+        return None
+
+    now_ts = time.time()
+    cached = _load_cached_update_hint(now_ts)
+    if cached is not None:
+        return cached or None
+
+    latest_version = ""
+    request = urllib_request.Request("https://pypi.org/pypi/openmy/json", method="GET")
+    try:
+        with urllib_request.urlopen(request, timeout=0.6) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            latest_version = str(payload.get("info", {}).get("version", "") or "").strip()
+    except Exception:
+        _store_update_hint(now_ts, "")
+        return None
+
+    _store_update_hint(now_ts, latest_version)
+    if latest_version and _version_key(latest_version) > _version_key(project_version()):
+        return latest_version
+    return None
 
 
 def _show_main_menu() -> None:
@@ -425,36 +504,55 @@ def add_stt_runtime_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--stt-provider",
         default=None,
-        help="转写后端（如 gemini / faster-whisper / funasr）",
+        help=_help_text(
+            "转写后端（如 gemini / faster-whisper / funasr）",
+            "Speech-to-text backend, for example gemini, faster-whisper, or funasr.",
+        ),
     )
     parser.add_argument(
         "--stt-model",
         default=None,
-        help="转写模型名",
+        help=_help_text("转写模型名", "Speech-to-text model name."),
     )
-    parser.add_argument("--stt-vad", action="store_true", help="启用转写后端自带 VAD")
+    parser.add_argument(
+        "--stt-vad",
+        action="store_true",
+        help=_help_text("启用转写后端自带 VAD", "Enable the backend's built-in voice activity detection."),
+    )
     parser.add_argument(
         "--stt-word-timestamps",
         action="store_true",
-        help="保留更细的词级时间信息（如果后端支持）",
+        help=_help_text(
+            "保留更细的词级时间信息（如果后端支持）",
+            "Keep word-level timestamps when the backend supports them.",
+        ),
     )
     parser.add_argument(
         "--stt-enrich-mode",
         default=get_stt_enrich_mode(),
         choices=["off", "recommended", "force"],
-        help="WhisperX 精标策略：off=关闭，recommended=本地 STT 推荐路径，force=强制尝试",
+        help=_help_text(
+            "WhisperX 精标策略：off=关闭，recommended=本地 STT 推荐路径，force=强制尝试",
+            "WhisperX alignment mode: off disables it, recommended follows the local STT recommendation, and force always tries it.",
+        ),
     )
     parser.add_argument(
         "--stt-align",
         action="store_true",
         default=get_stt_align_enabled(),
-        help="显式要求在转写后启用 WhisperX 精标层",
+        help=_help_text(
+            "显式要求在转写后启用 WhisperX 精标层",
+            "Explicitly enable the WhisperX alignment step after transcription.",
+        ),
     )
     parser.add_argument(
         "--stt-diarize",
         action="store_true",
         default=get_stt_diarization_enabled(),
-        help="在精标层尝试附加说话人分离（如果环境支持）",
+        help=_help_text(
+            "在精标层尝试附加说话人分离（如果环境支持）",
+            "Try speaker diarization during alignment when the environment supports it.",
+        ),
     )
 
 
@@ -1395,75 +1493,105 @@ def cmd_screen(args: argparse.Namespace) -> int:
     raise FriendlyCliError("screen 只支持 on / off / status")
 
 
+def cmd_self_update(args: argparse.Namespace) -> int:
+    console.print(
+        Panel(
+            _help_text(
+                "准备升级 OpenMy。会直接运行当前 Python 的 pip 安装器。",
+                "Preparing to update OpenMy with pip from the current Python runtime.",
+            ),
+            border_style="bright_blue",
+        )
+    )
+    command = [sys.executable, "-m", "pip", "install", "--upgrade", "openmy"]
+    result = subprocess.run(command, check=False)
+    if result.returncode != 0:
+        raise FriendlyCliError(
+            _help_text(
+                "升级没跑成。请检查网络，或者稍后再试。",
+                "The update did not finish. Check your network connection and try again.",
+            )
+        )
+    console.print(
+        _help_text(
+            "[green]✅ 已升级完成。重开一个终端窗口再跑 openmy --help 看新版本。[/green]",
+            "[green]✅ Update finished. Open a new shell and run openmy --help to verify the new version.[/green]",
+        )
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="openmy",
-        description="🎙️ OpenMy — 个人上下文引擎",
+        description=_help_text("🎙️ OpenMy — 个人上下文引擎", "🎙️ OpenMy — personal context engine"),
     )
-    sub = parser.add_subparsers(dest="command", help="可用命令")
+    sub = parser.add_subparsers(dest="command", help=_help_text("可用命令", "Available commands"))
 
-    sub.add_parser("status", help="列出所有日期及处理状态")
+    sub.add_parser("status", help=_help_text("列出所有日期及处理状态", "List all processed dates and their status."))
 
-    p_view = sub.add_parser("view", help="终端查看某天的概览")
-    p_view.add_argument("date", help="日期 YYYY-MM-DD")
+    p_view = sub.add_parser("view", help=_help_text("终端查看某天的概览", "View one day's summary in the terminal."))
+    p_view.add_argument("date", help=_help_text("日期 YYYY-MM-DD", "Date in YYYY-MM-DD format."))
 
-    p_clean = sub.add_parser("clean", help="清洗转写文本")
-    p_clean.add_argument("date", help="日期 YYYY-MM-DD")
+    p_clean = sub.add_parser("clean", help=_help_text("清洗转写文本", "Clean one day's transcript text."))
+    p_clean.add_argument("date", help=_help_text("日期 YYYY-MM-DD", "Date in YYYY-MM-DD format."))
 
-    p_roles = sub.add_parser("roles", help="切场景 + 角色归因")
-    p_roles.add_argument("date", help="日期 YYYY-MM-DD")
+    p_roles = sub.add_parser("roles", help=_help_text("切场景 + 角色归因", "Split scenes and resolve who was speaking to whom."))
+    p_roles.add_argument("date", help=_help_text("日期 YYYY-MM-DD", "Date in YYYY-MM-DD format."))
 
-    p_distill = sub.add_parser("distill", help="蒸馏摘要（需要项目 `.env` 里的 LLM key）")
-    p_distill.add_argument("date", help="日期 YYYY-MM-DD")
+    p_distill = sub.add_parser("distill", help=_help_text("蒸馏摘要（需要项目 `.env` 里的 LLM key）", "Create scene summaries. Requires an LLM key in the project .env file."))
+    p_distill.add_argument("date", help=_help_text("日期 YYYY-MM-DD", "Date in YYYY-MM-DD format."))
 
-    p_brief = sub.add_parser("briefing", help="生成日报")
-    p_brief.add_argument("date", help="日期 YYYY-MM-DD")
+    p_brief = sub.add_parser("briefing", help=_help_text("生成日报", "Generate the daily briefing."))
+    p_brief.add_argument("date", help=_help_text("日期 YYYY-MM-DD", "Date in YYYY-MM-DD format."))
 
-    p_extract = sub.add_parser("extract", help="从转写中提取 intents / facts")
-    p_extract.add_argument("input_file", help="清洗后的 Markdown 文件路径")
-    p_extract.add_argument("--date", help="日期 YYYY-MM-DD，默认从文件名推断")
-    p_extract.add_argument("--model", default=None, help="LLM 模型（默认取项目 `.env` 或内置默认值）")
-    p_extract.add_argument("--vault-path", help="Obsidian Vault 路径")
-    p_extract.add_argument("--api-key", help="LLM API key")
-    p_extract.add_argument("--dry-run", action="store_true", help="只打印提取结果，不写入文件")
+    p_extract = sub.add_parser("extract", help=_help_text("从转写中提取 intents / facts", "Extract intents and facts from a cleaned transcript."))
+    p_extract.add_argument("input_file", help=_help_text("清洗后的 Markdown 文件路径", "Path to the cleaned Markdown transcript."))
+    p_extract.add_argument("--date", help=_help_text("日期 YYYY-MM-DD，默认从文件名推断", "Date in YYYY-MM-DD format. Defaults to the date inferred from the filename."))
+    p_extract.add_argument("--model", default=None, help=_help_text("LLM 模型（默认取项目 `.env` 或内置默认值）", "LLM model name. Defaults to the model configured in the project .env file or the built-in default."))
+    p_extract.add_argument("--vault-path", help=_help_text("Obsidian Vault 路径", "Path to the Obsidian vault."))
+    p_extract.add_argument("--api-key", help=_help_text("LLM API key", "LLM API key."))
+    p_extract.add_argument("--dry-run", action="store_true", help=_help_text("只打印提取结果，不写入文件", "Print the extraction result without writing files."))
 
-    p_run = sub.add_parser("run", help="全流程处理")
-    p_run.add_argument("date", help="日期 YYYY-MM-DD")
-    p_run.add_argument("--audio", nargs="+", help="音频文件路径")
-    p_run.add_argument("--skip-transcribe", action="store_true", help="跳过转写（使用已有数据）")
-    p_run.add_argument("--skip-aggregate", action="store_true", help="跳过周/月聚合")
+    p_run = sub.add_parser("run", help=_help_text("全流程处理", "Run the full daily pipeline."))
+    p_run.add_argument("date", help=_help_text("日期 YYYY-MM-DD", "Date in YYYY-MM-DD format."))
+    p_run.add_argument("--audio", nargs="+", help=_help_text("音频文件路径", "Audio file paths."))
+    p_run.add_argument("--skip-transcribe", action="store_true", help=_help_text("跳过转写（使用已有数据）", "Skip transcription and reuse existing data."))
+    p_run.add_argument("--skip-aggregate", action="store_true", help=_help_text("跳过周/月聚合", "Skip weekly and monthly aggregation."))
     add_stt_runtime_args(p_run)
 
-    p_quick = sub.add_parser("quick-start", help="第一次使用：自动处理音频并打开本地日报")
-    p_quick.add_argument("audio_path", nargs="?", help="音频文件路径；传 --demo 时可不填")
-    p_quick.add_argument("--demo", action="store_true", help="使用内置示例音频跑一遍主链")
-    p_quick.add_argument("--skip-aggregate", action="store_true", help="跳过周/月聚合")
+    p_quick = sub.add_parser("quick-start", help=_help_text("第一次使用：自动处理音频并打开本地日报", "First-run guided flow: process audio and open the local report."))
+    p_quick.add_argument("audio_path", nargs="?", help=_help_text("音频文件路径；传 --demo 时可不填", "Audio file path. Optional when you pass --demo."))
+    p_quick.add_argument("--demo", action="store_true", help=_help_text("使用内置示例音频跑一遍主链", "Run the bundled demo flow."))
+    p_quick.add_argument("--skip-aggregate", action="store_true", help=_help_text("跳过周/月聚合", "Skip weekly and monthly aggregation."))
     add_stt_runtime_args(p_quick)
 
-    p_correct = sub.add_parser("correct", help="纠正转写或活动上下文")
-    p_correct.add_argument("correct_args", nargs="*", help="纠错参数")
+    p_correct = sub.add_parser("correct", help=_help_text("纠正转写或活动上下文", "Correct transcripts or active context data."))
+    p_correct.add_argument("correct_args", nargs="*", help=_help_text("纠错参数", "Correction arguments."))
     p_correct.add_argument(
         "--status",
         default="done",
         choices=["done", "abandoned"],
-        help="close-loop 的关闭状态",
+        help=_help_text("close-loop 的关闭状态", "Status to use when closing a loop."),
     )
 
-    p_context = sub.add_parser("context", help="生成/查看活动上下文")
-    p_context.add_argument("--compact", action="store_true", help="输出 Markdown 压缩版")
-    p_context.add_argument("--level", type=int, default=1, choices=[0, 1], help="输出层级 (0=极简, 1=完整)")
+    p_context = sub.add_parser("context", help=_help_text("生成/查看活动上下文", "Generate or inspect active context."))
+    p_context.add_argument("--compact", action="store_true", help=_help_text("输出 Markdown 压缩版", "Render the compact Markdown view."))
+    p_context.add_argument("--level", type=int, default=1, choices=[0, 1], help=_help_text("输出层级 (0=极简, 1=完整)", "Output level: 0 for minimal, 1 for full detail."))
 
-    p_weekly = sub.add_parser("weekly", help="查看本周回顾")
-    p_weekly.add_argument("--week", help="指定周，例如 2026-W15")
+    p_weekly = sub.add_parser("weekly", help=_help_text("查看本周回顾", "Show the weekly review."))
+    p_weekly.add_argument("--week", help=_help_text("指定周，例如 2026-W15", "Specific ISO week, for example 2026-W15."))
 
-    p_monthly = sub.add_parser("monthly", help="查看本月回顾")
-    p_monthly.add_argument("--month", help="指定月，例如 2026-04")
+    p_monthly = sub.add_parser("monthly", help=_help_text("查看本月回顾", "Show the monthly review."))
+    p_monthly.add_argument("--month", help=_help_text("指定月，例如 2026-04", "Specific month, for example 2026-04."))
 
-    p_watch = sub.add_parser("watch", help="监控录音文件夹")
-    p_watch.add_argument("directory", nargs="?", help="监控目录；不传就用已配置的录音固定目录")
+    p_watch = sub.add_parser("watch", help=_help_text("监控录音文件夹", "Watch an audio folder for new recordings."))
+    p_watch.add_argument("directory", nargs="?", help=_help_text("监控目录；不传就用已配置的录音固定目录", "Directory to watch. Defaults to the configured audio source folder."))
 
-    p_screen = sub.add_parser("screen", help="开关屏幕识别")
-    p_screen.add_argument("action", choices=["on", "off", "status"], help="on=开启，off=关闭，status=查看状态")
+    p_screen = sub.add_parser("screen", help=_help_text("开关屏幕识别", "Turn screen recognition on or off."))
+    p_screen.add_argument("action", choices=["on", "off", "status"], help=_help_text("on=开启，off=关闭，status=查看状态", "Use on to enable, off to disable, and status to inspect the current state."))
+
+    sub.add_parser("self-update", help=_help_text("升级当前 OpenMy 安装", "Upgrade the current OpenMy installation."))
 
     p_screen_loop = sub.add_parser("_screen-capture-loop", help=argparse.SUPPRESS)
     p_screen_loop.add_argument("action", nargs="?", default="daemon", help=argparse.SUPPRESS)
@@ -1471,62 +1599,62 @@ def build_parser() -> argparse.ArgumentParser:
     p_screen_loop.add_argument("--retention-hours", type=int, default=24, help=argparse.SUPPRESS)
     p_screen_loop.add_argument("--data-root", default=str(DATA_ROOT), help=argparse.SUPPRESS)
 
-    p_query = sub.add_parser("query", help="基于结构化上下文查询项目/人物/待办/证据")
+    p_query = sub.add_parser("query", help=_help_text("基于结构化上下文查询项目/人物/待办/证据", "Query projects, people, open loops, or evidence from structured context."))
     p_query.add_argument("--kind", required=True, choices=["project", "person", "open", "closed", "evidence"])
-    p_query.add_argument("--query", default="", help="查询关键词（project / person / evidence 必填）")
-    p_query.add_argument("--limit", type=int, default=5, help="最多返回多少条命中")
-    p_query.add_argument("--include-evidence", action="store_true", help="返回证据来源")
-    p_query.add_argument("--json", action="store_true", help="输出 JSON")
+    p_query.add_argument("--query", default="", help=_help_text("查询关键词（project / person / evidence 必填）", "Search keyword. Required for project, person, and evidence queries."))
+    p_query.add_argument("--limit", type=int, default=5, help=_help_text("最多返回多少条命中", "Maximum number of matches to return."))
+    p_query.add_argument("--include-evidence", action="store_true", help=_help_text("返回证据来源", "Include evidence references in the output."))
+    p_query.add_argument("--json", action="store_true", help=_help_text("输出 JSON", "Output JSON."))
 
-    p_agent = sub.add_parser("agent", help="给 Agent 调用的统一入口")
+    p_agent = sub.add_parser("agent", help=_help_text("给 Agent 调用的统一入口", "Compatibility entrypoint for agents."))
     agent_mode = p_agent.add_mutually_exclusive_group(required=True)
-    agent_mode.add_argument("--recent", action="store_true", help="读取最近整体状态")
-    agent_mode.add_argument("--day", help="查看某天结果 YYYY-MM-DD")
-    agent_mode.add_argument("--ingest", help="处理某天输入 YYYY-MM-DD")
-    agent_mode.add_argument("--reject-decision", dest="reject_decision", help="排除一条不重要的决策")
-    agent_mode.add_argument("--query", help="按结构化结果查询项目/人物/待办/证据")
+    agent_mode.add_argument("--recent", action="store_true", help=_help_text("读取最近整体状态", "Read the recent overall status."))
+    agent_mode.add_argument("--day", help=_help_text("查看某天结果 YYYY-MM-DD", "Read one processed day in YYYY-MM-DD format."))
+    agent_mode.add_argument("--ingest", help=_help_text("处理某天输入 YYYY-MM-DD", "Process one day's input in YYYY-MM-DD format."))
+    agent_mode.add_argument("--reject-decision", dest="reject_decision", help=_help_text("排除一条不重要的决策", "Reject one decision that should not be kept."))
+    agent_mode.add_argument("--query", help=_help_text("按结构化结果查询项目/人物/待办/证据", "Query projects, people, open loops, or evidence from structured context."))
     p_agent.add_argument("--query-kind", default="project", choices=["project", "person", "open", "closed", "evidence"])
-    p_agent.add_argument("--limit", type=int, default=5, help="给 --query 使用")
-    p_agent.add_argument("--include-evidence", action="store_true", help="给 --query 使用：带上证据来源")
-    p_agent.add_argument("--audio", nargs="+", help="给 --ingest 使用的音频文件路径")
-    p_agent.add_argument("--skip-transcribe", action="store_true", help="给 --ingest 使用：复用已有数据")
-    p_agent.add_argument("--skip-aggregate", action="store_true", help="给 --ingest 使用：跳过周/月聚合")
+    p_agent.add_argument("--limit", type=int, default=5, help=_help_text("给 --query 使用", "Maximum results for --query."))
+    p_agent.add_argument("--include-evidence", action="store_true", help=_help_text("给 --query 使用：带上证据来源", "Include evidence references for --query."))
+    p_agent.add_argument("--audio", nargs="+", help=_help_text("给 --ingest 使用的音频文件路径", "Audio file paths for --ingest."))
+    p_agent.add_argument("--skip-transcribe", action="store_true", help=_help_text("给 --ingest 使用：复用已有数据", "Reuse existing data for --ingest instead of transcribing again."))
+    p_agent.add_argument("--skip-aggregate", action="store_true", help=_help_text("给 --ingest 使用：跳过周/月聚合", "Skip weekly and monthly aggregation for --ingest."))
     add_stt_runtime_args(p_agent)
 
-    p_skill = sub.add_parser("skill", help="稳定 JSON 动作入口")
+    p_skill = sub.add_parser("skill", help=_help_text("稳定 JSON 动作入口", "Stable JSON action entrypoint."))
     p_skill.add_argument(
         "action",
-        help="稳定动作名",
+        help=_help_text("稳定动作名", "Stable action name."),
     )
-    p_skill.add_argument("--date", help="给 day.get / day.run 使用的日期 YYYY-MM-DD")
-    p_skill.add_argument("--audio", nargs="+", help="给 day.run 使用的音频文件路径")
-    p_skill.add_argument("--skip-transcribe", action="store_true", help="给 day.run 使用：复用已有数据")
-    p_skill.add_argument("--skip-aggregate", action="store_true", help="给 day.run 使用：跳过周/月聚合")
+    p_skill.add_argument("--date", help=_help_text("给 day.get / day.run 使用的日期 YYYY-MM-DD", "Date for day.get or day.run in YYYY-MM-DD format."))
+    p_skill.add_argument("--audio", nargs="+", help=_help_text("给 day.run 使用的音频文件路径", "Audio file paths for day.run."))
+    p_skill.add_argument("--skip-transcribe", action="store_true", help=_help_text("给 day.run 使用：复用已有数据", "Reuse existing data for day.run instead of transcribing again."))
+    p_skill.add_argument("--skip-aggregate", action="store_true", help=_help_text("给 day.run 使用：跳过周/月聚合", "Skip weekly and monthly aggregation for day.run."))
     add_stt_runtime_args(p_skill)
-    p_skill.add_argument("--correct-args", nargs="*", help="给 correction.apply 透传的参数")
-    p_skill.add_argument("--op", help="给 correction.apply 使用的动作名，如 close-loop")
-    p_skill.add_argument("--arg", action="append", help="给 correction.apply 使用的动作参数，可重复")
+    p_skill.add_argument("--correct-args", nargs="*", help=_help_text("给 correction.apply 透传的参数", "Raw correction arguments for correction.apply."))
+    p_skill.add_argument("--op", help=_help_text("给 correction.apply 使用的动作名，如 close-loop", "Operation name for correction.apply, for example close-loop."))
+    p_skill.add_argument("--arg", action="append", help=_help_text("给 correction.apply 使用的动作参数，可重复", "Repeated operation arguments for correction.apply."))
     p_skill.add_argument(
         "--status",
         default="done",
         choices=["done", "abandoned"],
-        help="给 correction.apply 使用的 close-loop 状态",
+        help=_help_text("给 correction.apply 使用的 close-loop 状态", "Loop-closing status for correction.apply."),
     )
-    p_skill.add_argument("--kind", choices=["project", "person", "open", "closed", "evidence"], help="给 context.query 使用")
-    p_skill.add_argument("--query", default="", help="给 context.query 使用的查询词")
-    p_skill.add_argument("--limit", type=int, default=5, help="给 context.query 使用的最大命中数")
-    p_skill.add_argument("--include-evidence", action="store_true", help="给 context.query 返回证据来源")
-    p_skill.add_argument("--level", type=int, default=1, choices=[0, 1], help="给 context.get 使用的层级")
-    p_skill.add_argument("--compact", action="store_true", help="给 context.get 输出压缩 Markdown")
-    p_skill.add_argument("--name", help="给 profile.set 使用的名字")
-    p_skill.add_argument("--language", help="给 profile.set 使用的语言")
-    p_skill.add_argument("--timezone", help="给 profile.set 使用的时区")
-    p_skill.add_argument("--audio-source", help="给 profile.set 使用的录音固定目录")
-    p_skill.add_argument("--week", help="给 aggregate 使用的周，例如 2026-W15")
-    p_skill.add_argument("--month", help="给 aggregate 使用的月，例如 2026-04")
-    p_skill.add_argument("--payload-json", help="给 submit 类动作使用的 JSON 字符串")
-    p_skill.add_argument("--payload-file", help="给 submit 类动作使用的 JSON 文件路径")
-    p_skill.add_argument("--json", action="store_true", help="兼容参数；skill 默认输出 JSON")
+    p_skill.add_argument("--kind", choices=["project", "person", "open", "closed", "evidence"], help=_help_text("给 context.query 使用", "Query kind for context.query."))
+    p_skill.add_argument("--query", default="", help=_help_text("给 context.query 使用的查询词", "Search query for context.query."))
+    p_skill.add_argument("--limit", type=int, default=5, help=_help_text("给 context.query 使用的最大命中数", "Maximum number of matches for context.query."))
+    p_skill.add_argument("--include-evidence", action="store_true", help=_help_text("给 context.query 返回证据来源", "Include evidence references for context.query."))
+    p_skill.add_argument("--level", type=int, default=1, choices=[0, 1], help=_help_text("给 context.get 使用的层级", "Output level for context.get."))
+    p_skill.add_argument("--compact", action="store_true", help=_help_text("给 context.get 输出压缩 Markdown", "Render compact Markdown for context.get."))
+    p_skill.add_argument("--name", help=_help_text("给 profile.set 使用的名字", "Name for profile.set."))
+    p_skill.add_argument("--language", help=_help_text("给 profile.set 使用的语言", "Language for profile.set."))
+    p_skill.add_argument("--timezone", help=_help_text("给 profile.set 使用的时区", "Timezone for profile.set."))
+    p_skill.add_argument("--audio-source", help=_help_text("给 profile.set 使用的录音固定目录", "Fixed audio source directory for profile.set."))
+    p_skill.add_argument("--week", help=_help_text("给 aggregate 使用的周，例如 2026-W15", "ISO week for aggregate, for example 2026-W15."))
+    p_skill.add_argument("--month", help=_help_text("给 aggregate 使用的月，例如 2026-04", "Month for aggregate, for example 2026-04."))
+    p_skill.add_argument("--payload-json", help=_help_text("给 submit 类动作使用的 JSON 字符串", "JSON string payload for submit actions."))
+    p_skill.add_argument("--payload-file", help=_help_text("给 submit 类动作使用的 JSON 文件路径", "JSON file payload for submit actions."))
+    p_skill.add_argument("--json", action="store_true", help=_help_text("兼容参数；skill 默认输出 JSON", "Compatibility flag. Skill commands already output JSON by default."))
 
     return parser
 
@@ -1535,6 +1663,11 @@ def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | N
     parser = parser or build_parser()
     prepare_project_runtime_env()
     if not args.command:
+        latest_version = maybe_get_update_hint()
+        if latest_version:
+            console.print(
+                f"[dim]有新版本 {latest_version} 可用。想升级就运行 openmy self-update。[/dim]"
+            )
         _show_main_menu()
         return 0
 
@@ -1551,6 +1684,7 @@ def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | N
         "roles": cmd_roles,
         "run": cmd_run,
         "screen": cmd_screen,
+        "self-update": cmd_self_update,
         "_screen-capture-loop": cmd_screen,
         "skill": cmd_skill,
         "status": cmd_status,
@@ -1566,10 +1700,19 @@ def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | N
         return 1
 
     try:
+        if args.command not in {"skill", "agent", "_screen-capture-loop", "self-update"}:
+            latest_version = maybe_get_update_hint()
+            if latest_version:
+                console.print(
+                    f"[dim]有新版本 {latest_version} 可用。想升级就运行 openmy self-update。[/dim]"
+                )
         return handler(args)
     except KeyboardInterrupt:
         console.print("\n[yellow]已中断[/yellow]")
         return 130
+    except FriendlyCliError as exc:
+        console.print(f"[red]❌ {exc}[/red]")
+        return 1
     except Exception:
         console.print_exception(show_locals=False)
         return 1

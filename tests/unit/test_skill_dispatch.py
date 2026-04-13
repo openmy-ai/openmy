@@ -68,8 +68,11 @@ class TestSkillDispatch(unittest.TestCase):
         payload, exit_code = skill_dispatch.dispatch_skill_action("unknown.action", self.make_args(action="unknown.action"))
         self.assertEqual(exit_code, 1)
         self.assertFalse(payload["ok"])
+        self.assertTrue(payload["error"])
         self.assertEqual(payload["action"], "unknown.action")
         self.assertEqual(payload["error_code"], "unknown_action")
+        self.assertIn("fix", payload)
+        self.assertIn("doc_url", payload)
         self.assertEqual(payload["version"], "v1")
 
     def test_correction_apply_normalizes_op_and_arg_flags(self):

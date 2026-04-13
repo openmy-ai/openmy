@@ -281,12 +281,56 @@ def _run_quick_start_wizard(initial_provider: str | None = None) -> dict | None:
 def _seed_demo_transcript(date_str: str, transcript_text: str) -> None:
     cli = _cli()
     day_dir = cli.ensure_day_dir(date_str)
-    transcript_path = day_dir / "transcript.md"
-    if transcript_path.exists():
+    raw_path = day_dir / "transcript.raw.md"
+    if raw_path.exists():
         return
-    transcript_path.write_text(
-        "# OpenMy demo\n\n---\n\n## 12:00\n\n" + transcript_text.strip() + "\n",
+    noisy_text = (
+        "# OpenMy demo 原始转写\n\n---\n\n## 12:00\n\n"
+        f"嗯，{transcript_text.strip()} 然后这个，啊，我晚点再整理一下。"
+        "\n"
+    )
+    raw_path.write_text(
+        noisy_text,
         encoding="utf-8",
+    )
+
+
+def _demo_transcript_stats(day_dir: Path) -> tuple[Path | None, Path | None, int, int, int, int]:
+    raw_path = day_dir / "transcript.raw.md"
+    clean_path = day_dir / "transcript.md"
+    if not raw_path.exists() or not clean_path.exists():
+        return raw_path if raw_path.exists() else None, clean_path if clean_path.exists() else None, 0, 0, 0, 0
+
+    raw_text = raw_path.read_text(encoding="utf-8")
+    clean_text = clean_path.read_text(encoding="utf-8")
+    raw_lines = len([line for line in raw_text.splitlines() if line.strip()])
+    clean_lines = len([line for line in clean_text.splitlines() if line.strip()])
+    raw_chars = len("".join(raw_text.split()))
+    clean_chars = len("".join(clean_text.split()))
+    return raw_path, clean_path, raw_lines, clean_lines, raw_chars, clean_chars
+
+
+def _print_demo_before_after(date_str: str) -> None:
+    cli = _cli()
+    day_dir = cli.ensure_day_dir(date_str)
+    raw_path, clean_path, raw_lines, clean_lines, raw_chars, clean_chars = _demo_transcript_stats(day_dir)
+    if raw_path is None or clean_path is None:
+        return
+
+    raw_preview = raw_path.read_text(encoding="utf-8").splitlines()[-1].strip()
+    clean_preview = clean_path.read_text(encoding="utf-8").splitlines()[-1].strip()
+    retention = 0 if raw_chars <= 0 else round(clean_chars / raw_chars * 100)
+    cli.console.print(
+        cli.Panel(
+            "原始转写 vs 清洗后\n\n"
+            f"原始：{raw_preview}\n"
+            f"清洗后：{clean_preview}\n\n"
+            f"原始有效行数：{raw_lines}\n"
+            f"清洗后有效行数：{clean_lines}\n"
+            f"内容保留率：{retention}%",
+            title="🎧 demo 对比",
+            border_style="magenta",
+        )
     )
 
 
@@ -1183,6 +1227,9 @@ def cmd_quick_start(args: argparse.Namespace) -> int:
     result = cli.cmd_run(run_args, entrypoint="quick-start")
     if result not in (0, PARTIAL_SUCCESS):
         return result
+
+    if getattr(args, "demo", False):
+        _print_demo_before_after(target_date)
 
     try:
         cli.launch_local_report()

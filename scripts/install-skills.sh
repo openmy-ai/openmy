@@ -45,7 +45,7 @@ python3 -m venv "$VENV_DIR"
 
 echo "📦 安装 OpenMy（项目）本体..."
 "$VENV_PYTHON" -m pip install --upgrade pip >/dev/null
-"$VENV_PYTHON" -m pip install -e "$PROJECT_ROOT"
+"$VENV_PYTHON" -m pip install -e "$PROJECT_ROOT[local]"
 
 if [ ! -f "$PROJECT_ROOT/.env" ] && [ -f "$PROJECT_ROOT/.env.example" ]; then
   cp "$PROJECT_ROOT/.env.example" "$PROJECT_ROOT/.env"

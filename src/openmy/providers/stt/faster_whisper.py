@@ -30,11 +30,11 @@ def _get_model(model_name: str, device: str, compute_type: str):
     cached = _MODEL_CACHE.get(cache_key)
     if cached is not None:
         return cached
-    if WhisperModel is None:
-        raise RuntimeError(
-            "本地转写后端 faster-whisper 不可用：缺少 `faster-whisper` 依赖。"
-            "可先运行 `uv pip install faster-whisper`。"
-        )
+        if WhisperModel is None:
+            raise RuntimeError(
+                "本地转写后端 faster-whisper 不可用：缺少 `faster-whisper` 依赖。"
+                "可先运行 `pip install \"openmy[local]\"`。"
+            )
     model = WhisperModel(model_name, device=device, compute_type=compute_type)
     _MODEL_CACHE[cache_key] = model
     return model

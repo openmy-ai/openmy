@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 SKILL_CONTRACT_VERSION = "v1"
+DEFAULT_DOC_URL = "https://github.com/openmy-ai/openmy#readme"
 
 
 class SkillDispatchError(RuntimeError):
@@ -54,13 +55,17 @@ def build_error_payload(
     message: str,
     hint: str = "",
     data: dict[str, Any] | None = None,
+    doc_url: str = DEFAULT_DOC_URL,
 ) -> dict[str, Any]:
     payload = {
         "ok": False,
+        "error": True,
         "action": action,
         "version": SKILL_CONTRACT_VERSION,
         "error_code": error_code,
         "message": message,
+        "fix": hint,
+        "doc_url": doc_url,
     }
     if hint:
         payload["hint"] = hint

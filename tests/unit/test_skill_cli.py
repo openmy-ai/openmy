@@ -162,8 +162,11 @@ class TestSkillCliContract(unittest.TestCase):
 
         payload = json.loads(result.stdout)
         self.assertFalse(payload["ok"])
+        self.assertTrue(payload["error"])
         self.assertEqual(payload["action"], "unknown.action")
         self.assertEqual(payload["error_code"], "unknown_action")
+        self.assertIn("fix", payload)
+        self.assertIn("doc_url", payload)
         self.assertEqual(payload["version"], "v1")
 
     def test_skill_correction_apply_accepts_op_and_arg_flags(self):

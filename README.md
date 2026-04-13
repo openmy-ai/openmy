@@ -46,14 +46,21 @@ OpenMy 不只是把音频变成文字。
 ## ⚡ 一分钟跑起来
 
 ```bash
-git clone https://github.com/openmy-ai/openmy.git && cd openmy
-python3 -m venv .venv && source .venv/bin/activate
-pip install .
+pip install openmy
 openmy quick-start --demo
 ```
 
-> 依赖只有两样：Python 3.10+ 和 FFmpeg。
+> 依赖只有两样：Python 3.10+ 和 FFmpeg。  
+> 想先走本地转写，再补一条：`pip install "openmy[local]"`。
 > `--demo` 会先跑内置示例，先确认整条链路能走通，再换你自己的音频。
+
+如果你是在仓库里开发：
+
+```bash
+git clone https://github.com/openmy-ai/openmy.git && cd openmy
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[local]"
+```
 
 ### 跑通演示以后，下一步怎么做
 
@@ -129,6 +136,20 @@ graph TD
 
 ## 🤖 怎么接给你的 Agent
 
+### 30 秒接入你的 Agent
+
+把这段话直接发给你的 Agent：
+
+> 帮我装上 OpenMy。GitHub 地址：https://github.com/openmy-ai/openmy  
+> 装好以后跑一下内置 demo，让我看看效果。
+
+正常情况下，Agent 会自己做完这几步：
+
+1. 安装 OpenMy（`pip install openmy`）
+2. 检查环境，告诉你先走哪条转写路线更稳
+3. 跑内置 demo
+4. 打开本地日报页给你看结果
+
 OpenMy 的核心不是某个命令行壳子，而是**稳定的上下文状态 + 稳定的动作契约**。
 
 当前最稳的 JSON 入口：
@@ -156,6 +177,18 @@ bash scripts/install-skills.sh
 ```
 
 这个脚本会自动识别常见 Agent 工具，把对应技能说明链接过去。
+
+### 升级
+
+```bash
+openmy self-update
+```
+
+如果只是想升级本地转写依赖，再补一条：
+
+```bash
+pip install --upgrade "openmy[local]"
+```
 
 #### 手动接入时，重点看这些目录
 

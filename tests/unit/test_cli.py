@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import io
+import importlib
 import json
 import os
 import signal
@@ -258,6 +259,41 @@ class TestOpenMyCli(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("skill", result.stdout)
+
+    def test_cli_help_uses_english_when_locale_is_not_chinese(self):
+        import openmy.cli as cli
+
+        original_lang = os.environ.get("LANG")
+        os.environ["LANG"] = "en_US.UTF-8"
+        try:
+            cli = importlib.reload(cli)
+            parser = cli.build_parser()
+            help_text = parser.format_help()
+        finally:
+            if original_lang is None:
+                os.environ.pop("LANG", None)
+            else:
+                os.environ["LANG"] = original_lang
+            importlib.reload(cli)
+
+        self.assertIn("Available commands", help_text)
+        self.assertIn("Upgrade the current OpenMy installation", help_text)
+
+    def test_cli_self_update_runs_pip_upgrade(self):
+        import openmy.cli as cli
+
+        parser = cli.build_parser()
+        args = parser.parse_args(["self-update"])
+
+        with patch("openmy.cli.subprocess.run", return_value=subprocess.CompletedProcess(args=[], returncode=0)) as run_mock:
+            result = cli.main_with_args(args)
+
+        self.assertEqual(result, 0)
+        run_mock.assert_called_once()
+        self.assertEqual(
+            run_mock.call_args.args[0],
+            [sys.executable, "-m", "pip", "install", "--upgrade", "openmy"],
+        )
 
     def test_cli_quick_start_infers_date_and_reuses_run(self):
         """quick-start 应该自动推断日期并复用 run 主链。"""

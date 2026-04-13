@@ -46,14 +46,21 @@ That makes OpenMy a **personal context engine**, not a one-off transcript utilit
 ## ⚡ Get it running in one minute
 
 ```bash
-git clone https://github.com/openmy-ai/openmy.git && cd openmy
-python3 -m venv .venv && source .venv/bin/activate
-pip install .
+pip install openmy
 openmy quick-start --demo
 ```
 
-> You only need Python 3.10+ and FFmpeg.
+> You only need Python 3.10+ and FFmpeg.  
+> If you want the local speech-to-text route first, add `pip install "openmy[local]"`.
 > `--demo` runs the bundled sample first so you can verify the full flow before switching to your own audio.
+
+If you are working from the repository:
+
+```bash
+git clone https://github.com/openmy-ai/openmy.git && cd openmy
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[local]"
+```
 
 ### After the demo works
 
@@ -129,6 +136,20 @@ If you want the deeper system view, read [docs/architecture.md](docs/architectur
 
 ## 🤖 Connect OpenMy to your agent
 
+### 30-second handoff for your agent
+
+Send this directly to your agent:
+
+> Install OpenMy for me. GitHub repo: https://github.com/openmy-ai/openmy  
+> After that, run the bundled demo so I can see the result.
+
+In the happy path, the agent will do these steps on its own:
+
+1. Install OpenMy with `pip install openmy`
+2. Check the environment and recommend the safest speech-to-text route
+3. Run the bundled demo
+4. Open the local report page
+
 The core asset is not a single CLI shell. It is **durable context state plus a stable action contract**.
 
 Current stable JSON entrypoints:
@@ -156,6 +177,18 @@ bash scripts/install-skills.sh
 ```
 
 The script detects common agent tools and links the OpenMy skill bundle for you.
+
+### Upgrade
+
+```bash
+openmy self-update
+```
+
+If you also want to refresh the local speech-to-text extras:
+
+```bash
+pip install --upgrade "openmy[local]"
+```
 
 #### Key directories if you want to wire it up manually
 
