@@ -44,6 +44,7 @@ from app.pipeline_api import (
 )
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+MAX_JSON_BODY_BYTES = 50 * 1024 * 1024
 
 
 def _valid_date_or_400(handler: SimpleHTTPRequestHandler, date_str: str) -> bool:
@@ -172,6 +173,9 @@ class BrainHandler(SimpleHTTPRequestHandler):
             send_json(self, {"error": "unsupported media type", "expected": "application/json"}, status=415)
             return
         content_length = int(self.headers.get("Content-Length", 0))
+        if content_length > MAX_JSON_BODY_BYTES:
+            self.send_error(413, "Request Entity Too Large")
+            return
         body = self.rfile.read(content_length).decode("utf-8") if content_length else "{}"
 
         try:

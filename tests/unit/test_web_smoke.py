@@ -41,6 +41,22 @@ class TestWebSmoke(unittest.TestCase):
         with urlopen(request, timeout=2) as response:
             return json.loads(response.read().decode("utf-8")), response.status
 
+    def post_json_with_content_length(self, base_url: str, path: str, *, content_length: int, body: bytes = b""):
+        parsed = urlparse(base_url)
+        connection = HTTPConnection(parsed.hostname, parsed.port, timeout=2)
+        try:
+            connection.putrequest("POST", path)
+            connection.putheader("Content-Type", "application/json")
+            connection.putheader("Content-Length", str(content_length))
+            connection.endheaders()
+            if body:
+                connection.send(body)
+            response = connection.getresponse()
+            payload = response.read().decode("utf-8")
+            return payload, response.status
+        finally:
+            connection.close()
+
     def post_multipart(
         self,
         base_url: str,
@@ -381,6 +397,26 @@ class TestWebSmoke(unittest.TestCase):
                 self.stop_server(server, patches)
 
         self.assertIn("unsupported file type", payload["error"])
+
+    def test_json_endpoint_rejects_oversized_content_length(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner()
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                payload, status = self.post_json_with_content_length(
+                    base_url,
+                    "/api/correct",
+                    content_length=60 * 1024 * 1024,
+                )
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertEqual(status, 413)
+        self.assertIn("Request Entity Too Large", payload)
 
     def test_pipeline_job_action_endpoints_update_status(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
