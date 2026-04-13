@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OpenMy</title>
 <meta name="description" content="个人每日上下文工作台">
-<link rel="icon" href="/static/icons/logo.png">
+<link rel="icon" href="/static/icons/logo.svg" type="image/svg+xml">
 <script>
   (() => {
     const theme = localStorage.getItem('openmy-theme') || 'light';
@@ -31,12 +31,12 @@
   <div class="sidebar-backdrop" onclick="closeSidebar()"></div>
   <aside class="sidebar" role="navigation" aria-label="日期导航">
     <div class="logo" onclick="state.showWikiHome=false;renderHomePage()" role="button" tabindex="0">
-      <div class="logo-title"><img class="logo-mark" src="/static/icons/logo.png" alt=""><span>OpenMy</span></div>
+      <div class="logo-title"><img class="logo-mark" src="/static/icons/logo.svg" alt=""><span>OpenMy</span></div>
       <div class="logo-sub">每日上下文</div>
     </div>
     <div class="search-box">
       <button class="sidebar-search-btn" onclick="openSpotlight()" aria-label="打开搜索">
-        <span class="sidebar-search-label"><img class="sidebar-icon" src="/static/icons/search.png" alt=""><span>搜索...</span></span>
+        <span class="sidebar-search-label"><img class="sidebar-icon" src="/static/icons/search.svg" alt=""><span>搜索...</span></span>
         <kbd>⌘K</kbd>
       </button>
     </div>
@@ -59,22 +59,17 @@
       <div class="sidebar-dict-list" id="sidebarDictList"></div>
     </div>
     <div class="sidebar-footer">
-      <button class="sidebar-settings-btn" id="settingsBtn" onclick="openSettings()" aria-label="打开设置"><img class="sidebar-icon" src="/static/icons/settings.png" alt=""><span>设置</span></button>
+      <button class="sidebar-settings-btn" id="settingsBtn" onclick="openSettings()" aria-label="打开设置"><img class="sidebar-icon" src="/static/icons/settings.svg" alt=""><span>设置</span></button>
     </div>
   </aside>
 
-  <main class="main" id="main">
-    <div class="empty" id="emptyState">
-      <div class="icon"><img class="logo-mark logo-mark-large" src="/static/icons/logo.png" alt=""></div>
-      <p>从左侧选择日期开始浏览</p>
-    </div>
-  </main>
+  <main class="main" id="main"></main>
 </div>
 
 <div class="spotlight-overlay" id="spotlightOverlay" role="dialog" aria-modal="true" onclick="closeSpotlight(event)">
   <div class="spotlight-modal" onclick="event.stopPropagation()">
     <div class="spotlight-input-wrapper">
-      <span class="spotlight-icon"><img class="sidebar-icon" src="/static/icons/search.png" alt=""></span>
+      <span class="spotlight-icon"><img class="sidebar-icon" src="/static/icons/search.svg" alt=""></span>
       <input type="text" id="spotlightInput" class="spotlight-input" placeholder="搜索所有日期、屏幕和录音..." autocomplete="off">
     </div>
     <div class="spotlight-results" id="spotlightResults"></div>
