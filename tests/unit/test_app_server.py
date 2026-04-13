@@ -3,6 +3,7 @@ import json
 import tempfile
 import time
 import unittest
+from urllib.error import HTTPError
 from urllib.request import urlopen
 from pathlib import Path
 from unittest.mock import patch
@@ -204,6 +205,24 @@ class TestAppServer(unittest.TestCase):
             self.assertEqual(payload["query"], "OpenMy")
             self.assertEqual(payload["current_hits"][0]["title"], "OpenMy")
             self.assertEqual(payload["daily_rollups"][0]["date"], "2026-04-10")
+
+    def test_context_query_endpoint_error_lists_supported_types(self):
+        server = app_server.build_server(port=0)
+        try:
+            import threading
+
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            with self.assertRaises(HTTPError) as ctx:
+                urlopen(f"{base_url}/api/context/query?q=test", timeout=2)
+            payload = json.loads(ctx.exception.read().decode("utf-8"))
+        finally:
+            server.shutdown()
+            server.server_close()
+
+        self.assertIn("支持的类型", payload["error"])
+        self.assertIn("project", payload["error"])
 
     def seed_day_workspace(self, project_root: Path, date_str: str) -> Path:
         day_dir = project_root / "data" / date_str

@@ -909,7 +909,8 @@ def query_context(
     final_limit = max(1, min(int(limit or 5), 20))
 
     if final_kind not in QUERY_KINDS:
-        return {"error": f"不支持的查询类型：{kind}"}
+        supported = "、".join(sorted(QUERY_KINDS))
+        return {"error": f"不支持的查询类型：{kind}。支持的类型有：{supported}"}
     if final_kind in QUERY_KINDS_REQUIRING_TEXT and not final_query:
         return {"error": f"{final_kind} 查询需要提供 query"}
 
