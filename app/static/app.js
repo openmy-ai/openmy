@@ -398,7 +398,9 @@ function formatPageDate(dateStr) {
 }
 
 function formatRangeLabel(start, end) {
-  return `${formatShortDate(start)}–${formatShortDate(end)}`;
+  const s = formatFriendlyDate(start);
+  const e = formatFriendlyDate(end);
+  return s === e ? s : `${s} – ${e}`;
 }
 
 function truncateSummary(text, maxLength = 50) {
@@ -869,24 +871,24 @@ function renderReportPage(title, dates, extraMeta = '') {
       <div class="report-meta">${escapeHtml(extraMeta)}</div>
       ${summaryText ? `<section class="summary-callout"><p>${escapeHtml(summaryText)}</p></section>` : ''}
 
-      <div class="report-block">
+      ${projectItems.length ? `<div class="report-block">
         <div class="section-kicker">项目</div>
-        ${renderChipList(projectItems, '当前没有项目')}
-      </div>
-      <div class="report-block">
+        ${renderChipList(projectItems)}
+      </div>` : ''}
+      ${decisionItems.length ? `<div class="report-block">
         <div class="section-kicker">决策</div>
-        ${renderChipList(decisionItems, '当前没有决策')}
-      </div>
-      <div class="report-block">
+        ${renderChipList(decisionItems)}
+      </div>` : ''}
+      ${loopItems.length ? `<div class="report-block">
         <div class="section-kicker">待跟进</div>
-        ${renderChipList(loopItems, '当前没有待跟进')}
-      </div>
+        ${renderChipList(loopItems)}
+      </div>` : ''}
       <div class="report-block">
         <div class="section-kicker">每日概要</div>
         <div class="daily-link-list">
           ${dates.map((item) => `
             <button class="daily-link-item" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
-              <span class="daily-link-date">${escapeHtml(formatShortDate(item.date))}</span>
+              <span class="daily-link-date">${escapeHtml(formatFriendlyDate(item.date))}</span>
               <span class="daily-link-summary">${escapeHtml(truncateSummary(item.summary || item.timeline?.[0]?.preview || ''))}</span>
               <span class="daily-link-count">${item.segments || 0}条</span>
             </button>
