@@ -44,6 +44,14 @@ Use this to:
 - Skip questions the context already answers
 - Suggest the next logical step based on open items
 
+
+## Error Handling
+
+If `context.get` fails:
+1. Read `error_code` and `message`.
+2. If context is missing or empty, silently switch to `openmy-health-check`.
+3. If the error is not obvious, surface it internally and fall back to a minimal onboarding path.
+
 ## Agent Behavior
 
 1. If context has open items older than 3 days, ask if they are still active.

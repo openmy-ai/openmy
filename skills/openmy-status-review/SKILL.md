@@ -20,9 +20,11 @@ Use it when:
 
 - `openmy skill status.get --json`
 
-If the user specifically asks about the live pipeline queue or progress panel state, use the local web API too:
-- `GET /api/pipeline/jobs`
-- `GET /api/pipeline/jobs/{id}`
+## Web Pipeline Status API
+
+- `GET /api/pipeline/jobs` returns the current pipeline job list.
+- `GET /api/pipeline/jobs/{id}` returns one job with `steps`, `progress_pct`, and `eta_seconds`.
+- If the user asks about the live web progress panel, these endpoints are the source of truth.
 
 ## Restrictions
 
@@ -36,13 +38,20 @@ If the user specifically asks about the live pipeline queue or progress panel st
 - categorize days into complete, partial, and empty
 - end with one recommendation
 
-## Agent Behavior After Status Review
+## `data.status` Values
 
-Always recommend something concrete.
-Examples:
-- process yesterday first
-- finish the partial day
-- review stale open items
-- initialize vocab before the next run
+| status | meaning | agent next step |
+|--------|---------|-----------------|
+| complete | the day is fully processed | suggest viewing or reviewing |
+| partial | the day stopped halfway | suggest finishing that day first |
+| transcript_only | only transcript-level data exists | suggest rerunning the remaining steps |
+| empty | no usable day data exists | suggest finding or importing audio |
 
-When pipeline jobs exist, prefer summarizing the live job state from the API instead of telling the user to inspect `run_status.json` by hand.
+## Error Handling
+
+If any command returns `ok: false`:
+1. Read `error_code` and `message`.
+2. Common recovery:
+   - missing profile → route to `openmy-profile-init`
+   - missing vocab → route to `openmy-vocab-init`
+3. Unknown errors should be surfaced plainly, then route to `openmy-health-check`.

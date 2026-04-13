@@ -7,7 +7,7 @@ description: Use when explaining or managing screen recognition that matches spe
 
 ## Purpose
 
-Explain and manage screen recognition, the feature that matches what the user said with what they were doing on screen.
+Explain and manage the screen-recognition switch that helps OpenMy match spoken moments with on-screen activity.
 
 ## Trigger
 
@@ -20,34 +20,41 @@ Use it when:
 ## Action
 
 - `openmy skill health.check --json`
+- `openmy skill profile.set --screen-recognition on --json`
+- `openmy skill profile.set --screen-recognition off --json`
 
 ## Restrictions
 
-- Never enable it without explicit user consent.
-- Always explain what it does before asking for consent.
-- If the local service is not running, mention it once and stop nagging.
+- Never enable it without explicit user intent.
+- Explain it in plain language before turning it on.
+- Do not hide the fact that it is local-only and optional.
 
 ## Output
 
 - explain what the feature does in plain language
-- explain whether it is enabled and whether the local service is reachable
-- end with a clear suggestion
+- explain whether it is enabled
+- if it is enabled but not running, say that plainly
+- end with one clear next step
 
 ## How it works
 
-1. A background service captures periodic screen snapshots.
-2. It reads text from the screen.
-3. OpenMy matches spoken moments with screen activity from the same time window.
-4. This makes the daily summary much richer.
-
-## Privacy
-
-- All data stays on your machine.
-- Sensitive apps can be filtered out.
-- Specific apps can be excluded in settings.
+1. A background capture loop stores periodic screen context on this machine.
+2. OpenMy lines that screen activity up with nearby speech.
+3. This helps the daily summary remember what the user was actually doing.
 
 ## Agent Behavior
 
-- Explain the feature before asking whether to enable it.
-- If the user says no, keep going without it.
-- If the local service is unavailable, say so once and move on.
+1. If the user only asks what it is, explain it and stop.
+2. If the user clearly wants it on, run `profile.set --screen-recognition on --json`.
+3. If the user clearly wants it off, run `profile.set --screen-recognition off --json`.
+4. After either change, run `health.check` to confirm the current state.
+5. If it is enabled but the background loop is not running, say so once and route to `openmy-health-check`.
+
+## Error Handling
+
+If any command returns `ok: false`:
+1. Read `error_code` and `message`.
+2. Common recovery:
+   - `invalid_screen_recognition` → rerun with `on` or `off`.
+   - service unavailable → explain that the setting changed but the local capture loop is not running yet.
+3. Unknown errors should be surfaced plainly, then route to `openmy-health-check`.

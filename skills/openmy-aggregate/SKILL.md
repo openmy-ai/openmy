@@ -7,7 +7,7 @@ description: Use when generating or refreshing weekly and monthly context summar
 
 ## Purpose
 
-手动生成或刷新周回顾、月回顾，给启动上下文和后续复盘用。
+Generate or refresh weekly and monthly summaries for startup context and later review.
 
 ## Trigger
 
@@ -21,6 +21,7 @@ Use it when:
 
 - `openmy skill aggregate --week 2026-W15 --json`
 - `openmy skill aggregate --month 2026-04 --json`
+- `openmy skill status.get --json`
 
 ## Restrictions
 
@@ -34,3 +35,18 @@ Use it when:
 - confirm which week or month was refreshed
 - summarize the main direction in plain language
 - end with one concrete next step
+
+## Staleness Check
+
+1. Run `status.get --json` first.
+2. If `data.weekly_summary_date` or `data.monthly_summary_date` is missing, aggregation is stale.
+3. If the returned week or month is older than the user asked for, refresh it immediately.
+
+## Error Handling
+
+If any command returns `ok: false`:
+1. Read `error_code` and `message`.
+2. Common recovery:
+   - invalid week or month → rerun with normalized `YYYY-Www` or `YYYY-MM`
+   - conflicting target → split week and month into separate calls
+3. Unknown errors should be surfaced plainly, then route to `openmy-health-check`.

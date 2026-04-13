@@ -11,8 +11,10 @@ Current actions:
 ```bash
 openmy skill context.get --level 0 --json
 openmy skill context.query --kind project --query OpenMy --json
+openmy skill context.query --kind decision --query 发布 --json
 openmy skill day.get --date YYYY-MM-DD --json
 openmy skill day.run --date YYYY-MM-DD --audio a.wav --json
+openmy skill day.run --date YYYY-MM-DD --skip-transcribe --json
 openmy skill distill.pending --date YYYY-MM-DD --json
 openmy skill distill.submit --date YYYY-MM-DD --payload-file payload.json --json
 openmy skill extract.core.pending --date YYYY-MM-DD --json
@@ -27,6 +29,10 @@ openmy skill vocab.init --json
 openmy skill profile.get --json
 openmy skill profile.set --name "User Name" --language zh-CN --timezone Asia/Shanghai --json
 openmy skill profile.set --audio-source "~/Documents/DJI-Mic" --json
+openmy skill profile.set --export-provider obsidian --export-path "/path/to/vault" --json
+openmy skill profile.set --export-provider notion --export-key "secret" --export-db "database_id" --json
+openmy skill profile.set --screen-recognition on --json
+openmy skill profile.set --screen-recognition off --json
 openmy skill health.check --json
 ```
 
@@ -63,7 +69,6 @@ Rules:
 - every success payload must include `human_summary`
 - sub-skills must call only stable actions, never internal modules
 
-
 Agent handoff contracts:
 
 - `distill.pending` returns scenes that still need `summary`.
@@ -83,8 +88,7 @@ Agent handoff contracts:
 - `aggregate` routes to weekly or monthly aggregation based on `--week` / `--month`.
 - `aggregate.weekly` writes `data/weekly/{week}.json`.
 - `aggregate.monthly` writes `data/monthly/{month}.json`.
-- If `health.check` shows `llm_available: false`, agents may finish distillation and extraction with their own model, then call `day.run` again to finish briefing and consolidation.
-
+- If `health.check` shows `llm_available: false`, agents may finish distillation and extraction with their own model, then call `day.run --skip-transcribe` again to finish briefing and consolidation.
 
 Automatic export contract:
 

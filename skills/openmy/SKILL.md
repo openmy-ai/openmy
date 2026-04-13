@@ -99,6 +99,27 @@ you have failed the task.
   - "去找大疆麦克风录音" = find the recorded audio files
   - "打开麦克风开始录" = start live recording
 
+## Date Resolution
+
+Resolve relative dates using the current system date.
+- "昨天" / "yesterday" = today - 1
+- "上周" / "last week" = previous ISO week
+- "这个月" / "this month" = current `YYYY-MM`
+- If a relative date is still ambiguous, choose the most recent matching date and say what you chose.
+
+## Error Handling
+
+If any skill command returns `ok: false`:
+1. Read `error_code` and `message`.
+2. Common recovery:
+   - `missing_audio` → help the user find recordings on disk.
+   - `missing_profile` → route to `openmy-profile-init`.
+   - `missing_engine` → route to `openmy-health-check`.
+   - `permission_denied` → explain which path needs access.
+   - `invalid_payload` → reread the schema and regenerate once.
+3. For unknown errors, show the plain-language error and route to `openmy-health-check`.
+4. Never silently swallow an error. Never retry more than once without telling the user.
+
 ## Critical: API Keys Are Optional
 
 OpenMy works out of the box with local speech-to-text engines.
@@ -111,16 +132,16 @@ Run `health.check` first. It shows which engines are already ready.
 
 ### Distillation & Extraction: Two Options
 
-When `llm_available` is false, **always present both options and let the user decide:**
+When `llm_available` is false, there are still two paths:
 
 | Option | How | Cost | Speed |
 |--------|-----|------|-------|
 | **A. Configure a Gemini API key** | Add `GEMINI_API_KEY` to `.env`. OpenMy calls `gemini-flash-lite` directly. | Very cheap (~$0.01/day, free tier available) | Fast, fully automated |
-| **B. Let me (the agent) do it** | Agent reads scenes via `distill.pending`, writes summaries with its own LLM, submits via `distill.submit`. | Uses YOUR agent token budget (Claude/GPT tokens are expensive) | Slower, but zero config |
+| **B. Let me (the agent) do it** | Agent reads scenes via `distill.pending`, writes summaries with its own model, submits via `distill.submit`, then finishes extraction. | Uses the current agent budget | Slower, but zero config |
 
-**Present both options clearly. Do NOT decide for the user.**
-If the user picks A, help them get a Gemini API key and add it to `.env`.
-If the user picks B, proceed with `distill.pending` → `distill.submit` and `extract.core.pending` → `extract.core.submit` immediately.
+**Autonomous default:** if the user has not expressed a preference, default to Option B and continue immediately.
+Only stop and ask first if the user explicitly says they prefer Option A.
+After Option B finishes, tell the user what you completed and briefly mention that a Gemini key is only an optional convenience.
 
 ## Communication Style
 
@@ -156,7 +177,7 @@ If this looks like a first-time setup:
 7. Review the result with the user.
 8. Suggest corrections if the transcript clearly has errors.
 9. Route back to `openmy-vocab-init` if you discover more names or terms.
-10. **If `day.run` returns `partial` because of missing LLM key** — present the two distillation options (A: configure cheap Gemini API key vs B: agent does it with its own expensive tokens). Let the user choose. See the "Distillation & Extraction: Two Options" section above.
+10. **If `day.run` returns `partial` because of missing later AI steps** — default to the agent-side path and continue with distillation plus extraction unless the user explicitly asked to configure a key instead. See the "Distillation & Extraction: Two Options" section above.
 
 ### First-Run Reply Shape
 
@@ -201,10 +222,10 @@ Ask: "Would you like your daily summaries automatically saved to a note-taking a
 
 ### Screen Recognition
 
-Ask: "OpenMy can also capture what is on your screen to give richer context. This uses the built-in background capture loop. Would you like to enable it?"
+Ask: "OpenMy can also use screen context to make the daily summary richer. Want me to turn that switch on?"
 - Explain clearly: "Screen data stays on your machine. It helps match what you said with what you were doing on screen."
-- If yes, run `openmy screen on` and confirm the built-in capture loop is running.
-- If no, set `SCREEN_RECOGNITION_ENABLED=false` and move on quietly.
+- If yes, run `openmy skill profile.set --screen-recognition on --json`, then `health.check`.
+- If no, run `openmy skill profile.set --screen-recognition off --json` and move on quietly.
 
 ### STT Engine Upgrade
 

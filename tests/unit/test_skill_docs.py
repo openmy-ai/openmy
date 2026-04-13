@@ -74,11 +74,11 @@ class TestSkillDocs(unittest.TestCase):
             for pattern in forbidden_patterns:
                 self.assertIsNone(re.search(pattern, content), f"{skill_name} matched forbidden pattern: {pattern}")
 
-    def test_day_run_skill_has_reply_self_check_block(self):
+    def test_day_run_skill_documents_autonomous_default(self):
         content = (SKILLS_ROOT / "openmy-day-run" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("自检规则", content)
-        self.assertIn("因为没配 Gemini key", content)
-        self.assertIn("后面两步整理我可以直接替你做，要继续吗？", content)
+        self.assertIn("Autonomous Distillation Default", content)
+        self.assertIn("默认动作现在是直接继续", content)
+        self.assertIn("音频已经跑完了", content)
 
 
 if __name__ == "__main__":

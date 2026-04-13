@@ -7,7 +7,7 @@ description: Use when configuring automatic export of daily summaries to the use
 
 ## Purpose
 
-Explain and configure automatic export so processed daily summaries can be saved into the user's note system.
+Configure automatic export so processed daily summaries can be saved into the user's note system.
 
 ## Trigger
 
@@ -20,24 +20,43 @@ Use it when:
 ## Action
 
 - `openmy skill health.check --json`
-- `openmy skill day.run --date YYYY-MM-DD --audio path/to/audio.wav --json`
+- `openmy skill profile.set --export-provider obsidian --export-path "/path/to/vault" --json`
+- `openmy skill profile.set --export-provider notion --export-key "secret" --export-db "database_id" --json`
 
 ## Restrictions
 
-- Do not guess the user's vault path or Notion database ID.
-- Do not enable export silently.
 - Do not block the main audio pipeline if export fails.
+- Do not ask for an Obsidian path before trying auto-detection.
+- Do not guess a Notion database ID.
 
 ## Output
 
 - explain which export target is selected
 - explain whether it is configured and ready
-- end with one next setup step if anything is missing
+- end with one concrete next setup step if anything is missing
 
 ## Agent Behavior
 
-1. Ask whether the user wants Obsidian or Notion.
-2. For Obsidian, ask for the vault folder path.
-3. For Notion, ask for the API key and database ID.
-4. After setup, run `health.check` to confirm readiness.
-5. If export fails later, explain that the daily processing still finished and only the export part failed.
+1. Run `health.check` first.
+2. If export is already configured and ready, say so and stop.
+3. If the user wants Obsidian:
+   - auto-detect likely vault folders first
+   - if a vault is found, run `profile.set --export-provider obsidian --export-path ... --json` immediately
+   - then rerun `health.check` and confirm export is ready
+4. If no Obsidian vault is found, ask one question about the note app or vault path.
+5. If the user wants Notion:
+   - ask for the API key and database ID
+   - run `profile.set --export-provider notion --export-key ... --export-db ... --json`
+   - rerun `health.check` and confirm export is ready
+6. If later export fails, explain that day processing still finished and only export failed.
+
+## Error Handling
+
+If any command returns `ok: false`:
+1. Read `error_code` and `message`.
+2. Common recovery:
+   - `missing_export_path` / `invalid_export_path` → ask for the correct Obsidian folder.
+   - `missing_notion_export_fields` → ask for the missing Notion value.
+   - `permission_denied` → tell the user which folder cannot be written.
+3. Unknown export errors should be surfaced plainly, then route back to `openmy-health-check`.
+4. Never pretend export is ready until `health.check` says it is ready.

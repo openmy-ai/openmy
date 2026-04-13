@@ -35,6 +35,14 @@ Use it when:
 - explain whether `llm_available` is true or false
 - end with one concrete next fix
 
+
+## Error Handling
+
+If `health.check` itself fails:
+1. Read `error_code` and `message`.
+2. If the failure is about missing imports or runtime tools, route to `openmy-install`.
+3. Unknown errors should be surfaced plainly and treated as a setup problem until proven otherwise.
+
 ## Agent Behavior
 
 ### Output Format (STRICT)

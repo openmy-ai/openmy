@@ -54,3 +54,10 @@ openmy skill correction.apply --op merge-project --arg "openmy" --arg "OpenMy" -
 ```
 
 Pick the operation that matches the user's correction intent.
+
+## Error Handling
+
+If `correction.apply` fails:
+1. Read `error_code` and `message`.
+2. If the target item cannot be found, ask the user for the exact wording once.
+3. Unknown errors should be surfaced plainly, then route to `openmy-health-check`.

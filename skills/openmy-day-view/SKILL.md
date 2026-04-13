@@ -34,10 +34,20 @@ Use it when the user asks for:
 - use `data.briefing`, `data.scenes`, and `data.status` for detail
 - if outputs are missing, offer `openmy-day-run`
 
-## Agent Behavior After Viewing Results
+## `data.status` Values
 
-1. lead with the one-line summary
-2. list key events and decisions
-3. highlight open items from that day
-4. if the day is incomplete, explain what is missing
-5. if no data exists, ask whether the user has audio for that date
+| status | meaning | agent next step |
+|--------|---------|-----------------|
+| complete | all outputs exist | summarize the day |
+| partial | some later outputs are still missing | explain what is missing |
+| transcript_only | only early transcript data exists | suggest a re-run or follow-up processing |
+| empty | no usable data exists | ask whether the user has audio for that date |
+
+## Error Handling
+
+If any command returns `ok: false`:
+1. Read `error_code` and `message`.
+2. Common recovery:
+   - invalid date → rerun with `YYYY-MM-DD`
+   - missing day data → ask whether audio exists for that date
+3. Unknown errors should be surfaced plainly, then route to `openmy-health-check`.

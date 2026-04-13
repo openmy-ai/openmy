@@ -20,7 +20,8 @@ Use it when:
 ## Action
 
 - `openmy skill extract.core.pending --date YYYY-MM-DD --json`
-- `openmy skill extract.core.submit --date YYYY-MM-DD --payload-file payload.json --json`
+- `openmy skill extract.core.submit --date YYYY-MM-DD --payload-file /tmp/openmy-extract-YYYY-MM-DD.json --json`
+- `openmy skill day.run --date YYYY-MM-DD --skip-transcribe --json`
 
 ## Restrictions
 
@@ -40,8 +41,18 @@ Use it when:
 ## Agent Behavior
 
 1. Call `extract.core.pending` first.
-2. If `data.status` is `already_done`, go back to `day.run` to finish briefing and consolidation.
+2. If `data.status` is `already_done`, go back to `day.run --skip-transcribe` so OpenMy can finish briefing and consolidation.
 3. If pending, read `transcript_text`, `reference_date`, `scene_catalog`, and `output_schema`.
-4. Generate one payload that matches the returned schema.
+4. Write the payload to `/tmp/openmy-extract-YYYY-MM-DD.json`.
 5. Submit it with `extract.core.submit`.
-6. After submit succeeds, call `day.run --skip-transcribe` for the same date so OpenMy can finish briefing and consolidation.
+6. After submit succeeds, call `day.run --skip-transcribe` for the same date.
+7. Clean up the temp payload file after a successful submit.
+
+## Error Handling
+
+If any command returns `ok: false`:
+1. Read `error_code` and `message`.
+2. Common recovery:
+   - `missing_transcript` → rerun `day.run` with audio
+   - `schema_mismatch` / `invalid_payload` → reread the schema and regenerate once
+3. Unknown errors should be surfaced plainly, then route to `openmy-health-check`.

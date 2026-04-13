@@ -48,3 +48,10 @@ Use it when the user asks things like:
 - projects repeated across 3 or more days usually mean core focus
 - loops that keep reappearing probably need attention
 - people who show up often are important contacts
+
+## Error Handling
+
+If `context.get` fails:
+1. Read `error_code` and `message`.
+2. If the context snapshot is missing, say so plainly and route to `openmy-status-review` or `openmy-day-run` depending on the question.
+3. Unknown errors should be surfaced plainly, then route to `openmy-health-check`.

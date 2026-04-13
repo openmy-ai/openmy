@@ -33,6 +33,14 @@ Use it when:
 - confirm which fields changed
 - suggest the next onboarding step
 
+
+## Error Handling
+
+If `profile.get` or `profile.set` fails:
+1. Read `error_code` and `message`.
+2. If auto-detection fails, fall back to the system defaults you can reliably read.
+3. Unknown errors should be surfaced plainly, then route to `openmy-health-check`.
+
 ## Agent Behavior
 
 **Do NOT ask the user for profile fields one by one.** Auto-detect and set them in one shot.
