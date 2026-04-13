@@ -18,6 +18,8 @@ from contextlib import redirect_stderr, redirect_stdout
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from rich import box
 from rich.console import Console
@@ -40,16 +42,18 @@ from openmy.config import (
     stt_provider_requires_api_key,
 )
 from openmy.utils.io import safe_write_json
+from openmy.utils.paths import (
+    DATA_ROOT,
+    LEGACY_ROOT,
+    PROJECT_ENV_PATH,
+    PROJECT_ROOT as ROOT_DIR,
+)
 from openmy.services.onboarding.state import load_onboarding_state
 from openmy.services.query.context_query import query_context, render_query_result
 from openmy.services.query.search_index import get_day_status_from_index, list_index_dates
 
 
 console = Console()
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-DATA_ROOT = ROOT_DIR / "data"
-LEGACY_ROOT = ROOT_DIR
-PROJECT_ENV_PATH = ROOT_DIR / ".env"
 
 ROLE_COLORS = {
     "AI助手": "cyan",
@@ -454,6 +458,10 @@ def add_stt_runtime_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _local_report_health_url(host: str, port: int) -> str:
+    return f"http://{host}:{port}/api/onboarding"
+
+
 def is_local_report_running(host: str = "127.0.0.1", port: int = 8420) -> bool:
     try:
         with socket.create_connection((host, port), timeout=0.3):
@@ -462,9 +470,67 @@ def is_local_report_running(host: str = "127.0.0.1", port: int = 8420) -> bool:
         return False
 
 
+def is_local_report_healthy(host: str = "127.0.0.1", port: int = 8420) -> bool:
+    health_request = urllib_request.Request(_local_report_health_url(host, port), method="GET")
+    try:
+        with urllib_request.urlopen(health_request, timeout=1.0) as response:
+            return int(getattr(response, "status", 0) or 0) == 200
+    except (urllib_error.URLError, TimeoutError, OSError):
+        return False
+
+
+def find_report_pids(port: int = 8420) -> list[int]:
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti", f"tcp:{port}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return []
+    pids: list[int] = []
+    for line in result.stdout.splitlines():
+        raw = line.strip()
+        if raw.isdigit():
+            pids.append(int(raw))
+    return pids
+
+
+def kill_report_processes(port: int = 8420) -> bool:
+    killed = False
+    for pid in find_report_pids(port):
+        try:
+            os.kill(pid, 15)
+            killed = True
+        except OSError:
+            continue
+    if killed:
+        time.sleep(0.4)
+    if is_local_report_running(port=port):
+        for pid in find_report_pids(port):
+            try:
+                os.kill(pid, 9)
+            except OSError:
+                continue
+        time.sleep(0.4)
+    return killed
+
+
+def wait_for_local_report(host: str = "127.0.0.1", port: int = 8420, timeout_seconds: float = 8.0) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if is_local_report_healthy(host=host, port=port):
+            return True
+        time.sleep(0.2)
+    return False
+
+
 def launch_local_report(host: str = "127.0.0.1", port: int = 8420) -> None:
     """启动本地网页并打开浏览器；服务已在运行时只打开页面。"""
     url = f"http://{host}:{port}"
+    if is_local_report_running(host=host, port=port) and not is_local_report_healthy(host=host, port=port):
+        kill_report_processes(port=port)
     if not is_local_report_running(host=host, port=port):
         server_entry = ROOT_DIR / "app" / "server.py"
         subprocess.Popen(
@@ -474,7 +540,8 @@ def launch_local_report(host: str = "127.0.0.1", port: int = 8420) -> None:
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-        time.sleep(0.8)
+    if not wait_for_local_report(host=host, port=port):
+        raise FriendlyCliError("本地网页没能正常启动，请稍后再试。")
     webbrowser.open(url)
 
 

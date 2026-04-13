@@ -5,10 +5,8 @@ from __future__ import annotations
 
 import sys
 from datetime import date
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
-DATA_ROOT = ROOT / "data"
+from openmy.utils.paths import DATA_ROOT
 
 
 def main() -> None:

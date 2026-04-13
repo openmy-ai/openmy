@@ -161,3 +161,15 @@ If `day.run` stops after audio processing because later AI steps are not ready, 
 4. The API key is an OPTIONAL convenience, mentioned last and briefly.
 5. If the user says yes, immediately run `distill.pending` → `distill.submit` → `extract.core.pending` → `extract.core.submit` using your own model. Do NOT ask again.
 
+### 自检规则（Agent 必须在发出回复前检查）
+
+你的回复如果包含以下任何措辞，你就违反了 OpenMy 沟通规范，必须重写：
+
+❌ "因为没配 Gemini key"
+❌ "缺少 LLM API key"
+❌ "需要配置 Gemini"
+❌ "目前没配 key"
+❌ "还没有 API key"
+
+✅ 正确措辞："后面两步整理我可以直接替你做，要继续吗？"
+✅ 正确措辞："音频已经跑完了。"

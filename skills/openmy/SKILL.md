@@ -34,6 +34,7 @@ Use this skill when:
 
 ## Routing map
 
+- installation / first clone → `openmy-install`
 - startup context → `openmy-startup-context`
 - context snapshot reading → `openmy-context-read`
 - structured context search → `openmy-context-query`
@@ -50,6 +51,30 @@ Use this skill when:
 - weekly / monthly summary refresh → `openmy-aggregate`
 - export setup → `openmy-export`
 - screen recognition setup → `openmy-screen-recognition`
+
+## Mandatory Sub-Skill Reading (HARD CONSTRAINT)
+
+Before routing to any sub-skill, the agent MUST read that sub-skill's `SKILL.md` first.
+Do NOT execute without reading. This is not a suggestion.
+
+The following sub-skills have critical agent behavior rules that MUST be read:
+
+| Route | Must-Read Before Execution |
+|-------|---------------------------|
+| openmy-day-run | `openmy-day-run/SKILL.md`（进度汇报、禁止沉默、distill 停住时的回复） |
+| openmy-distill | `openmy-distill/SKILL.md`（双选项呈现、pending/submit 流程） |
+| openmy-extract | `openmy-extract/SKILL.md`（核心提取、补交流程） |
+| openmy-install | `openmy-install/SKILL.md`（首次安装步骤） |
+
+If you skip reading and produce a reply that violates the sub-skill rules,
+you have failed the task.
+
+⚠️ 执行 `day.run` 或 `quick-start` 前，Agent 必须先完整阅读以下子技能文档：
+- `skills/openmy-day-run/SKILL.md`
+- `skills/openmy-distill/SKILL.md`
+- `skills/openmy-extract/SKILL.md`
+
+不读完不准执行。这是硬约束，不是建议。
 
 ## Global rules
 

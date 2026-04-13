@@ -17,10 +17,10 @@ from datetime import datetime
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
-SRC_DIR = ROOT_DIR / "src"
+BOOTSTRAP_ROOT = Path(__file__).resolve().parent.parent
+if str(BOOTSTRAP_ROOT) not in sys.path:
+    sys.path.insert(0, str(BOOTSTRAP_ROOT))
+SRC_DIR = BOOTSTRAP_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
@@ -60,6 +60,7 @@ from app.pipeline_api import (
 )
 from openmy.services.cleaning.cleaner import sync_correction_to_vocab
 from openmy.services.segmentation.segmenter import parse_time_segments
+from openmy.utils.paths import DATA_ROOT, LEGACY_ROOT, PROJECT_ROOT as ROOT_DIR
 
 try:
     from openmy.adapters.screen_recognition.client import ScreenRecognitionClient
@@ -70,8 +71,6 @@ except Exception:
     _screen_context_client = None
     _screen_context_available = False
 
-DATA_ROOT = ROOT_DIR / "data"
-LEGACY_ROOT = ROOT_DIR
 CORRECTIONS_FILE = ROOT_DIR / "src" / "openmy" / "resources" / "corrections.json"
 PORT = 8420
 DEFAULT_HOST = "127.0.0.1"

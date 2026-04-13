@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
+import subprocess
 import tempfile
+import time
 import wave
 from calendar import monthrange
 from datetime import datetime
@@ -22,6 +25,8 @@ from openmy.config import (
     has_llm_credentials,
     stt_provider_requires_api_key,
 )
+from openmy.services.ingest.audio_pipeline import AUDIO_SOURCE_EXTENSIONS
+from openmy.utils.interactive import prompt_input, select_option, strip_dragged_path
 
 
 def _discover_audio_inputs(date_str: str) -> tuple[list[str], str]:
@@ -33,7 +38,47 @@ def _discover_audio_inputs(date_str: str) -> tuple[list[str], str]:
     return discover_configured_audio_files(date_str), source_dir
 
 
+def _kill_stale_runs(date_str: str) -> int:
+    if os.name == "nt":
+        return 0
+    try:
+        result = subprocess.run(
+            ["ps", "-Ao", "pid=,command="],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return 0
+    current_pid = os.getpid()
+    killed = 0
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        pid_text, _, command = line.partition(" ")
+        if not pid_text.isdigit():
+            continue
+        pid = int(pid_text)
+        if pid == current_pid:
+            continue
+        command_text = command.strip()
+        if date_str not in command_text:
+            continue
+        if "openmy" not in command_text:
+            continue
+        if " run " not in f" {command_text} " and "openmy.cli run" not in command_text:
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+            killed += 1
+        except OSError:
+            continue
+    return killed
+
+
 PARTIAL_SUCCESS = 2
+RUN_TIMEOUT_SECONDS = 1800
 RUN_STEPS = (
     "transcribe",
     "transcribe_enrich",
@@ -92,6 +137,145 @@ def _prepare_demo_inputs() -> tuple[Path, str]:
 
     demo_audio.with_suffix(".transcript.txt").write_text(transcript_text, encoding="utf-8")
     return demo_audio, transcript_text
+
+
+PROVIDER_ORDER = ["gemini", "faster-whisper", "funasr", "dashscope", "groq", "deepgram"]
+
+
+PROVIDER_DESCRIPTIONS = {
+    "gemini": "云端，需 API Key，速度快，推荐",
+    "faster-whisper": "本地，免费，需显卡效果更好",
+    "funasr": "本地，免费，中文优化",
+    "dashscope": "云端，需 API Key",
+    "groq": "云端，需 API Key，速度极快",
+    "deepgram": "云端，需 API Key",
+}
+
+
+PROVIDER_KEY_ENV_MAP = {
+    "gemini": "GEMINI_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "dashscope": "DASHSCOPE_API_KEY",
+    "deepgram": "DEEPGRAM_API_KEY",
+}
+
+
+def _provider_options() -> list[str]:
+    return [f"{name:<16}（{PROVIDER_DESCRIPTIONS[name]}）" for name in PROVIDER_ORDER]
+
+
+def _pick_provider(default_provider: str | None = None) -> str:
+    ordered = list(PROVIDER_ORDER)
+    options = _provider_options()
+    chosen_index = 0
+    if default_provider in ordered:
+        chosen_index = ordered.index(str(default_provider))
+    if chosen_index:
+        options = options[chosen_index:] + options[:chosen_index]
+        ordered = ordered[chosen_index:] + ordered[:chosen_index]
+    selected = select_option("🚀 欢迎使用 OpenMy！\n\n第 1 步：选择你的转写引擎", options)
+    return ordered[selected]
+
+
+def _ensure_provider_configured(provider_name: str) -> str | None:
+    cli = _cli()
+    cli._upsert_project_env("OPENMY_STT_PROVIDER", provider_name)
+    if not stt_provider_requires_api_key(provider_name):
+        return None
+
+    env_name = PROVIDER_KEY_ENV_MAP.get(provider_name)
+    existing = get_stt_api_key(provider_name)
+    if existing or not env_name:
+        return None
+
+    while True:
+        raw_key = prompt_input(
+            "第 1 步补充：这个引擎需要一把钥匙",
+            f"把 {env_name} 粘进来。想重选引擎就输 back。",
+        )
+        final_key = raw_key.strip()
+        if not final_key:
+            continue
+        if final_key.lower() == "back":
+            return "back"
+        cli._upsert_project_env(env_name, final_key)
+        return None
+
+
+def _prompt_audio_path() -> tuple[Path | None, bool]:
+    while True:
+        raw_value = prompt_input(
+            "第 2 步：你的音频文件在哪？",
+            "请输入音频文件路径（支持把文件拖进终端）。没有音频就输入 demo。",
+        )
+        if not raw_value:
+            continue
+        if raw_value.strip().lower() == "demo":
+            return (None, True)
+
+        audio_path = Path(strip_dragged_path(raw_value))
+        if not audio_path.exists():
+            print("没找到这个文件，再来一次。")
+            continue
+        if not audio_path.is_file():
+            print("这不是文件，再来一次。")
+            continue
+        if audio_path.suffix.lower() not in AUDIO_SOURCE_EXTENSIONS:
+            print("这个格式不在支持名单里，再来一次。")
+            continue
+        return (audio_path, False)
+
+
+def _confirm_quick_start(target_date: str, audio_label: str, provider_name: str) -> str:
+    options = [
+        "✅ 开始处理",
+        "✏️ 重新选择引擎",
+        "📂 换一个文件",
+        "❌ 取消",
+    ]
+    index = select_option(
+        "第 3 步：确认信息\n\n"
+        f"  📅 日期：{target_date}\n"
+        f"  🎙️ 文件：{audio_label}\n"
+        f"  🔧 引擎：{provider_name}",
+        options,
+    )
+    return ["start", "provider", "audio", "cancel"][index]
+
+
+def _run_quick_start_wizard(initial_provider: str | None = None) -> dict | None:
+    provider_name = initial_provider or get_stt_provider_name() or "gemini"
+    audio_path: Path | None = None
+    use_demo = False
+
+    while True:
+        provider_name = _pick_provider(provider_name)
+        provider_status = _ensure_provider_configured(provider_name)
+        if provider_status == "back":
+            continue
+
+        while True:
+            audio_path, use_demo = _prompt_audio_path()
+            if use_demo:
+                target_date = "2099-12-31"
+                audio_label = "内置示例"
+            else:
+                assert audio_path is not None
+                target_date = _cli().infer_date_from_path(audio_path)
+                audio_label = audio_path.name
+
+            action = _confirm_quick_start(target_date, audio_label, provider_name)
+            if action == "start":
+                return {
+                    "provider_name": provider_name,
+                    "audio_path": audio_path,
+                    "use_demo": use_demo,
+                }
+            if action == "provider":
+                break
+            if action == "audio":
+                continue
+            return None
 
 
 def _seed_demo_transcript(date_str: str, transcript_text: str) -> None:
@@ -345,6 +529,31 @@ def _finish_run(date_str: str, payload: dict, final_status: str, current_step: s
     _save_run_status(date_str, payload)
 
 
+def _run_timed_out(started_monotonic: float, timeout_seconds: int = RUN_TIMEOUT_SECONDS) -> bool:
+    return time.monotonic() - started_monotonic > timeout_seconds
+
+
+def _return_timeout_if_needed(
+    date_str: str,
+    payload: dict,
+    current_step: str,
+    started_monotonic: float,
+    timeout_seconds: int = RUN_TIMEOUT_SECONDS,
+) -> int | None:
+    if not _run_timed_out(started_monotonic, timeout_seconds):
+        return None
+    message = f"处理超时（{timeout_seconds // 60}分钟），已保存当前进度"
+    step_payload = payload["steps"].get(current_step)
+    if step_payload is not None:
+        base_message = str(step_payload.get("message", "") or "").strip()
+        step_payload["message"] = f"{base_message}；{message}" if base_message else message
+        step_payload["updated_at"] = _now_iso()
+        _save_run_status(date_str, payload)
+    _finish_run(date_str, payload, "timeout", current_step)
+    _cli().console.print(f"[yellow]⏰ {message}[/yellow]")
+    return PARTIAL_SUCCESS
+
+
 def _load_existing_core_payload(date_str: str) -> dict | None:
     cli = _cli()
     meta_path = cli.ensure_day_dir(date_str) / f"{date_str}.meta.json"
@@ -434,6 +643,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     """全流程：转写 → 清洗 → 角色 → 蒸馏 → 日报。"""
     cli = _cli()
     date_str = args.date
+    started_monotonic = time.monotonic()
     if not getattr(args, "audio", None) and not getattr(args, "skip_transcribe", False):
         paths = cli.resolve_day_paths(date_str)
         has_reusable = paths["raw"].exists() or paths["transcript"].exists() or paths["scenes"].exists()
@@ -455,6 +665,9 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
                 )
                 return 1
     run_status = _init_run_status(date_str, entrypoint)
+    stale_runs_killed = _kill_stale_runs(date_str)
+    if stale_runs_killed:
+        cli.console.print(f"[yellow]♻️ 已结束 {stale_runs_killed} 个旧的 openmy run 进程[/yellow]")
     cli.console.print(
         cli.Panel(
             f"🎙️ OpenMy 全流程处理\n📅 日期: {date_str}",
@@ -501,6 +714,9 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         _mark_step(date_str, run_status, "transcribe", "completed", message="转写完成", artifact=paths["raw"])
     else:
         _mark_step(date_str, run_status, "transcribe", "skipped", message="未执行新的音频转写", skip_reason="no_new_audio")
+    timeout_result = _return_timeout_if_needed(date_str, run_status, "transcribe", started_monotonic)
+    if timeout_result is not None:
+        return timeout_result
 
     from openmy.services.ingest.transcription_enrichment import update_pipeline_meta
 
@@ -563,6 +779,9 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             message=enrichment_plan.get("message", "未启用 WhisperX 精标层"),
             skip_reason=("enrichment_unavailable" if enrichment_plan.get("status") != "failed" else ""),
         )
+    timeout_result = _return_timeout_if_needed(date_str, run_status, "transcribe_enrich", started_monotonic)
+    if timeout_result is not None:
+        return timeout_result
 
     if args.skip_transcribe and not paths["raw"].exists() and not paths["transcript"].exists() and not paths["scenes"].exists():
         cli.console.print(f"[red]❌ {date_str} 没有可复用的数据，至少需要 transcript/raw/scenes 之一[/red]")
@@ -588,6 +807,9 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     else:
         cli.console.print("\n[dim]⏭️ 跳过清洗：已存在 transcript.md[/dim]")
         _mark_step(date_str, run_status, "clean", "skipped", message="复用已有 transcript.md", artifact=paths["transcript"], skip_reason="existing_transcript")
+    timeout_result = _return_timeout_if_needed(date_str, run_status, "clean", started_monotonic)
+    if timeout_result is not None:
+        return timeout_result
 
     scenes_data = cli.read_json(paths["scenes"], {}) if paths["scenes"].exists() else {}
     if not paths["scenes"].exists():
@@ -629,9 +851,15 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
             except Exception as exc:
                 cli.console.print(f"[yellow]⚠️ 场景未附加精标证据[/yellow]: {exc}")
         _mark_step(date_str, run_status, "segment", "skipped", message="复用已有 scenes.json", artifact=paths["scenes"], skip_reason="existing_scenes")
+    timeout_result = _return_timeout_if_needed(date_str, run_status, "segment", started_monotonic)
+    if timeout_result is not None:
+        return timeout_result
 
     cli.console.print("\n[dim]⏭️ 跳过角色识别：功能已冻结[/dim]")
     _mark_step(date_str, run_status, "roles", "skipped", message="角色识别已冻结", artifact=paths["scenes"], skip_reason="role_step_frozen")
+    timeout_result = _return_timeout_if_needed(date_str, run_status, "roles", started_monotonic)
+    if timeout_result is not None:
+        return timeout_result
 
     llm_available = has_llm_credentials("distill")
     missing_summaries = [scene for scene in scenes_data.get("scenes", []) if not scene.get("summary")]
@@ -670,6 +898,9 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     else:
         cli.console.print("\n[dim]⏭️ 跳过蒸馏：场景摘要已齐全[/dim]")
         _mark_step(date_str, run_status, "distill", "skipped", message="场景摘要已齐全", artifact=paths["scenes"], skip_reason="summaries_already_present")
+    timeout_result = _return_timeout_if_needed(date_str, run_status, "distill", started_monotonic)
+    if timeout_result is not None:
+        return timeout_result
 
     existing_core_payload = _load_existing_core_payload(date_str)
     if not has_llm_credentials("extract") and paths["transcript"].exists() and not existing_core_payload:
@@ -703,6 +934,9 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         _finish_run(date_str, run_status, "failed", "briefing")
         return result
     _mark_step(date_str, run_status, "briefing", "completed", message="日报已生成", artifact=paths["briefing"])
+    timeout_result = _return_timeout_if_needed(date_str, run_status, "briefing", started_monotonic)
+    if timeout_result is not None:
+        return timeout_result
 
     extract_core_failed = False
     extract_core_payload = existing_core_payload
@@ -753,6 +987,9 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         cli.console.print("\n[dim]⏭️ 跳过核心提取：缺少 LLM provider key 或转写文件[/dim]")
         _mark_step(date_str, run_status, "extract_core", "skipped", message="缺少 LLM provider key 或 transcript.md", skip_reason="missing_llm_key_or_transcript")
         _mark_step(date_str, run_status, "extract_enrich", "skipped", message="核心提取未执行", skip_reason="core_extraction_not_run")
+    timeout_result = _return_timeout_if_needed(date_str, run_status, "extract_core", started_monotonic)
+    if timeout_result is not None:
+        return timeout_result
 
     if extract_core_failed:
         _mark_step(date_str, run_status, "extract_enrich", "skipped", message="核心提取失败，跳过补全提取", skip_reason="core_extraction_failed")
@@ -781,6 +1018,9 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         _mark_step(date_str, run_status, "extract_enrich", "skipped", message="聚合失败，跳过补全提取", skip_reason="consolidation_failed")
         _finish_run(date_str, run_status, "partial", "consolidate")
         return PARTIAL_SUCCESS
+    timeout_result = _return_timeout_if_needed(date_str, run_status, "consolidate", started_monotonic)
+    if timeout_result is not None:
+        return timeout_result
 
     if has_llm_credentials("extract") and paths["transcript"].exists() and extract_core_payload:
         _mark_step(date_str, run_status, "extract_enrich", "running", message="正在补全展示/溯源字段")
@@ -847,6 +1087,9 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
                 message="缺少核心提取结果，未执行补全",
                 skip_reason="missing_core_extraction_output",
             )
+    timeout_result = _return_timeout_if_needed(date_str, run_status, "extract_enrich", started_monotonic)
+    if timeout_result is not None:
+        return timeout_result
 
     _export_outputs(
         date_str,
@@ -859,6 +1102,9 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         run_status,
         skip_aggregate=bool(getattr(args, "skip_aggregate", False)),
     )
+    timeout_result = _return_timeout_if_needed(date_str, run_status, "aggregate", started_monotonic)
+    if timeout_result is not None:
+        return timeout_result
 
     cli.console.print(
         cli.Panel(
@@ -885,8 +1131,19 @@ def cmd_quick_start(args: argparse.Namespace) -> int:
         audio_path = Path(args.audio_path).expanduser()
         target_date = cli.infer_date_from_path(audio_path)
     else:
-        cli.console.print("[red]❌ 请传音频路径，或直接加 --demo[/red]")
-        return 1
+        wizard_result = _run_quick_start_wizard(getattr(args, "stt_provider", None))
+        if wizard_result is None:
+            cli.console.print("[yellow]⚠️ 已取消 quick-start[/yellow]")
+            return 1
+        args.stt_provider = wizard_result["provider_name"]
+        if wizard_result["use_demo"]:
+            audio_path, transcript_text = _prepare_demo_inputs()
+            target_date = cli.infer_date_from_path(audio_path)
+            _seed_demo_transcript(target_date, transcript_text)
+            args.demo = True
+        else:
+            audio_path = wizard_result["audio_path"]
+            target_date = cli.infer_date_from_path(audio_path)
 
     if not audio_path.exists():
         cli.console.print(f"[red]❌ 找不到音频文件[/red]: {audio_path}")

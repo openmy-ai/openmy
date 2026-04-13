@@ -3,6 +3,7 @@ import argparse
 import io
 import json
 import os
+import signal
 import shutil
 import subprocess
 import sys
@@ -539,6 +540,23 @@ class TestOpenMyCli(unittest.TestCase):
 
         self.assertEqual(result, 2)
         launch_mock.assert_called_once()
+
+    def test_launch_local_report_restarts_unhealthy_server(self):
+        import openmy.cli as cli
+
+        with (
+            patch("openmy.cli.is_local_report_running", side_effect=[True, False]),
+            patch("openmy.cli.is_local_report_healthy", return_value=False),
+            patch("openmy.cli.kill_report_processes") as kill_mock,
+            patch("openmy.cli.wait_for_local_report", return_value=True),
+            patch("openmy.cli.subprocess.Popen") as popen_mock,
+            patch("openmy.cli.webbrowser.open") as open_mock,
+        ):
+            cli.launch_local_report()
+
+        kill_mock.assert_called_once()
+        popen_mock.assert_called_once()
+        open_mock.assert_called_once_with("http://127.0.0.1:8420")
 
     def test_cli_view_existing_date(self):
         """openmy view 2026-04-06 应该输出场景概览。"""
@@ -1273,6 +1291,65 @@ class TestOpenMyCli(unittest.TestCase):
             self.assertEqual(status_payload["steps"]["consolidate"]["status"], "skipped")
         finally:
             self.cleanup_day_dir(date_str)
+
+    def test_cmd_run_marks_timeout_after_completed_step(self):
+        from openmy.commands import run as run_command
+
+        date_str = "2099-01-24"
+        day_dir = self.make_day_dir(date_str)
+        transcript_path = day_dir / "transcript.md"
+        scenes_path = day_dir / "scenes.json"
+
+        transcript_path.write_text("# 2099-01-24\n\n---\n\n## 10:00\n\n今天记一下。", encoding="utf-8")
+        scenes_payload = {
+            "scenes": [
+                {
+                    "scene_id": "s01",
+                    "time_start": "10:00",
+                    "time_end": "10:05",
+                    "text": "今天记一下。",
+                    "summary": "在口述记录。",
+                    "preview": "今天记一下。",
+                    "role": {"addressed_to": "自己", "scene_type_label": "自言自语", "needs_review": False},
+                }
+            ],
+            "stats": {"total_scenes": 1, "role_distribution": {"自己": 1}, "needs_review_count": 0},
+        }
+        scenes_path.write_text(json.dumps(scenes_payload, ensure_ascii=False), encoding="utf-8")
+
+        try:
+            with patch("openmy.commands.run._run_timed_out", return_value=True):
+                result = run_command.cmd_run(argparse.Namespace(date=date_str, audio=[], skip_transcribe=True))
+
+            self.assertEqual(result, 2)
+            status_payload = json.loads((day_dir / "run_status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status_payload["status"], "timeout")
+            self.assertEqual(status_payload["current_step"], "transcribe")
+            self.assertIn("30分钟", status_payload["steps"]["transcribe"]["message"])
+        finally:
+            self.cleanup_day_dir(date_str)
+
+    def test_kill_stale_runs_terminates_other_matching_processes(self):
+        from openmy.commands import run as run_command
+
+        current_pid = os.getpid()
+        ps_output = "\n".join(
+            [
+                f"{current_pid} python -m openmy run 2099-01-24",
+                "4321 python -m openmy run 2099-01-24",
+                "9876 python -m openmy run 2099-01-25",
+            ]
+        )
+
+        with (
+            patch("openmy.commands.run.subprocess.run") as run_mock,
+            patch("openmy.commands.run.os.kill") as kill_mock,
+        ):
+            run_mock.return_value = argparse.Namespace(stdout=ps_output)
+            killed = run_command._kill_stale_runs("2099-01-24")
+
+        self.assertEqual(killed, 1)
+        kill_mock.assert_called_once_with(4321, signal.SIGTERM)
 
     def test_cmd_run_keeps_main_chain_complete_when_extract_enrich_fails(self):
         """第二阶段补全失败时，不应回滚第一阶段核心真相和 active_context 聚合。"""

@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from openmy.utils.io import safe_write_json
+from openmy.utils.paths import DATA_ROOT as DEFAULT_DATA_ROOT
+from openmy.utils.paths import PROJECT_ROOT
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_DATA_ROOT = PROJECT_ROOT / "data"
 RUNTIME_DIRNAME = "screen_capture"
 EVENT_FILENAME = "screen_events.json"
 OCR_HELPER_NAME = "apple_vision_ocr"
@@ -20,9 +20,10 @@ PID_FILENAME = "capture.pid"
 LOG_FILENAME = "capture.log"
 SWIFT_SOURCE_NAME = "apple_vision_ocr.swift"
 CONTEXT_SWIFT_SOURCE_NAME = "frontmost_context.swift"
-DEFAULT_CAPTURE_INTERVAL_SECONDS = 5
+DEFAULT_CAPTURE_INTERVAL_SECONDS = 15
 DEFAULT_SCREENSHOT_RETENTION_HOURS = 24
 DEFAULT_EVENT_RETENTION_DAYS = 14
+DEFAULT_CAPTURE_WORKER_TIMEOUT_SECONDS = 30
 DEFAULT_OCR_LANGUAGES = ["zh-Hans", "zh-Hant", "en-US"]
 
 
