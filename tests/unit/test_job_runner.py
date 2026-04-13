@@ -5,7 +5,7 @@ import time
 import unittest
 from pathlib import Path
 
-from app.job_runner import JobRunner
+from app.job_runner import JobController, JobRunner
 
 
 class TestJobRunner(unittest.TestCase):
@@ -175,6 +175,18 @@ class TestJobRunner(unittest.TestCase):
         )
         runner.update_job(job["job_id"], status="running")
 
+        self.assertFalse(runner.pause_job(job["job_id"]))
+        self.assertFalse(runner.get_job(job["job_id"])["can_pause"])
+
+        runner.register_controller(
+            job["job_id"],
+            JobController(
+                pause_fn=lambda: None,
+                resume_fn=lambda: None,
+                skip_fn=lambda: None,
+            ),
+        )
+
         runner.pause_job(job["job_id"])
         paused = runner.get_job(job["job_id"])
         self.assertEqual(paused["status"], "paused")
@@ -194,6 +206,77 @@ class TestJobRunner(unittest.TestCase):
         cancelled = runner.get_job(job["job_id"])
         self.assertEqual(cancelled["status"], "cancelled")
         self.assertEqual(cancelled["eta_seconds"], 0)
+
+    def test_progress_hits_hundred_for_all_skipped_steps(self):
+        runner = JobRunner()
+        job = runner.create_job(
+            kind="run",
+            target_date="2026-04-10",
+            steps=[
+                {"name": "distill", "label": "蒸馏", "status": "skipped"},
+                {"name": "briefing", "label": "日报", "status": "skipped"},
+            ],
+        )
+
+        payload = runner.get_job(job["job_id"])
+        self.assertEqual(payload["progress_pct"], 100)
+
+    def test_single_step_progress_and_eta_fallbacks(self):
+        runner = JobRunner()
+        job = runner.create_job(
+            kind="run",
+            target_date="2026-04-10",
+            steps=[{"name": "transcribe", "label": "转写"}],
+            source_size_bytes=1024,
+        )
+        runner.set_step(job["job_id"], {"name": "transcribe", "label": "转写", "status": "running"})
+        running = runner.get_job(job["job_id"])
+        self.assertEqual(running["progress_pct"], 50)
+        self.assertEqual(running["eta_seconds"], 7)
+
+        runner.set_step(job["job_id"], {"name": "transcribe", "label": "转写", "status": "done"})
+        runner.update_job(job["job_id"], status="succeeded")
+        completed = runner.get_job(job["job_id"])
+        self.assertEqual(completed["progress_pct"], 100)
+        self.assertEqual(completed["eta_seconds"], 0)
+
+    def test_zero_step_jobs_report_reasonable_progress(self):
+        runner = JobRunner()
+        queued = runner.create_job(kind="context", target_date="2026-04-10", steps=[])
+        self.assertEqual(runner.get_job(queued["job_id"])["progress_pct"], 0)
+
+        runner.update_job(queued["job_id"], status="succeeded")
+        succeeded = runner.get_job(queued["job_id"])
+        self.assertEqual(succeeded["progress_pct"], 100)
+        self.assertEqual(succeeded["eta_seconds"], 0)
+
+    def test_eta_returns_none_without_history_or_size(self):
+        runner = JobRunner()
+        job = runner.create_job(
+            kind="run",
+            target_date="2026-04-10",
+            steps=[{"name": "transcribe", "label": "转写"}],
+        )
+        runner.set_step(job["job_id"], {"name": "transcribe", "label": "转写", "status": "running"})
+
+        payload = runner.get_job(job["job_id"])
+        self.assertIsNone(payload["eta_seconds"])
+
+    def test_eta_clamps_large_files(self):
+        runner = JobRunner()
+        job = runner.create_job(
+            kind="run",
+            target_date="2026-04-10",
+            steps=[
+                {"name": "transcribe", "label": "转写"},
+                {"name": "distill", "label": "蒸馏"},
+            ],
+            source_size_bytes=10 * 1024 * 1024 * 1024,
+        )
+        runner.set_step(job["job_id"], {"name": "transcribe", "label": "转写", "status": "running"})
+
+        payload = runner.get_job(job["job_id"])
+        self.assertEqual(payload["eta_seconds"], 900)
 
 
 if __name__ == "__main__":

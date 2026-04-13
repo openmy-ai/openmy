@@ -62,6 +62,17 @@ For the complete routing map, action contracts, and sub-skill documentation, see
 - `skills/openmy/references/action-contracts.md` — Stable command boundary
 - `skills/openmy/references/routing-rules.md` — When to use which sub-skill
 
+## Web UI
+
+OpenMy includes a local web app at `localhost:8420`.
+Users can:
+- drag audio files into the homepage to start processing
+- watch the 4-stage progress panel update in real time
+- pause, cancel, or skip the current step when the job allows it
+- browse finished daily briefings from the same UI
+
+Agents do not need to click the web app, but should tell users they can open `localhost:8420` to watch progress.
+
 ## Build & Test
 
 ```bash

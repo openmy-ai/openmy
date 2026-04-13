@@ -234,7 +234,7 @@ function renderPipelineJobDetail() {
   `;
 }
 
-function getHomeDisplayJob() {
+function getHomePipelineJob() {
   const activeJob = state.jobs.find((job) => ['queued', 'running', 'paused'].includes(job.status));
   if (activeJob) return activeJob;
   if (!state.homeJobFocusId) return null;
@@ -300,7 +300,7 @@ function renderHomeDropZone() {
   `;
 }
 
-function renderHomeProgressPanel(job) {
+function renderHomePipelineSlotCard(job) {
   if (!job) return renderHomeDropZone();
   const steps = job.steps || [];
   const recentLogs = [...(job.log_lines || [])].slice(-3).reverse();
@@ -369,7 +369,7 @@ function rerenderHomePipelineSlot() {
   if (state.route !== 'home') return;
   const slot = document.getElementById('homePipelineSlot');
   if (!slot) return;
-  slot.innerHTML = renderHomeProgressPanel(getHomeDisplayJob());
+  slot.innerHTML = renderHomePipelineSlotCard(getHomePipelineJob());
 }
 
 function clearHomeJobFocus() {
@@ -693,7 +693,8 @@ async function selectOnboardingProvider(provider, options = {}) {
       state.onboarding = result.onboarding;
     }
     state.selectedTranscriptionProvider = provider;
-    rerenderHomeOnboardingSlot();
+    rerenderHomePipelineSlot();
+    if (state.route === 'home') renderHomePage();
     if (options.closeSettings) closeSettingsOverlay();
   } catch (error) {
     showToast(`设置失败：${error.message}`);
@@ -725,7 +726,7 @@ function renderWikiHome() {
       ${setupNotice}
       <h1>OpenMy</h1>
       <div class="home-meta">把你每天说的话变成可搜索、可回顾的个人上下文。<br>录音 → 转写 → 整理 → 浏览，全部在本地完成。</div>
-      <div id="homePipelineSlot">${renderHomeProgressPanel(getHomeDisplayJob())}</div>
+      <div id="homePipelineSlot">${renderHomePipelineSlotCard(getHomePipelineJob())}</div>
 
       <div class="wiki-section">
         <div class="section-kicker">快速开始</div>
@@ -829,7 +830,7 @@ function renderRecentSummaryHome(visibleDates) {
         <button class="report-btn" type="button" onclick="state.showWikiHome=true;renderHomePage()">使用说明</button>
       </div>
       <div class="home-meta">最近记录</div>
-      <div id="homePipelineSlot">${renderHomeProgressPanel(getHomeDisplayJob())}</div>
+      <div id="homePipelineSlot">${renderHomePipelineSlotCard(getHomePipelineJob())}</div>
       <div class="daily-link-list">
         ${recentDates.map((item) => `
           <button class="daily-link-item" type="button" onclick="loadDate('${escapeHtml(item.date)}')">

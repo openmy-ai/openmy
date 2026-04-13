@@ -21,6 +21,16 @@ Use it when:
 
 - `openmy skill day.run --date YYYY-MM-DD --audio path/to/audio.wav --json`
 
+## Web UI Entry
+
+Users can also start the same pipeline from the local homepage at `localhost:8420`.
+- Dropping an audio file there calls `POST /api/upload` and then `POST /api/pipeline/jobs`.
+- The homepage will switch from the Drop Zone to a live progress card automatically.
+- The progress card shows the 4 main stages: transcribe → clean → segment → distill.
+- The user may see pause, cancel, or skip buttons depending on the current job state.
+
+Agents do not need to call these endpoints when the skill command is enough, but they should know the UI exists and can tell the user to open it.
+
 ## Restrictions
 
 - Do not call internal modules directly.

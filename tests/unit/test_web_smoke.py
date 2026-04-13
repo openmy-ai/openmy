@@ -5,14 +5,16 @@ import tempfile
 import threading
 import time
 import unittest
+from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from unittest.mock import patch
 
 import app.server as app_server
-from app.job_runner import JobRunner
+from app.job_runner import JobController, JobRunner
 
 
 class TestWebSmoke(unittest.TestCase):
@@ -39,18 +41,46 @@ class TestWebSmoke(unittest.TestCase):
         with urlopen(request, timeout=2) as response:
             return json.loads(response.read().decode("utf-8")), response.status
 
-    def post_multipart(self, base_url: str, path: str, *, filename: str, content: bytes, content_type: str = "audio/wav"):
+    def post_multipart(
+        self,
+        base_url: str,
+        path: str,
+        *,
+        filename: str,
+        content: bytes,
+        content_type: str = "audio/wav",
+        quoted_boundary: bool = False,
+        encode_chunked: bool = False,
+    ):
         boundary = f"----OpenMyBoundary{uuid.uuid4().hex}"
         body = (
             f"--{boundary}\r\n"
             f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
             f"Content-Type: {content_type}\r\n\r\n"
         ).encode("utf-8") + content + f"\r\n--{boundary}--\r\n".encode("utf-8")
+        boundary_header = f'"{boundary}"' if quoted_boundary else boundary
+        content_type_header = f"multipart/form-data; boundary={boundary_header}"
+        if encode_chunked:
+            parsed = urlparse(base_url)
+            connection = HTTPConnection(parsed.hostname, parsed.port, timeout=2)
+            try:
+                connection.request(
+                    "POST",
+                    path,
+                    body=[body[:12], body[12:]],
+                    headers={"Content-Type": content_type_header},
+                    encode_chunked=True,
+                )
+                response = connection.getresponse()
+                payload = json.loads(response.read().decode("utf-8"))
+                return payload, response.status
+            finally:
+                connection.close()
         request = Request(
             f"{base_url}{path}",
             data=body,
             method="POST",
-            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            headers={"Content-Type": content_type_header},
         )
         with urlopen(request, timeout=2) as response:
             return json.loads(response.read().decode("utf-8")), response.status
@@ -61,6 +91,8 @@ class TestWebSmoke(unittest.TestCase):
             patch.object(app_server, "LEGACY_ROOT", legacy_root),
             patch.object(app_server, "ROOT_DIR", legacy_root),
             patch.object(app_server, "JOB_RUNNER", runner),
+            patch("app.payloads.get_stt_provider_name", return_value=""),
+            patch("app.payloads.get_stt_api_key", return_value=""),
         ]
         for item in patches:
             item.start()
@@ -293,6 +325,46 @@ class TestWebSmoke(unittest.TestCase):
         self.assertEqual(payload["filename"], "demo.wav")
         self.assertGreater(payload["size_bytes"], 0)
 
+    def test_upload_endpoint_accepts_quoted_boundary_and_chunked_transfer(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner()
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                payload, status = self.post_multipart(
+                    base_url,
+                    "/api/upload",
+                    filename="quoted.wav",
+                    content=b"RIFFquoted",
+                    quoted_boundary=True,
+                    encode_chunked=True,
+                )
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["filename"], "quoted.wav")
+
+    def test_upload_endpoint_rejects_empty_filename(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner()
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                with self.assertRaises(HTTPError) as ctx:
+                    self.post_multipart(base_url, "/api/upload", filename="", content=b"RIFFdemo")
+                payload = json.loads(ctx.exception.read().decode("utf-8"))
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertEqual(payload["error"], "missing filename")
+
     def test_upload_endpoint_rejects_unsupported_extension(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_root = Path(tmp_dir)
@@ -319,6 +391,10 @@ class TestWebSmoke(unittest.TestCase):
             runner = JobRunner()
             created = runner.create_job(kind="run", target_date="2026-04-08", steps=["转写", "清洗"])
             runner.update_job(created["job_id"], status="running", can_skip=True)
+            runner.register_controller(
+                created["job_id"],
+                JobController(pause_fn=lambda: None, resume_fn=lambda: None, skip_fn=lambda: None),
+            )
 
             server, patches, base_url = self.start_server(data_root, project_root, runner)
             try:
@@ -333,6 +409,26 @@ class TestWebSmoke(unittest.TestCase):
         self.assertEqual(resumed["status"], "running")
         self.assertIn("已收到跳过当前步骤的请求", skipped["log_lines"])
         self.assertEqual(cancelled["status"], "cancelled")
+
+    def test_pause_endpoint_rejects_job_without_pause_capability(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner()
+            created = runner.create_job(kind="run", target_date="2026-04-08", steps=["转写"])
+            runner.update_job(created["job_id"], status="running")
+
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                with self.assertRaises(HTTPError) as ctx:
+                    self.post_json(base_url, f"/api/pipeline/jobs/{created['job_id']}/pause", {})
+                payload = json.loads(ctx.exception.read().decode("utf-8"))
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertEqual(payload["error"], "invalid job action for current state")
 
     def test_server_serves_day_workspace_contract(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -20,6 +20,15 @@ The fixed stack is:
 - CLI execution layer
 - frontend display layer
 
+## Input Surfaces
+
+OpenMy now has three real input surfaces:
+- CLI commands
+- agent skill commands
+- the local web UI at `localhost:8420`
+
+Uploaded files from the web UI are stored in the `data/inbox/` directory before the pipeline job starts.
+
 Reference files:
 - `skills/openmy/references/architecture.md`
 - `skills/openmy/references/action-contracts.md`
@@ -82,6 +91,7 @@ you have failed the task.
 - Do not bypass `openmy skill <action> --json` to call internal modules.
 - Do not edit `active_context.json`, `corrections.jsonl`, `scenes.json`, `meta.json`, or `profile.json` directly.
 - Do not treat the frontend as the execution surface.
+- The web UI is a valid user entry point even when the agent still prefers the skill command boundary for execution.
 - Do not describe OpenMy as an MCP-first product.
 - When the user mentions a device or source such as DJI Mic, phone voice memos, meeting recorder, or screen recording, assume they mean **existing recordings already saved on disk**.
 - Do **not** start live recording, open the microphone, or switch into realtime transcription unless the user explicitly says they want to record **now**.

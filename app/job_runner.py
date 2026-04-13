@@ -31,6 +31,12 @@ class JobHandle:
     job_id: str
     _runner: "JobRunner"
 
+    def get_job(self) -> dict[str, Any] | None:
+        return self._runner.get_job(self.job_id)
+
+    def update(self, **updates: Any) -> None:
+        self._runner.update_job(self.job_id, **updates)
+
     def log(self, message: str) -> None:
         self._runner.append_log(self.job_id, message)
 
@@ -248,14 +254,20 @@ class JobRunner:
 
     def register_controller(self, job_id: str, controller: JobController) -> None:
         self.controllers[job_id] = controller
+        with self._lock:
+            payload = self.jobs.get(job_id)
+            if payload is not None:
+                self._recompute_locked(payload)
+        self._persist_job(job_id)
 
     def pause_job(self, job_id: str) -> bool:
         current = self.get_job(job_id)
         if not current or current.get("status") != "running":
             return False
         controller = self.controllers.get(job_id)
-        if controller and controller.pause_fn:
-            controller.pause_fn()
+        if not controller or not controller.pause_fn:
+            return False
+        controller.pause_fn()
         self.update_job(job_id, status="paused", can_pause=False)
         return True
 
@@ -264,8 +276,9 @@ class JobRunner:
         if not current or current.get("status") != "paused":
             return False
         controller = self.controllers.get(job_id)
-        if controller and controller.resume_fn:
-            controller.resume_fn()
+        if not controller or not controller.resume_fn:
+            return False
+        controller.resume_fn()
         self.update_job(job_id, status="running")
         return True
 
@@ -347,13 +360,14 @@ class JobRunner:
     def _public_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         snapshot = copy.deepcopy(payload)
         self._recompute_locked(snapshot)
-        return snapshot
+        return {key: value for key, value in snapshot.items() if not str(key).startswith("_")}
 
     def _recompute_locked(self, payload: dict[str, Any]) -> None:
         steps = payload.get("steps") or []
         payload["progress_pct"] = self._compute_progress_pct(steps, payload.get("status", ""))
         payload["eta_seconds"] = self._compute_eta_seconds(payload)
-        payload["can_pause"] = payload.get("status") == "running"
+        controller = self.controllers.get(str(payload.get("job_id", "") or ""))
+        payload["can_pause"] = payload.get("status") == "running" and bool(controller and controller.pause_fn)
         payload["can_skip"] = bool(payload.get("skip_allowed")) and payload.get("status") == "running"
 
     @staticmethod

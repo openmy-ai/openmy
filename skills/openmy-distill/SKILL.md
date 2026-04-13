@@ -45,3 +45,10 @@ Use it when:
 4. Save the payload as JSON with `date` and `summaries` fields.
 5. Submit with `distill.submit`.
 6. If the submission clears all pending scenes, continue to `extract.core.pending`.
+
+## Safety Refusal Tolerance
+
+If Gemini refuses one scene because of the safety filter, the pipeline may skip that scene and keep running.
+- The user may see a warning like `⚠️ 场景[N]被安全过滤器跳过`.
+- This does not mean the whole day failed.
+- The final result can contain scenes with empty summaries; explain that plainly if the user asks.

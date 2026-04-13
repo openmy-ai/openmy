@@ -20,6 +20,10 @@ Use it when:
 
 - `openmy skill status.get --json`
 
+If the user specifically asks about the live pipeline queue or progress panel state, use the local web API too:
+- `GET /api/pipeline/jobs`
+- `GET /api/pipeline/jobs/{id}`
+
 ## Restrictions
 
 - Do not start day processing automatically.
@@ -40,3 +44,5 @@ Examples:
 - finish the partial day
 - review stale open items
 - initialize vocab before the next run
+
+When pipeline jobs exist, prefer summarizing the live job state from the API instead of telling the user to inspect `run_status.json` by hand.

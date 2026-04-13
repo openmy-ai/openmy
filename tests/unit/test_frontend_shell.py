@@ -93,9 +93,9 @@ class TestFrontendShell(unittest.TestCase):
 
     def test_home_page_contains_dropzone_and_progress_panel(self):
         self.assertIn("renderHomeDropZone", self.content)
-        self.assertIn("renderHomeProgressPanel", self.content)
+        self.assertIn("renderHomePipelineSlotCard", self.content)
         self.assertIn("hasReadyTranscriptionProvider", self.content)
-        self.assertIn("getHomeDisplayJob", self.content)
+        self.assertIn("getHomePipelineJob", self.content)
         self.assertIn("homeJobFocusId", self.content)
         self.assertIn("clearHomeJobFocus", self.content)
         self.assertIn("homeDropzone", self.content)
