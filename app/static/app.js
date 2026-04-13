@@ -824,34 +824,116 @@ function renderWikiHome() {
 function renderRecentSummaryHome(visibleDates) {
   const main = document.getElementById('main');
   const recentDates = visibleDates.slice(0, 7);
+  const today = new Date();
+  const monthDay = `${today.getMonth() + 1}月${today.getDate()}日`;
+
+  const todayItem = recentDates.find((item) => item.date === today.toISOString().slice(0, 10));
+  const todaySummary = todayItem
+    ? truncateSummary(todayItem.summary || todayItem.timeline?.[0]?.preview || '')
+    : '';
+
+  const totalSegments = recentDates.reduce((sum, item) => sum + (item.segments || 0), 0);
+  const totalWords = recentDates.reduce((sum, item) => sum + (item.word_count || 0), 0);
+  const activeDays = recentDates.filter((item) => item.segments > 0).length;
+
+  const projects = (state.context.active_projects || []).slice(0, 4);
+  const loops = (state.context.open_loops || state.loops || []).slice(0, 4);
 
   main.innerHTML = `
     <div class="home-page">
-      <div class="home-header-row">
-        <h1>OpenMy</h1>
-        <button class="report-btn" type="button" onclick="state.showWikiHome=true;renderHomePage()">使用说明</button>
+      <div class="welcome-hero">
+        <div class="welcome-title">你好！今天是 ${escapeHtml(monthDay)}</div>
+        <div class="welcome-subtitle">这是你最近 7 天的上下文概览</div>
       </div>
-      <div class="home-meta">最近记录</div>
+
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-card-value">${activeDays}</div>
+          <div class="stat-card-label">活跃天数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${totalSegments}</div>
+          <div class="stat-card-label">录音段数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${fmtNum(totalWords)}</div>
+          <div class="stat-card-label">总字数</div>
+        </div>
+      </div>
+
+      <div class="home-card-grid">
+        <div class="home-card home-card-grid--full" onclick="${todayItem ? `loadDate('${escapeHtml(todayItem.date)}')` : ''}">
+          <div class="home-card-header">
+            <span class="home-card-title">今日摘要</span>
+            ${todayItem ? `<span class="home-card-badge">${todayItem.segments}条记录</span>` : ''}
+          </div>
+          <div class="home-card-body">
+            ${todaySummary ? escapeHtml(todaySummary) : '<span class="text-muted">今天还没有录音</span>'}
+          </div>
+        </div>
+
+        ${projects.length ? `
+        <div class="home-card">
+          <div class="home-card-header">
+            <span class="home-card-title">活跃项目</span>
+            <span class="home-card-badge">${projects.length}</span>
+          </div>
+          <div class="context-card-list">
+            ${projects.map((item) => `
+              <div class="context-card-item">
+                <span>${escapeHtml(item.title || item.project_id || '')}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>` : ''}
+
+        ${loops.length ? `
+        <div class="home-card">
+          <div class="home-card-header">
+            <span class="home-card-title">待跟进</span>
+            <span class="home-card-badge">${loops.length}</span>
+          </div>
+          <div class="context-card-list">
+            ${loops.map((item) => `
+              <div class="context-card-item">
+                <span>${escapeHtml(item.task || item.what || item.text || '')}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>` : ''}
+      </div>
+
       <div id="homePipelineSlot">${renderHomePipelineSlotCard(getHomePipelineJob())}</div>
-      <div class="daily-link-list">
+
+      <div class="section-kicker" style="margin-bottom:12px">最近录音</div>
+      <div class="daily-link-list-v2">
         ${recentDates.map((item) => `
-          <button class="daily-link-item" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
-            <span class="daily-link-date">${escapeHtml(formatFriendlyDate(item.date))}</span>
-            <span class="daily-link-summary">${item.segments ? escapeHtml(truncateSummary(item.summary || item.timeline?.[0]?.preview || '')) : '<span class="text-muted">仅屏幕截图</span>'}</span>
-            <span class="daily-link-count">${item.segments ? item.segments + '条' : '截屏'}</span>
+          <button class="daily-link-v2" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
+            <span class="dl-date">${escapeHtml(formatFriendlyDate(item.date))}</span>
+            <span class="dl-summary">${item.segments ? escapeHtml(truncateSummary(item.summary || item.timeline?.[0]?.preview || '')) : '<span class="text-muted">仅屏幕截图</span>'}</span>
+            <span class="dl-count">${item.segments ? `${item.segments}条` : '截屏'}</span>
           </button>
         `).join('')}
+      </div>
+
+      <div style="text-align:center;padding:24px 0">
+        <button class="report-btn" type="button" onclick="state.showWikiHome=true;renderHomePage()">使用说明</button>
       </div>
     </div>
   `;
 }
 
-function renderReportPage(title, dates, extraMeta = '') {
+
+function renderReportPage(title, dates, extraMeta = '', isWeekly = false) {
   const main = document.getElementById('main');
   if (!dates.length) {
     main.innerHTML = `<div class="report-page"><h1>${escapeHtml(title)}</h1><div class="report-meta">当前没有可汇总的数据。</div></div>`;
     return;
   }
+
+  const totalSegments = dates.reduce((sum, item) => sum + (item.segments || 0), 0);
+  const totalWords = dates.reduce((sum, item) => sum + (item.word_count || 0), 0);
+  const activeDays = dates.filter((item) => item.segments > 0).length;
 
   const activeProjects = (state.context.active_projects || []).map((item) => item.title || item.project_id).filter(Boolean);
   const projectItems = activeProjects.slice(0, 4).map((name) => `${name}(${countKeywordDays(name, dates)}d)`);
@@ -863,34 +945,83 @@ function renderReportPage(title, dates, extraMeta = '') {
     dates.flatMap((item) => (item.todos || []).map((todo) => todo.task || todo.what || '')),
     4,
   );
-  const summaryText = uniqueTextItems(dates.map((item) => item.summary || ''), 3).join(' ');
+
+  const allSummaries = dates.map((item) => item.summary || '').filter(Boolean);
+  const highlightText = allSummaries.length
+    ? allSummaries.reduce((longest, current) => (longest.length > current.length ? longest : current), '').slice(0, 200)
+    : '';
+
+  const weekDays = ['一', '二', '三', '四', '五', '六', '日'];
+  const maxSegments = Math.max(...dates.map((item) => item.segments || 0), 1);
 
   main.innerHTML = `
     <div class="report-page">
       <h1>${escapeHtml(title)}</h1>
       <div class="report-meta">${escapeHtml(extraMeta)}</div>
-      ${summaryText ? `<section class="summary-callout"><p>${escapeHtml(summaryText)}</p></section>` : ''}
+
+      <div class="stats-row" style="margin-top:24px">
+        <div class="stat-card">
+          <div class="stat-card-value">${activeDays}</div>
+          <div class="stat-card-label">活跃天数</div>
+          ${dates.length > activeDays ? `<div class="stat-card-delta negative">${dates.length}天中</div>` : ''}
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${totalSegments}</div>
+          <div class="stat-card-label">录音段数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${fmtNum(totalWords)}</div>
+          <div class="stat-card-label">总字数</div>
+        </div>
+      </div>
+
+      ${isWeekly ? `
+      <div class="section-kicker" style="margin-bottom:12px">每日活跃度</div>
+      <div class="week-heatmap">
+        ${dates.slice().reverse().map((item, index) => {
+          const segments = item.segments || 0;
+          const percent = Math.round((segments / maxSegments) * 100);
+          const dayLabel = formatFriendlyDate(item.date).replace(/[0-9]+月/, '').trim();
+          return `
+            <div class="week-heatmap-day ${segments > 0 ? 'active' : ''}">
+              <div class="heatmap-label">${escapeHtml(dayLabel || weekDays[index] || '')}</div>
+              <div class="heatmap-bar-wrapper">
+                <div class="heatmap-bar" style="height:${Math.max(percent, 6)}%"></div>
+              </div>
+              <div class="heatmap-count">${segments}</div>
+            </div>`;
+        }).join('')}
+      </div>` : ''}
+
+      ${highlightText ? `
+      <div class="week-highlight">
+        <div class="week-highlight-label">本周高亮</div>
+        <div class="week-highlight-text">${escapeHtml(truncateSummary(highlightText))}</div>
+      </div>` : ''}
 
       ${projectItems.length ? `<div class="report-block">
         <div class="section-kicker">项目</div>
-        ${renderChipList(projectItems)}
+        <div class="chip-list-v2">${projectItems.map((item) => `<span class="chip-v2">${escapeHtml(item)}</span>`).join('')}</div>
       </div>` : ''}
+
       ${decisionItems.length ? `<div class="report-block">
         <div class="section-kicker">决策</div>
-        ${renderChipList(decisionItems)}
+        <div class="chip-list-v2">${decisionItems.map((item) => `<span class="chip-v2">${escapeHtml(item)}</span>`).join('')}</div>
       </div>` : ''}
+
       ${loopItems.length ? `<div class="report-block">
         <div class="section-kicker">待跟进</div>
-        ${renderChipList(loopItems)}
+        <div class="chip-list-v2">${loopItems.map((item) => `<span class="chip-v2">${escapeHtml(item)}</span>`).join('')}</div>
       </div>` : ''}
+
       <div class="report-block">
         <div class="section-kicker">每日概要</div>
-        <div class="daily-link-list">
+        <div class="daily-link-list-v2">
           ${dates.map((item) => `
-            <button class="daily-link-item" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
-              <span class="daily-link-date">${escapeHtml(formatFriendlyDate(item.date))}</span>
-              <span class="daily-link-summary">${escapeHtml(truncateSummary(item.summary || item.timeline?.[0]?.preview || ''))}</span>
-              <span class="daily-link-count">${item.segments || 0}条</span>
+            <button class="daily-link-v2" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
+              <span class="dl-date">${escapeHtml(formatFriendlyDate(item.date))}</span>
+              <span class="dl-summary">${escapeHtml(truncateSummary(item.summary || item.timeline?.[0]?.preview || ''))}</span>
+              <span class="dl-count">${item.segments || 0}条</span>
             </button>
           `).join('')}
         </div>
@@ -899,22 +1030,24 @@ function renderReportPage(title, dates, extraMeta = '') {
   `;
 }
 
+
 function renderWeeklyReport() {
   closeSidebar();
   setRoute('weekly');
   state.currentDate = '';
   const dates = latestWeekDates();
   if (!dates.length) {
-    renderReportPage('周报', [], '');
+    renderReportPage('周报', [], '', true);
     return;
   }
-  const totalSegments = dates.reduce((sum, item) => sum + (item.segments || 0), 0);
   renderReportPage(
     `周报 ${formatRangeLabel(dates[dates.length - 1].date, dates[0].date)}`,
     dates,
-    `${dates.length}天 · ${totalSegments}条记录`,
+    `${dates.length}天有记录`,
+    true,
   );
 }
+
 
 function renderMonthlyReport() {
   closeSidebar();
@@ -922,16 +1055,17 @@ function renderMonthlyReport() {
   state.currentDate = '';
   const dates = latestMonthDates();
   if (!dates.length) {
-    renderReportPage('月报', [], '');
+    renderReportPage('月报', [], '', false);
     return;
   }
-  const totalSegments = dates.reduce((sum, item) => sum + (item.segments || 0), 0);
   renderReportPage(
     `月报 ${dates[0].date.slice(0, 7)}`,
     dates,
-    `本月 ${dates.length}天有记录 · ${totalSegments}条记录`,
+    `本月 ${dates.length}天有记录`,
+    false,
   );
 }
+
 
 async function loadContext() {
   const [context, loops, projects, decisions] = await Promise.all([
@@ -1034,20 +1168,38 @@ function renderDayLayout() {
   if (!detail) return;
 
   const summaryText = plainText(meta.daily_summary || state.currentBriefing?.summary || state.context.status_line || '');
-  const headerMeta = [
-    detail.date,
-    `${detail.segments.length}条记录`,
-    `${fmtNum(detail.word_count || 0)}字`,
-  ];
+  const times = detail.segments.map((segment) => segment.time).filter(Boolean).sort();
+  const timeSpan = times.length >= 2 ? `${times[0]} - ${times[times.length - 1]}` : (times[0] || '');
 
   document.getElementById('main').innerHTML = `
     <article class="daily-article">
       <header class="page-header">
         <div class="page-title">${escapeHtml(formatPageDate(detail.date))}</div>
-        <div class="page-meta">${headerMeta.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>
       </header>
-      ${summaryText ? `<section class="summary-callout"><p>${escapeHtml(summaryText)}</p></section>` : ''}
+
+      <div class="daily-stats-bar">
+        <div class="daily-stat-item">
+          <span class="daily-stat-num">${detail.segments.length}</span>
+          <span class="daily-stat-label">条记录</span>
+        </div>
+        <div class="daily-stat-item">
+          <span class="daily-stat-num">${fmtNum(detail.word_count || 0)}</span>
+          <span class="daily-stat-label">字</span>
+        </div>
+        ${timeSpan ? `<div class="daily-stat-item">
+          <span class="daily-stat-num" style="font-size:16px">${escapeHtml(timeSpan)}</span>
+          <span class="daily-stat-label">时间跨度</span>
+        </div>` : ''}
+      </div>
+
+      ${summaryText ? `
+      <section class="summary-callout-v2">
+        <div class="callout-label">AI 摘要</div>
+        <p>${escapeHtml(summaryText)}</p>
+      </section>` : ''}
+
       ${renderMetaPanels(meta)}
+
       <section class="article-section">
         <h2 class="collapsible-header" type="button" onclick="toggleSection(this)">
           详细记录 <span class="collapse-arrow">▶</span>
@@ -1068,7 +1220,9 @@ function renderDayLayout() {
           `).join('')}
         </div>
       </section>
+
       ${renderScreenActivity(detail.screen_events)}
+
       <section class="article-section">
         <h2>数据图表</h2>
         <div class="charts-grid">
@@ -1080,6 +1234,7 @@ function renderDayLayout() {
   document.getElementById('settingsBtn')?.classList.remove('active');
   setTimeout(initCharts, 0);
 }
+
 
 function renderScreenActivity(events) {
   if (!events || !events.length) return '';
