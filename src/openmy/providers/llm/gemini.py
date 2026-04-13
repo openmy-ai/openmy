@@ -71,6 +71,22 @@ class GeminiLLMProvider(TextGenerationProvider):
         if config:
             kwargs["config"] = config
         response = client.models.generate_content(**kwargs)
+        # Detect safety filter refusal before checking text content.
+        _blocked = False
+        if hasattr(response, "candidates") and response.candidates:
+            candidate = response.candidates[0]
+            finish = getattr(candidate, "finish_reason", None)
+            if finish and str(finish).upper() in ("SAFETY", "BLOCKED", "RECITATION"):
+                _blocked = True
+        if _blocked:
+            raise FriendlyCliError(
+                f"Gemini 因安全过滤器跳过了 {task}（内容可能触发了审核规则）。",
+                code="gemini_safety_refusal",
+                fix="这段内容被自动跳过，不影响其他场景的处理。",
+                doc_url=doc_url("语音转写"),
+                message_en=f"Gemini refused {task} due to safety filters.",
+                fix_en="This segment was skipped. Other segments are unaffected.",
+            )
         text = response.text.strip() if response.text else ""
         if not text:
             raise FriendlyCliError(

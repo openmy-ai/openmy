@@ -103,7 +103,11 @@ def _distill_scene_job(job: tuple[int, dict, str, str | None]) -> tuple[int, str
             screen_summary=str(screen_context.get("summary", "")).strip(),
         )
     except Exception as exc:
-        print(f"⚠️ 场景蒸馏失败，已跳过 scene[{index}]: {exc}", file=sys.stderr)
+        code = getattr(exc, "code", "")
+        if code == "gemini_safety_refusal":
+            print(f"⚠️ 场景[{index}]被安全过滤器跳过（内容触发审核规则），不影响其他场景", file=sys.stderr)
+        else:
+            print(f"⚠️ 场景蒸馏失败，已跳过 scene[{index}]: {exc}", file=sys.stderr)
         summary = ""
     return index, summary
 

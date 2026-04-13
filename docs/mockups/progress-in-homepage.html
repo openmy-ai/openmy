@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenMy — 进度面板位置演示</title>
+<style>
+  :root {
+    --bg: #FFFFFF;
+    --bg-hover: #F8F9FA;
+    --bg-active: #F1F5F9;
+    --bg-sidebar: #F7F8FA;
+    --text: #1A1A1A;
+    --text-secondary: #6B7280;
+    --text-light: #9CA3AF;
+    --border: #E5E7EB;
+    --accent: #2563EB;
+    --accent-light: #EFF6FF;
+    --success: #059669;
+    --success-bg: #d1fae5;
+    --warning: #d97706;
+    --warning-bg: #fef3c7;
+    --error: #dc2626;
+    --error-bg: #fef2f2;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --transition: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ===== SIDEBAR ===== */
+  .sidebar {
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    padding: 24px 16px;
+    overflow-y: auto;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 8px; margin-bottom: 8px;
+    cursor: pointer; border-radius: var(--radius-sm);
+  }
+  .logo-title {
+    font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .logo-mark {
+    width: 18px; height: 18px; background: var(--accent);
+    border-radius: 4px; display: flex; align-items: center;
+    justify-content: center; color: white; font-size: 10px; font-weight: 800;
+  }
+  .logo-sub {
+    font-size: 11px; color: var(--text-light); text-transform: uppercase;
+    letter-spacing: 0.05em; font-weight: 600;
+  }
+
+  .sidebar-search-btn {
+    width: 100%; padding: 10px 14px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text-light); font-size: 13px;
+    display: flex; justify-content: space-between; align-items: center;
+    cursor: pointer; margin: 12px 0;
+  }
+  .sidebar-search-btn kbd {
+    font-family: ui-monospace, monospace; font-size: 11px;
+    padding: 2px 6px; background: var(--bg-hover);
+    border: 1px solid var(--border); border-radius: 4px;
+  }
+
+  .stats {
+    padding: 8px 12px; font-size: 12px; color: var(--text-secondary);
+    display: flex; gap: 16px; margin-bottom: 4px;
+  }
+  .stat-item { display: flex; align-items: center; gap: 4px; }
+  .stat-num { font-weight: 700; color: var(--text); font-size: 14px; }
+
+  .divider { height: 1px; background: var(--border); margin: 8px 12px 16px; }
+  .section-label {
+    font-size: 11px; font-weight: 700; color: var(--text-light);
+    padding: 4px 12px; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+
+  .report-links { padding: 4px 12px 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .report-btn {
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text-secondary); border-radius: 999px;
+    padding: 6px 12px; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all var(--transition);
+  }
+  .report-btn:hover { background: var(--bg-hover); color: var(--text); }
+  .report-btn.active { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+
+  .date-list { flex: 1; overflow-y: auto; margin-top: 8px; }
+  .date-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-radius: var(--radius-sm);
+    cursor: pointer; font-size: 13px; color: var(--text-secondary);
+    border: none; background: transparent; width: 100%;
+    text-align: left; margin-bottom: 2px; transition: all var(--transition);
+  }
+  .date-item:hover { background: var(--bg-hover); color: var(--text); }
+  .date-item .meta {
+    margin-left: auto; font-size: 11px; color: var(--text-light);
+    font-weight: 500; background: var(--bg-hover); padding: 2px 6px;
+    border-radius: 10px;
+  }
+
+  .sidebar-footer {
+    margin-top: auto; padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .sidebar-model-btn {
+    width: 100%; margin-bottom: 8px; padding: 10px 14px;
+    background: var(--bg-hover); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text);
+    font-size: 13px; display: flex; align-items: center; gap: 8px;
+    cursor: pointer; font-weight: 600; transition: all var(--transition);
+  }
+  .sidebar-settings-btn {
+    width: 100%; padding: 10px 14px; background: none;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text-secondary); font-size: 13px;
+    display: flex; align-items: center; gap: 8px;
+    cursor: pointer; transition: all var(--transition);
+  }
+
+  .sidebar-dict-toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; padding: 8px 0; border: none; background: none;
+    cursor: pointer; color: var(--text-secondary); font-size: 11px;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .dict-count {
+    font-size: 10px; background: var(--bg-hover); padding: 2px 6px;
+    border-radius: 10px; font-weight: 500; color: var(--text-light);
+  }
+  .sidebar-dict { padding: 0 12px 16px; }
+
+  /* ===== MAIN ===== */
+  .main {
+    max-width: 760px; margin: 0 auto;
+    padding: 64px 40px 100px; width: 100%;
+  }
+
+  .home-header-row {
+    display: flex; align-items: baseline;
+    justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  .home-page h1 {
+    font-size: 32px; font-weight: 800; line-height: 1.25; margin-bottom: 12px;
+  }
+  .home-meta { font-size: 14px; color: var(--text-secondary); margin-bottom: 28px; }
+
+  /* ===== PROGRESS CARD ===== */
+  .progress-card {
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    box-shadow: 0 0 0 3px var(--accent-light), var(--shadow);
+    margin-bottom: 28px;
+    overflow: visible;
+    animation: cardSlideIn 0.5s ease;
+  }
+  @keyframes cardSlideIn {
+    from { opacity: 0; transform: translateY(-12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .progress-card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: background var(--transition);
+  }
+  .progress-card-header:hover { background: var(--bg-hover); }
+
+  .progress-card-left { display: flex; align-items: center; gap: 12px; }
+  .progress-card-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: var(--accent); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .progress-card-icon .spinner-ring {
+    width: 20px; height: 20px;
+    border: 2.5px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .progress-card-title { font-size: 14px; font-weight: 700; color: var(--text); }
+  .progress-card-subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .progress-card-right { display: flex; align-items: center; gap: 12px; }
+  .progress-card-pct { font-size: 20px; font-weight: 800; color: var(--accent); }
+  .progress-card-expand {
+    font-size: 18px; color: var(--text-light);
+    transition: transform var(--transition);
+  }
+  .progress-card.expanded .progress-card-expand { transform: rotate(180deg); }
+
+  .progress-card-bar {
+    height: 4px; background: var(--bg-hover);
+    overflow: hidden;
+  }
+  .progress-card-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #60a5fa);
+    transition: width 0.8s ease;
+  }
+
+  /* Expanded detail */
+  .progress-card-detail {
+    max-height: 0; overflow: hidden;
+    transition: max-height 0.4s ease;
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .progress-card.expanded .progress-card-detail {
+    max-height: 600px;
+  }
+
+  .progress-detail-inner {
+    padding: 0 20px 20px;
+  }
+
+  .progress-steps { display: flex; flex-direction: column; gap: 4px; margin-top: 16px; }
+  .p-step {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: var(--radius-sm);
+    font-size: 13px;
+  }
+  .p-step-icon {
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+  }
+  .p-step-done .p-step-icon { background: var(--success-bg); color: var(--success); }
+  .p-step-running .p-step-icon { background: var(--accent-light); color: var(--accent); }
+  .p-step-pending .p-step-icon { background: var(--bg-hover); color: var(--text-light); border: 1px dashed var(--border); }
+
+  .p-step-label { font-weight: 600; color: var(--text); }
+  .p-step-running .p-step-label { color: var(--accent); }
+  .p-step-pending .p-step-label { color: var(--text-light); }
+  .p-step-result { flex: 1; color: var(--text-secondary); font-size: 12px; }
+  .p-step-time { color: var(--text-light); font-size: 11px; font-family: ui-monospace, monospace; }
+
+  .p-step-running .p-step-icon .mini-spinner {
+    width: 12px; height: 12px;
+    border: 2px solid var(--accent-light);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .progress-log {
+    margin-top: 12px; padding: 10px 12px;
+    background: var(--bg-hover); border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.9;
+    max-height: 100px; overflow-y: auto;
+  }
+  .progress-log-item { display: flex; gap: 8px; }
+  .progress-log-time { color: var(--text-light); flex-shrink: 0; }
+  .progress-log-msg { color: var(--text-secondary); }
+
+  .progress-actions {
+    display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;
+  }
+  .p-action-btn {
+    padding: 6px 14px; border-radius: 6px; font-size: 12px;
+    font-weight: 600; cursor: pointer; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text-secondary);
+    transition: all var(--transition); font-family: var(--font-body);
+  }
+  .p-action-btn:hover { background: var(--bg-active); color: var(--text); }
+  .p-action-btn.danger { color: var(--error); }
+  .p-action-btn.danger:hover { background: var(--error-bg); border-color: var(--error); }
+
+  .progress-eta {
+    font-size: 12px; color: var(--text-secondary);
+    font-family: ui-monospace, monospace; margin-top: 8px;
+  }
+
+  /* ===== LAUNCH CARD ===== */
+  .launch-card {
+    background: linear-gradient(135deg, var(--accent-light) 0%, var(--bg) 100%);
+    border: 2px dashed var(--accent);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 28px;
+    text-align: center;
+    animation: cardSlideIn 0.5s ease;
+  }
+  .launch-card-title {
+    font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 6px;
+  }
+  .launch-card-desc {
+    font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.6;
+  }
+  .launch-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 28px; border-radius: var(--radius-sm);
+    background: var(--accent); color: white; border: none;
+    font-size: 15px; font-weight: 700; cursor: pointer;
+    font-family: var(--font-body);
+    transition: all var(--transition);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+  }
+  .launch-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+  }
+  .launch-btn:active { transform: translateY(0); }
+  .launch-hint {
+    font-size: 11px; color: var(--text-light); margin-top: 12px;
+  }
+  .launch-hint code {
+    background: var(--bg-hover); padding: 2px 6px; border-radius: 4px;
+    font-family: ui-monospace, monospace; font-size: 11px;
+  }
+
+  /* ===== DAILY LINKS ===== */
+  .daily-link-list { display: flex; flex-direction: column; gap: 10px; }
+  .daily-link-item {
+    width: 100%; border: 1px solid var(--border); background: var(--bg);
+    border-radius: var(--radius); padding: 16px 18px;
+    display: grid; grid-template-columns: 84px 1fr auto;
+    gap: 14px; align-items: start; text-align: left;
+    cursor: pointer; transition: all var(--transition);
+  }
+  .daily-link-item:hover { background: var(--bg-hover); border-color: var(--accent); }
+  .daily-link-date { font-size: 13px; color: var(--text-secondary); font-weight: 700; }
+  .daily-link-summary { font-size: 15px; color: var(--text); line-height: 1.6; }
+  .daily-link-count { font-size: 12px; color: var(--text-light); }
+
+  /* ===== NO-TASK STATE (toggle demo) ===== */
+  .demo-controls {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: #1e293b; color: white; padding: 10px 20px;
+    border-radius: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    display: flex; gap: 8px; align-items: center; z-index: 100;
+    font-size: 13px;
+  }
+  .demo-controls span { font-weight: 700; margin-right: 4px; }
+  .demo-btn {
+    padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.2);
+    background: transparent; color: rgba(255,255,255,0.7);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: all 0.2s; font-family: var(--font-body);
+  }
+  .demo-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+  .demo-btn.active { background: white; color: #1e293b; border-color: white; }
+
+  /* Position label */
+  .position-label {
+    position: absolute; top: -8px; right: 12px;
+    background: #ef4444; color: white; font-size: 10px;
+    font-weight: 800; padding: 2px 8px; border-radius: 4px;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    z-index: 10; animation: bounce 1s infinite;
+  }
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar">
+      <div class="logo">
+        <div class="logo-title">
+          <span class="logo-mark">O</span> OpenMy
+        </div>
+      </div>
+      <div class="logo-sub" style="padding: 0 8px;">每日上下文</div>
+
+      <button class="sidebar-search-btn">
+        <span>搜索…</span>
+        <kbd>⌘K</kbd>
+      </button>
+
+      <div class="stats">
+        <span class="stat-item"><span class="stat-num">2</span>天</span>
+        <span class="stat-item"><span class="stat-num">5</span>条</span>
+        <span class="stat-item"><span class="stat-num">1.5k</span>字</span>
+      </div>
+
+      <div class="report-links">
+        <button class="report-btn active">首页</button>
+        <button class="report-btn">周报</button>
+        <button class="report-btn">月报</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="date-list">
+        <button class="date-item">
+          <span>4月13日</span>
+          <span class="meta">2条</span>
+        </button>
+        <button class="date-item">
+          <span>4月8日</span>
+          <span class="meta">4条</span>
+        </button>
+      </div>
+
+      <div class="sidebar-footer">
+        <button class="sidebar-model-btn">🤖 转写模型</button>
+        <div class="sidebar-dict" style="padding: 0 0 12px;">
+          <button class="sidebar-dict-toggle">
+            <span>校正词典</span>
+            <span class="dict-count">9</span>
+          </button>
+        </div>
+        <button class="sidebar-settings-btn">⚙️ 设置</button>
+      </div>
+    </aside>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <main class="main" id="mainContent">
+      <div class="home-page">
+        <div class="home-header-row">
+          <h1>OpenMy</h1>
+          <button class="report-btn" style="font-size: 13px;">使用说明</button>
+        </div>
+
+        <!-- ===== LAUNCH CARD (无任务时显示) ===== -->
+        <div id="launchCard" style="display: none;">
+          <div class="launch-card">
+            <div class="launch-card-title">📂 处理今天的录音</div>
+            <div class="launch-card-desc">检测到 DJI Mic 里有 3 段新录音未处理<br>点击一键启动，自动完成转写 → 清洗 → 整理</div>
+            <button class="launch-btn" onclick="simulateLaunch()">▶ 一键启动</button>
+            <div class="launch-hint">等同于终端运行 <code>openmy quick-start</code> 或 Agent 调用 <code>day-run</code> skill</div>
+          </div>
+        </div>
+
+        <!-- ===== PROGRESS CARD (嵌在首页顶部) ===== -->
+        <div class="progress-card expanded" id="progressCard" style="position: relative;">
+          <div class="position-label">👈 进度面板在这里</div>
+
+          <div class="progress-card-header" onclick="toggleExpand()">
+            <div class="progress-card-left">
+              <div class="progress-card-icon">
+                <div class="spinner-ring"></div>
+              </div>
+              <div>
+                <div class="progress-card-title">正在处理 DJI_0042.wav</div>
+                <div class="progress-card-subtitle">转写中 · Gemini 2.0 Flash · 52.4 MB</div>
+              </div>
+            </div>
+            <div class="progress-card-right">
+              <span class="progress-card-pct" id="cardPct">60%</span>
+              <span class="progress-card-expand">▾</span>
+            </div>
+          </div>
+
+          <div class="progress-card-bar">
+            <div class="progress-card-bar-fill" id="cardBar" style="width: 60%"></div>
+          </div>
+
+          <div class="progress-card-detail">
+            <div class="progress-detail-inner">
+              <div class="progress-eta">⏱ 剩余约 7 分 30 秒 · 12:30 / 20:00</div>
+
+              <div class="progress-steps">
+                <div class="p-step p-step-done">
+                  <div class="p-step-icon">✓</div>
+                  <span class="p-step-label">转写</span>
+                  <span class="p-step-result">检测到 3 段对话，共 2,847 字</span>
+                  <span class="p-step-time">02:30</span>
+                </div>
+                <div class="p-step p-step-done">
+                  <div class="p-step-icon">✓</div>
+                  <span class="p-step-label">清洗</span>
+                  <span class="p-step-result">去掉 47% 噪音，保留 1,510 字</span>
+                  <span class="p-step-time">01:15</span>
+                </div>
+                <div class="p-step p-step-running">
+                  <div class="p-step-icon"><div class="mini-spinner"></div></div>
+                  <span class="p-step-label">场景切分</span>
+                  <span class="p-step-result">正在分析第 2 个话题段落…</span>
+                  <span class="p-step-time">00:18</span>
+                </div>
+                <div class="p-step p-step-pending">
+                  <div class="p-step-icon">○</div>
+                  <span class="p-step-label">蒸馏</span>
+                  <span class="p-step-result">等待中</span>
+                  <span class="p-step-time">–</span>
+                </div>
+              </div>
+
+              <div class="progress-log">
+                <div class="progress-log-item">
+                  <span class="progress-log-time">10:32:15</span>
+                  <span class="progress-log-msg">发现角色切换（AI → 用户），标记新场景</span>
+                </div>
+                <div class="progress-log-item">
+                  <span class="progress-log-time">10:31:42</span>
+                  <span class="progress-log-msg">切分第 1 个场景，时长 4:20 / 1,247 字</span>
+                </div>
+                <div class="progress-log-item">
+                  <span class="progress-log-time">10:31:10</span>
+                  <span class="progress-log-msg">清洗完成，保留 1,510 字（原始 2,847 字）</span>
+                </div>
+              </div>
+
+              <div class="progress-actions">
+                <button class="p-action-btn">⏸ 暂停</button>
+                <button class="p-action-btn">⏭ 跳过</button>
+                <button class="p-action-btn danger">✕ 取消</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== NORMAL CONTENT BELOW ===== -->
+        <div class="home-meta">最近记录</div>
+
+        <div class="daily-link-list" id="dailyLinks">
+          <button class="daily-link-item">
+            <span class="daily-link-date">4月13日</span>
+            <span class="daily-link-summary">今天在处理 DJI_0042.wav，讨论了 OpenMy 下一步的宣发计划…</span>
+            <span class="daily-link-count">2条</span>
+          </button>
+          <button class="daily-link-item">
+            <span class="daily-link-date">4月8日</span>
+            <span class="daily-link-summary">我这段时间主要在复盘 OpenMy 的转写准确率，也在收拢产品方向。我倾向先把 cli 和终端版本做…</span>
+            <span class="daily-link-count">4条</span>
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Demo Controls -->
+  <div class="demo-controls">
+    <span>🎬 演示：</span>
+    <button class="demo-btn active" onclick="showState('running')">处理中</button>
+    <button class="demo-btn" onclick="showState('collapsed')">收起</button>
+    <button class="demo-btn" onclick="showState('done')">完成</button>
+    <button class="demo-btn" onclick="showState('idle')">一键启动</button>
+    <button class="demo-btn" onclick="simulateLaunch()">▶ 完整动画</button>
+  </div>
+
+<script>
+  function toggleExpand() {
+    document.getElementById('progressCard').classList.toggle('expanded');
+  }
+
+  function showState(mode) {
+    document.querySelectorAll('.demo-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+
+    const card = document.getElementById('progressCard');
+
+    const launchCard = document.getElementById('launchCard');
+
+    if (mode === 'idle') {
+      card.style.display = 'none';
+      launchCard.style.display = 'block';
+      launchCard.style.animation = 'cardSlideIn 0.5s ease';
+      return;
+    }
+    launchCard.style.display = 'none';
+    card.style.display = 'block';
+
+    if (mode === 'collapsed') {
+      card.classList.remove('expanded');
+      card.querySelector('.position-label').textContent = '👈 点击可展开详情';
+      return;
+    }
+
+    if (mode === 'running') {
+      card.classList.add('expanded');
+      card.querySelector('.position-label').textContent = '👈 进度面板在这里';
+      card.querySelector('.progress-card-title').textContent = '正在处理 DJI_0042.wav';
+      card.querySelector('.progress-card-subtitle').textContent = '转写中 · Gemini 2.0 Flash · 52.4 MB';
+      card.querySelector('.progress-card-icon').innerHTML = '<div class="spinner-ring"></div>';
+      card.style.borderColor = 'var(--accent)';
+      card.style.boxShadow = '0 0 0 3px var(--accent-light), var(--shadow)';
+      document.getElementById('cardPct').textContent = '60%';
+      document.getElementById('cardBar').style.width = '60%';
+      return;
+    }
+
+    if (mode === 'done') {
+      card.classList.add('expanded');
+      card.querySelector('.position-label').textContent = '✅ 处理完成';
+      card.querySelector('.position-label').style.background = 'var(--success)';
+      card.querySelector('.progress-card-title').textContent = 'DJI_0042.wav 处理完成！';
+      card.querySelector('.progress-card-subtitle').textContent = '4 个阶段全部完成 · 耗时 15:42';
+      card.querySelector('.progress-card-icon').innerHTML = '✓';
+      card.querySelector('.progress-card-icon').style.background = 'var(--success)';
+      card.style.borderColor = 'var(--success)';
+      card.style.boxShadow = '0 0 0 3px var(--success-bg), var(--shadow)';
+      document.getElementById('cardPct').textContent = '100%';
+      document.getElementById('cardPct').style.color = 'var(--success)';
+      document.getElementById('cardBar').style.width = '100%';
+      document.getElementById('cardBar').style.background = 'var(--success)';
+    }
+  }
+
+  function simulateLaunch() {
+    // 隐藏启动卡片
+    document.getElementById('launchCard').style.display = 'none';
+    // 显示进度卡片，从 0% 开始
+    const card = document.getElementById('progressCard');
+    card.style.display = 'block';
+    card.classList.add('expanded');
+    card.style.borderColor = 'var(--accent)';
+    card.style.boxShadow = '0 0 0 3px var(--accent-light), var(--shadow)';
+    card.style.animation = 'cardSlideIn 0.5s ease';
+    card.querySelector('.position-label').textContent = '🚀 已启动';
+    card.querySelector('.position-label').style.background = 'var(--accent)';
+    card.querySelector('.progress-card-title').textContent = '正在处理 DJI_0042.wav';
+    card.querySelector('.progress-card-subtitle').textContent = '启动中…';
+    card.querySelector('.progress-card-icon').innerHTML = '<div class="spinner-ring"></div>';
+    card.querySelector('.progress-card-icon').style.background = 'var(--accent)';
+    document.getElementById('cardPct').textContent = '0%';
+    document.getElementById('cardPct').style.color = 'var(--accent)';
+    document.getElementById('cardBar').style.width = '0%';
+    document.getElementById('cardBar').style.background = '';
+
+    // 动画模拟进度
+    let pct = 0;
+    const interval = setInterval(() => {
+      pct += 2;
+      if (pct > 100) {
+        clearInterval(interval);
+        showState('done');
+        document.querySelectorAll('.demo-btn').forEach(b => b.classList.remove('active'));
+        return;
+      }
+      document.getElementById('cardPct').textContent = pct + '%';
+      document.getElementById('cardBar').style.width = pct + '%';
+      if (pct === 10) card.querySelector('.progress-card-subtitle').textContent = '转写中 · Gemini 2.0 Flash · 52.4 MB';
+    }, 80);
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,2076 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenMy — 设计预览</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
+:root {
+  /* Backgrounds */
+  --bg-canvas:        #FFFFFF;
+  --bg-surface:       #FFFFFF;
+  --bg-sidebar:       #F7F8FA;
+  --bg-warm:          #FFF8E1;
+  --bg-warm-hover:    #FFF3CD;
+  --bg-success-subtle:#ECFDF5;
+  --bg-error-subtle:  #FEF2F2;
+  --bg-info-subtle:   #EFF6FF;
+
+  /* Accent */
+  --accent:           #2563EB;
+  --accent-hover:     #1D4ED8;
+  --accent-light:     #EFF6FF;
+  --accent-border:    #BFDBFE;
+
+  /* Text */
+  --text-primary:     #111827;
+  --text-secondary:   #6B7280;
+  --text-tertiary:    #9CA3AF;
+  --text-accent:      #4F46E5;
+  --text-warm:        #92400E;
+
+  /* Borders */
+  --border:           #E5E7EB;
+  --border-light:     #F3F4F6;
+  --border-focus:     #4F46E5;
+
+  /* Semantic */
+  --success:          #059669;
+  --warning:          #D97706;
+  --error:            #DC2626;
+  --info:             #2563EB;
+
+  /* Shadows */
+  --shadow-sm:        0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md:        0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -1px rgba(0,0,0,0.04);
+  --shadow-lg:        0 10px 25px -3px rgba(0,0,0,0.08), 0 4px 6px -2px rgba(0,0,0,0.03);
+
+  /* Spacing */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+  --space-12: 48px; --space-16: 64px;
+
+  /* Radius */
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px;
+  --radius-xl: 20px; --radius-full: 999px;
+
+  /* Fonts */
+  --font-brand:   'Plus Jakarta Sans', -apple-system, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', 'SF Mono', monospace;
+
+  /* Sidebar */
+  --sidebar-w: 260px;
+  --sidebar-w-collapsed: 60px;
+}
+
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 15px; }
+body {
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+.app {
+  display: flex;
+  height: 100vh;
+}
+
+/* --- Sidebar --- */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  position: relative;
+  z-index: 10;
+}
+
+.sidebar.collapsed { width: var(--sidebar-w-collapsed); }
+.sidebar.collapsed .sidebar__text { opacity: 0; pointer-events: none; }
+.sidebar.collapsed .sidebar__section-label { opacity: 0; }
+.sidebar.collapsed .sidebar__stats { display: none; }
+.sidebar.collapsed .sidebar__bottom { justify-content: center; }
+.sidebar.collapsed .sidebar__bottom-item span { display: none; }
+
+.sidebar__header {
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 60px;
+}
+
+.sidebar__logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-brand);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.sidebar__logo-icon {
+  width: 28px; height: 28px;
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.sidebar__logo-icon svg { width: 16px; height: 16px; color: white; }
+
+.sidebar__toggle {
+  width: 28px; height: 28px;
+  border: none; background: none;
+  cursor: pointer; color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.sidebar__toggle:hover { background: var(--bg-canvas); color: var(--text-secondary); }
+
+.sidebar__search {
+  margin: 0 var(--space-3) var(--space-3);
+  position: relative;
+}
+.sidebar__search input {
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--space-3) 0 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.sidebar__search input:focus { border-color: var(--border-focus); }
+.sidebar__search input::placeholder { color: var(--text-tertiary); }
+.sidebar__search-icon {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--text-tertiary); width: 16px; height: 16px;
+}
+.sidebar__search-kbd {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font-size: 11px; color: var(--text-tertiary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+}
+
+.sidebar__stats {
+  display: flex;
+  gap: var(--space-3);
+  padding: 0 var(--space-5) var(--space-4);
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.sidebar__stats strong { color: var(--text-primary); font-weight: 600; }
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 var(--space-4) var(--space-4);
+}
+.sidebar__nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+.sidebar__nav-btn:hover { 
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+}
+.sidebar__nav-btn:active {
+  transform: scale(0.96);
+}
+.sidebar__nav-btn.active {
+  background: var(--accent-light);
+  color: var(--accent);
+  border-color: var(--border-focus);
+}
+
+.sidebar__section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+  padding: var(--space-2) var(--space-5);
+  transition: opacity 0.2s;
+}
+
+.sidebar__dates {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 var(--space-3);
+}
+
+.sidebar__date-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-primary);
+  transition: background 0.15s;
+}
+.sidebar__date-item:hover { background: var(--accent-light); }
+.sidebar__date-item.active {
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 600;
+}
+.sidebar__date-count {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.sidebar__bottom {
+  border-top: 1px solid var(--border-light);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar__bottom-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.sidebar__bottom-item:hover { background: var(--bg-canvas); color: var(--text-primary); }
+.sidebar__bottom-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+/* --- Main Content --- */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+}
+
+.main__inner {
+  max-width: 860px;
+  width: 100%;
+  padding: var(--space-10) var(--space-8) var(--space-16);
+}
+
+/* ============================================================
+   PAGE: HOME
+   ============================================================ */
+
+/* Welcome */
+.welcome { margin-bottom: var(--space-8); }
+.welcome__title {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+.welcome__title-highlight {
+  background: linear-gradient(135deg, rgba(147, 197, 253, 0.15), rgba(167, 243, 208, 0.12));
+  color: var(--text-primary);
+  padding: 8px 24px;
+  border-radius: var(--radius-full);
+  display: inline-block;
+  border: 1px solid rgba(147, 197, 253, 0.2);
+}
+.welcome__subtitle {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  margin-top: var(--space-4);
+  padding-left: 12px;
+}
+
+/* Two-col cards */
+.cards-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.15s;
+  animation: fadeUp 0.4s ease forwards;
+  opacity: 0;
+}
+.card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.card--warm {
+  background: var(--bg-warm);
+  border-color: rgba(245, 158, 11, 0.12);
+}
+.card--warm:hover { border-color: rgba(245, 158, 11, 0.25); }
+
+.card__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+.card__label svg { width: 16px; height: 16px; }
+
+.card__quote {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
+
+.card__meta {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.card__action-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+  margin-top: var(--space-2);
+  transition: color 0.15s;
+}
+.card__action-link:hover { color: var(--accent-hover); }
+.card__action-link svg { width: 14px; height: 14px; }
+
+/* Stats card */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+.stat-item { text-align: center; }
+.stat-item__value {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+  margin-bottom: var(--space-1);
+}
+.stat-item__label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+/* Drop Zone */
+.dropzone-card {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  padding: var(--space-10) var(--space-6);
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+  cursor: pointer;
+  margin-bottom: var(--space-5);
+  animation: fadeUp 0.4s ease 0.15s forwards;
+  opacity: 0;
+}
+.dropzone-card:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-light);
+}
+.dropzone-card__icon {
+  width: 48px; height: 48px;
+  background: var(--bg-canvas);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto var(--space-4);
+  color: var(--text-tertiary);
+}
+.dropzone-card__icon svg { width: 24px; height: 24px; }
+.dropzone-card__title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+.dropzone-card__desc {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-4);
+}
+.dropzone-card__formats {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+.dropzone-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+  margin-top: var(--space-5);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.dropzone-card__footer svg { width: 14px; height: 14px; }
+.dropzone-card__footer-item {
+  display: flex; align-items: center; gap: var(--space-1);
+}
+
+/* Recent recordings */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+.section-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.section-title svg { width: 18px; height: 18px; color: var(--text-tertiary); }
+
+.record-item {
+  display: flex;
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: var(--space-2);
+  animation: fadeUp 0.4s ease 0.25s forwards;
+  opacity: 0;
+}
+.record-item:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--accent-border);
+}
+.record-item__date {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 80px;
+}
+.record-item__summary {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 var(--space-4);
+}
+.record-item__count {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* ============================================================
+   PAGE: DAILY
+   ============================================================ */
+.page { display: none; }
+.page.active { display: block; }
+
+.daily__header { margin-bottom: var(--space-8); }
+.daily__title {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+}
+.daily__meta {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  display: flex;
+  gap: var(--space-4);
+}
+
+.insight-card {
+  background: var(--bg-warm);
+  border: 1px solid rgba(245,158,11,0.12);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-8);
+  position: relative;
+  animation: fadeUp 0.4s ease 0.1s forwards;
+  opacity: 0;
+}
+.insight-card__label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-warm);
+  margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.insight-card__label svg { width: 16px; height: 16px; }
+.insight-card__text {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+.insight-card__source {
+  font-size: 13px;
+  color: var(--text-warm);
+  margin-top: var(--space-3);
+}
+
+.category-section {
+  margin-bottom: var(--space-8);
+  animation: fadeUp 0.4s ease forwards;
+  opacity: 0;
+}
+.category-section:nth-child(3) { animation-delay: 0.15s; }
+.category-section:nth-child(4) { animation-delay: 0.2s; }
+.category-section:nth-child(5) { animation-delay: 0.25s; }
+
+.category-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-light);
+}
+.category-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.category-dot--green { background: var(--success); }
+.category-dot--blue { background: var(--info); }
+.category-dot--orange { background: var(--warning); }
+
+.category-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.category-count {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
+.entry-item {
+  padding: var(--space-3) 0;
+  border-bottom: 1px dashed var(--border-light);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.entry-item:last-child { border-bottom: none; }
+.entry-bullet {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+.entry-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.entry-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--accent-light);
+  color: var(--accent);
+  margin-left: var(--space-2);
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* ============================================================
+   PAGE: WEEKLY
+   ============================================================ */
+.weekly__header { margin-bottom: var(--space-8); }
+.weekly__title {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+}
+.weekly__meta {
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+.stats-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+.stats-card-item {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  text-align: center;
+  animation: fadeUp 0.4s ease forwards;
+  opacity: 0;
+}
+.stats-card-item:nth-child(1) { animation-delay: 0ms; }
+.stats-card-item:nth-child(2) { animation-delay: 80ms; }
+.stats-card-item:nth-child(3) { animation-delay: 160ms; }
+
+.stats-card-item__value {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1;
+  margin-bottom: var(--space-2);
+}
+.stats-card-item__label {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+.stats-card-item__trend {
+  font-size: 12px;
+  margin-top: var(--space-2);
+  font-weight: 500;
+}
+.stats-card-item__trend--up { color: var(--success); }
+.stats-card-item__trend--neutral { color: var(--text-tertiary); }
+
+/* Heatmap */
+.heatmap-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+  animation: fadeUp 0.4s ease 0.2s forwards;
+  opacity: 0;
+}
+.heatmap-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.heatmap-row:last-child { margin-bottom: 0; }
+.heatmap-day {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.heatmap-bar {
+  flex: 1;
+  height: 24px;
+  background: var(--bg-canvas);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  position: relative;
+}
+.heatmap-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #818CF8);
+  border-radius: var(--radius-sm);
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.heatmap-value {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
+
+/* Highlight quote */
+.highlight-section {
+  margin-bottom: var(--space-6);
+  animation: fadeUp 0.4s ease 0.25s forwards;
+  opacity: 0;
+}
+
+/* Decision / Follow-up lists */
+.list-section {
+  margin-bottom: var(--space-6);
+  animation: fadeUp 0.4s ease 0.3s forwards;
+  opacity: 0;
+}
+.list-section__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-light);
+}
+.list-section__header svg { width: 18px; height: 18px; color: var(--text-secondary); }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 500;
+}
+.pill--success { color: var(--success); background: rgba(5,150,105,0.08); border: 1px solid rgba(5,150,105,0.15); }
+/* ============================================================
+   SEARCH MODAL
+   ============================================================ */
+.modal-backdrop {
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(17, 24, 39, 0.4);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.modal-backdrop.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.search-modal {
+  width: 100%;
+  max-width: 680px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), 0 20px 40px -10px rgba(0,0,0,0.1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(10px) scale(0.98);
+  transition: transform 0.2s;
+  max-height: 85vh;
+}
+.modal-backdrop.is-open .search-modal {
+  transform: translateY(0) scale(1);
+}
+
+.search-modal__input-area {
+  display: flex;
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-light);
+}
+.search-modal__input-area svg {
+  width: 20px; height: 20px;
+  color: var(--text-tertiary);
+  margin-right: var(--space-3);
+  flex-shrink: 0;
+}
+.search-modal__input-area input {
+  flex: 1;
+  border: none;
+  background: none;
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--text-primary);
+  outline: none;
+}
+.search-modal__input-area input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.search-modal__filters {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-light);
+  overflow-x: auto;
+}
+.search-modal__filters::-webkit-scrollbar { display: none; }
+.filter-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.filter-pill svg { width: 14px; height: 14px; }
+.filter-pill:hover { background: var(--bg-canvas); color: var(--text-primary); }
+.filter-pill.active {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: white;
+}
+
+.search-modal__results {
+  padding: var(--space-5);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.result-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+  display: flex;
+  justify-content: space-between;
+}
+
+.audio-result {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  transition: box-shadow 0.2s, border-color 0.2s;
+  cursor: pointer;
+}
+.audio-result:hover {
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.audio-player {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.audio-player__btn {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text-primary);
+  transition: all 0.15s; flex-shrink: 0;
+}
+.audio-player__btn:hover {
+  background: white; border-color: var(--border-focus); color: var(--accent);
+}
+.audio-player__time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  min-width: 40px;
+}
+.audio-player__timeline {
+  flex: 1;
+  height: 24px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.waveform {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.waveform-bar {
+  flex: 1;
+  background: #E5E7EB;
+  border-radius: 1px;
+  min-height: 4px;
+}
+.waveform-bar.filled {
+  background: var(--accent);
+}
+.timeline-scrubber {
+  position: absolute;
+  top: 50%;
+  left: 30%; /* Mocked progress */
+  transform: translate(-50%, -50%);
+  width: 10px; height: 10px;
+  background: white;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  pointer-events: none;
+}
+
+.transcript-match {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  padding: var(--space-3);
+  background: var(--bg-canvas);
+  border-radius: var(--radius-sm);
+}
+.transcript-match mark {
+  background: var(--bg-warm);
+  color: var(--text-primary);
+  font-weight: 500;
+  padding: 0 4px;
+  border-radius: 2px;
+}
+
+}
+.pill--warning { color: var(--warning); background: rgba(217,119,6,0.08); border: 1px solid rgba(217,119,6,0.15); }
+.pill--error { color: var(--error); background: rgba(220,38,38,0.08); border: 1px solid rgba(220,38,38,0.15); }
+.pill--neutral { color: var(--text-secondary); background: rgba(107,114,128,0.08); border: 1px solid rgba(107,114,128,0.15); }
+.pill--accent { color: var(--accent); background: rgba(79,70,229,0.08); border: 1px solid rgba(79,70,229,0.15); }
+
+/* Daily summary in weekly */
+.daily-summary-row {
+  display: flex;
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: var(--space-2);
+}
+.daily-summary-row:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--accent-border);
+}
+
+/* ============================================================
+   PAGE SWITCHER BADGE IN SIDEBAR
+   ============================================================ */
+.page-switch-indicator {
+  position: fixed;
+  bottom: var(--space-5);
+  right: var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-5);
+  box-shadow: var(--shadow-lg);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.page-switch-indicator__dot {
+  width: 6px; height: 6px;
+  background: var(--success);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Animation delays for cards */
+.card:nth-child(1) { animation-delay: 0ms; }
+.card:nth-child(2) { animation-delay: 80ms; }
+
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+/* ============================================================
+   NEW DASHBOARD GRID (Stratify Style)
+   ============================================================ */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-5);
+}
+@media (min-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: 3fr 2fr;
+  }
+}
+
+/* Onboarding Tracker */
+.onboarding-tracker {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-6);
+  margin-bottom: var(--space-5);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  overflow-x: auto;
+}
+.onboarding-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.onboarding-step.completed { color: var(--success); }
+.onboarding-step.active { color: var(--text-primary); }
+.onboarding-divider {
+  width: 24px; height: 1px;
+  background: var(--border);
+}
+
+/* Large Dropzone */
+.dropzone-large {
+  background: white;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12) var(--space-6);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  height: 100%;
+  min-height: 280px;
+}
+.dropzone-large:hover {
+  border-color: var(--accent);
+  background: var(--bg-canvas);
+}
+.dropzone-icon {
+  width: 48px; height: 48px;
+  background: var(--accent-light);
+  color: var(--accent);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: var(--space-4);
+}
+.dropzone-title {
+  font-family: var(--font-display);
+  font-size: 18px; font-weight: 600; color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+.dropzone-desc { font-size: 13px; color: var(--text-tertiary); }
+
+/* Correction Hub */
+.correction-hub {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.hub-title {
+  font-size: 13px; font-weight: 600; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  margin-bottom: var(--space-4);
+  display: flex; align-items: center; gap: var(--space-2);
+}
+.hub-item {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+.hub-item:hover {
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow-sm);
+}
+.hub-item__dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--warning); flex-shrink: 0;
+}
+.hub-item__content { flex: 1; min-width: 0; }
+.hub-item__text {
+  font-size: 13px; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+.hub-item__meta {
+  font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono);
+}
+.hub-item__btn {
+  padding: 4px 10px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border-focus); border-radius: var(--radius-full);
+  color: var(--accent); background: white;
+}
+
+/* Slide-over Drawer */
+.drawer-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(17, 24, 39, 0.2);
+  z-index: 2000;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.drawer-backdrop.is-open { opacity: 1; pointer-events: auto; }
+.correction-drawer {
+  position: absolute; right: 0; top: 0; bottom: 0;
+  width: 100%; max-width: 480px;
+  background: var(--bg-surface);
+  box-shadow: -10px 0 30px rgba(0,0,0,0.1);
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex; flex-direction: column;
+}
+.drawer-backdrop.is-open .correction-drawer { transform: translateX(0); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar__header" style="justify-content: flex-start; gap: 12px; position: relative;">
+      <div class="sidebar__user-avatar" style="width: 32px; height: 32px; border-radius: 50%; background: var(--accent-light); border: 1px solid var(--border); overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: opacity 0.2s;">
+        <img src="https://ui-avatars.com/api/?name=Sam+Smith&background=EFF6FF&color=2563EB" alt="Sam Smith" style="width: 100%; height: 100%; object-fit: cover;">
+      </div>
+      <div class="sidebar__text" style="flex: 1; min-width: 0; cursor: pointer;">
+        <div style="font-weight: 600; font-size: 14px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Sam Smith</div>
+      </div>
+      <button class="sidebar__toggle" onclick="toggleSidebar()" title="收起/展开" style="position: absolute; right: var(--space-5);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+    </div>
+
+    <div class="sidebar__search">
+      <svg class="sidebar__search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" placeholder="搜索...">
+      <span class="sidebar__search-kbd sidebar__text">&#8984;K</span>
+    </div>
+
+    <div class="sidebar__nav" style="margin-top: var(--space-4);">
+      <button class="sidebar__nav-btn active" data-page="home" onclick="switchPage('home', this)">
+        <span class="sidebar__text">首页</span>
+      </button>
+      <button class="sidebar__nav-btn" data-page="mock" onclick="openDrawer()">
+        <span class="sidebar__text">快速纠错</span>
+        <span style="background: var(--error); color: white; border-radius: 9px; padding: 2px 6px; font-size: 10px; margin-left: 6px;">2</span>
+      </button>
+      <button class="sidebar__nav-btn" data-page="weekly" onclick="switchPage('weekly', this)">
+        <span class="sidebar__text">数据大盘</span>
+      </button>
+    </div>
+
+    <!-- 侧边栏-日期列表模拟 -->
+    <div class="sidebar__section-label">最近记录</div>
+    <div class="sidebar__dates">
+      <div class="sidebar__date-item active">
+        <div class="sidebar__text">今天</div>
+        <div class="sidebar__date-count">5条</div>
+      </div>
+      <div class="sidebar__date-item">
+        <div class="sidebar__text">昨天</div>
+        <div class="sidebar__date-count">3条</div>
+      </div>
+      <div class="sidebar__date-item">
+        <div class="sidebar__text">4月11日</div>
+        <div class="sidebar__date-count">2条</div>
+      </div>
+      <div class="sidebar__date-item">
+        <div class="sidebar__text">4月10日</div>
+        <div class="sidebar__date-count">截屏</div>
+      </div>
+    </div>
+
+    <div class="sidebar__bottom" style="margin-top: auto;">
+      <div class="sidebar__bottom-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+        <span class="sidebar__text">新手向导</span>
+      </div>
+      <div class="sidebar__bottom-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        <span class="sidebar__text">设置</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="main">
+    <div class="main__inner">
+
+      <!-- PAGE: HOME -->
+      <div class="page active" id="page-home">
+        <div class="welcome" style="margin-bottom: var(--space-6)">
+          <div class="welcome__title">
+            <span class="welcome__title-highlight">欢迎，Sam！👋</span>
+          </div>
+          <div class="welcome__subtitle">今天是 4月13日，你的个人上下文引擎已就绪</div>
+        </div>
+
+        <!-- Onboarding Timeline -->
+        <div class="onboarding-tracker" id="onboarding-tracker">
+          <div class="onboarding-step completed">
+            <svg viewBox="0 0 24 24" fill="var(--success)" width="16" height="16"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zm-1.83-5.04l-4.24-4.242 1.41-1.414 2.83 2.828 5.66-5.657 1.41 1.414-7.07 7.07z"/></svg>
+            系统初创就绪
+          </div>
+          <div class="onboarding-divider"></div>
+          <div class="onboarding-step active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" stroke-dasharray="4 4" style="animation: spin 3s linear infinite"><circle cx="12" cy="12" r="10"/></svg>
+            拖拽第一段录音进行解析
+          </div>
+          <div class="onboarding-divider"></div>
+          <div class="onboarding-step">
+            <div style="width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border);"></div>
+            体验智能纠错提取
+          </div>
+        </div>
+
+        <!-- Stratify Feature Grid -->
+        <div class="dashboard-grid">
+          <!-- Main Dropzone Area -->
+          <div class="dropzone-large" ondragover="this.style.borderColor='var(--accent)';" ondragleave="this.style.borderColor='var(--border)'" onclick="document.getElementById('hidden-audio-upload').click()">
+            <div class="dropzone-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="24" height="24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+            <div class="dropzone-title">拖拽录音文件前往解析，或点击浏览</div>
+            <div class="dropzone-desc" style="margin-top: 8px;">支持 .wav .mp3 .m4a ｜ 所有处理完全在本地与内网完成</div>
+            <input type="file" id="hidden-audio-upload" accept="audio/*" style="display: none;" onchange="document.getElementById('onboarding-tracker').style.display='none'; alert('模拟成功导入！');">
+          </div>
+
+          <!-- Pending Corrections Hub -->
+          <div class="correction-hub">
+            <div class="hub-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M12 8v4l3 3"/></svg>
+              待人工复核纠错片段
+            </div>
+
+            <!-- Correction Item -->
+            <div class="hub-item" onclick="openDrawer()">
+              <div class="hub-item__dot"></div>
+              <div class="hub-item__content">
+                <div class="hub-item__text">"这个核心动画实在太丑了..."</div>
+                <div class="hub-item__meta">置信度 78% · 0:12</div>
+              </div>
+              <button class="hub-item__btn">校对</button>
+            </div>
+
+            <div class="hub-item" onclick="openDrawer()">
+              <div class="hub-item__dot" style="background: var(--text-tertiary)"></div>
+              <div class="hub-item__content">
+                <div class="hub-item__text">"前端必须先行做一套UI..."</div>
+                <div class="hub-item__meta">置信度 85% · 4分前</div>
+              </div>
+              <span style="font-size: 11px; color: var(--text-tertiary);">队列中</span>
+            </div>
+            
+            <div style="margin-top: auto; text-align: center; font-size: 11px; color: var(--text-tertiary);">无更多待办纠错任务</div>
+          </div>
+        </div>
+
+        <div class="home-meta" style="margin-top: var(--space-8); margin-bottom: var(--space-4); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">最近记录</div>
+        <div class="daily-link-list" style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <button class="daily-link-item" style="display: flex; align-items: center; padding: var(--space-4) var(--space-5); background: white; border: 1px solid var(--border); border-radius: var(--radius-lg); text-align: left; cursor: pointer; transition: all 0.2s ease;">
+            <span class="daily-link-date" style="font-family: var(--font-display); font-weight: 600; width: 100px; flex-shrink: 0;">今天</span>
+            <span class="daily-link-summary" style="flex: 1; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px;">"产品改名成 OpenMy 更顺，也更容易借到原有用户热度..."</span>
+            <span class="daily-link-count" style="font-family: 'SF Pro Rounded', system-ui; font-weight: 600; color: var(--text-tertiary); margin-left: 16px;">5条</span>
+          </button>
+          <button class="daily-link-item" style="display: flex; align-items: center; padding: var(--space-4) var(--space-5); background: white; border: 1px solid var(--border); border-radius: var(--radius-lg); text-align: left; cursor: pointer; transition: all 0.2s ease;">
+            <span class="daily-link-date" style="font-family: var(--font-display); font-weight: 600; width: 100px; flex-shrink: 0;">昨天</span>
+            <span class="daily-link-summary" style="flex: 1; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px;">"讨论了关于 Stratify 设计美学在界面的应用..."</span>
+            <span class="daily-link-count" style="font-family: 'SF Pro Rounded', system-ui; font-weight: 600; color: var(--text-tertiary); margin-left: 16px;">3条</span>
+          </button>
+          <button class="daily-link-item" style="display: flex; align-items: center; padding: var(--space-4) var(--space-5); background: white; border: 1px solid var(--border); border-radius: var(--radius-lg); text-align: left; cursor: pointer; transition: all 0.2s ease;">
+            <span class="daily-link-date" style="font-family: var(--font-display); font-weight: 600; width: 100px; flex-shrink: 0;">4月11日</span>
+            <span class="daily-link-summary" style="flex: 1; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px;">"检查转写错误词并确认词库修改有没有真正生效..."</span>
+            <span class="daily-link-count" style="font-family: 'SF Pro Rounded', system-ui; font-weight: 600; color: var(--text-tertiary); margin-left: 16px;">2条</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- PAGE: DAILY -->
+      <div class="page" id="page-daily">
+        <div class="daily__header">
+          <div class="daily__title">2026年4月8日</div>
+          <div class="daily__meta">
+            <span>2026-04-08</span>
+            <span>4条记录</span>
+            <span>1.5k字</span>
+          </div>
+        </div>
+
+        <div class="insight-card">
+          <div class="insight-card__label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 01-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+            今日核心洞察
+          </div>
+          <div class="insight-card__text">
+            "产品改名成 OpenMy 更顺，也更容易借到原有用户热度。"
+          </div>
+          <div class="insight-card__source">-- 产品命名</div>
+        </div>
+
+        <div class="card" style="margin-bottom: var(--space-8); animation-delay: 0.05s">
+          <div style="font-size: 14px; line-height: 1.7; color: var(--text-secondary); border-left: 3px solid var(--accent); padding-left: var(--space-4);">
+            我这段时间主要在复盘 OpenMy 的转写准确率，也在收拢产品方向。我倾向先把 cli 和终端版本做出来，再回头补前端可视化和浏览器细节。
+          </div>
+        </div>
+
+        <div class="category-section" style="animation-delay: 0.1s">
+          <div class="category-header">
+            <div class="category-dot category-dot--green"></div>
+            <div class="category-title">打算做什么</div>
+            <div class="category-count">3</div>
+          </div>
+          <div class="entry-item">
+            <div class="entry-bullet"></div>
+            <div class="entry-text">检查转写错误词并确认词库修改有没有真正生效</div>
+            <span class="entry-tag">转写准确率</span>
+          </div>
+          <div class="entry-item">
+            <div class="entry-bullet"></div>
+            <div class="entry-text">先做 cli 和终端版本，前端可视化放到后面再做</div>
+            <span class="entry-tag">产品路线</span>
+          </div>
+          <div class="entry-item">
+            <div class="entry-bullet"></div>
+            <div class="entry-text">弄清测试浏览器和默认浏览器到底谁会被快捷键拉起</div>
+            <span class="entry-tag">浏览器环境</span>
+          </div>
+        </div>
+
+        <div class="category-section" style="animation-delay: 0.15s">
+          <div class="category-header">
+            <div class="category-dot category-dot--blue"></div>
+            <div class="category-title">记住了什么</div>
+            <div class="category-count">4</div>
+          </div>
+          <div class="entry-item">
+            <div class="entry-bullet"></div>
+            <div class="entry-text">当前这批音频里多次提到转写错词，会把原意带偏。</div>
+            <span class="entry-tag">转写准确率</span>
+          </div>
+          <div class="entry-item">
+            <div class="entry-bullet"></div>
+            <div class="entry-text">产品改名成 OpenMy 更顺，也更容易借到原有用户热度。</div>
+            <span class="entry-tag">产品命名</span>
+          </div>
+          <div class="entry-item">
+            <div class="entry-bullet"></div>
+            <div class="entry-text">我不接受只有能用就行，觉得就算先做可用版也要保持好看。</div>
+            <span class="entry-tag">界面审美</span>
+          </div>
+          <div class="entry-item">
+            <div class="entry-bullet"></div>
+            <div class="entry-text">CLI 版本优先，但前端体验不能妥协。</div>
+            <span class="entry-tag">产品路线</span>
+          </div>
+        </div>
+
+        <div class="category-section" style="animation-delay: 0.2s">
+          <div class="category-header">
+            <div class="category-dot category-dot--orange"></div>
+            <div class="category-title">做出了什么决定</div>
+            <div class="category-count">1</div>
+          </div>
+          <div class="entry-item">
+            <div class="entry-bullet"></div>
+            <div class="entry-text">先做 cli 和终端版本，前端可视化放到后面再做</div>
+            <span class="entry-tag">产品路线</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGE: WEEKLY -->
+      <div class="page" id="page-weekly">
+        <div class="weekly__header">
+          <div class="weekly__title">周报</div>
+          <div class="weekly__meta">4月7日 — 4月13日 &middot; 2 天有记录 &middot; 5 条 &middot; 1.5k 字</div>
+        </div>
+
+        <div class="stats-cards">
+          <div class="stats-card-item">
+            <div class="stats-card-item__value">2</div>
+            <div class="stats-card-item__label">活跃天数</div>
+            <div class="stats-card-item__trend stats-card-item__trend--neutral">共 7 天</div>
+          </div>
+          <div class="stats-card-item">
+            <div class="stats-card-item__value">5</div>
+            <div class="stats-card-item__label">录音条数</div>
+            <div class="stats-card-item__trend stats-card-item__trend--up">+3 vs 上周</div>
+          </div>
+          <div class="stats-card-item">
+            <div class="stats-card-item__value">1.5k</div>
+            <div class="stats-card-item__label">提取字数</div>
+            <div class="stats-card-item__trend stats-card-item__trend--up">+800 vs 上周</div>
+          </div>
+        </div>
+
+        <!-- Activity Heatmap -->
+        <div class="heatmap-card">
+          <div class="card__label" style="margin-bottom: var(--space-5)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span>本周活跃度</span>
+          </div>
+          <div class="heatmap-row">
+            <span class="heatmap-day">周一</span>
+            <div class="heatmap-bar"><div class="heatmap-fill" style="width: 0%"></div></div>
+            <span class="heatmap-value">0条</span>
+          </div>
+          <div class="heatmap-row">
+            <span class="heatmap-day">周二</span>
+            <div class="heatmap-bar"><div class="heatmap-fill" style="width: 80%"></div></div>
+            <span class="heatmap-value">4条</span>
+          </div>
+          <div class="heatmap-row">
+            <span class="heatmap-day">周三</span>
+            <div class="heatmap-bar"><div class="heatmap-fill" style="width: 0%"></div></div>
+            <span class="heatmap-value">0条</span>
+          </div>
+          <div class="heatmap-row">
+            <span class="heatmap-day">周四</span>
+            <div class="heatmap-bar"><div class="heatmap-fill" style="width: 0%"></div></div>
+            <span class="heatmap-value">0条</span>
+          </div>
+          <div class="heatmap-row">
+            <span class="heatmap-day">周五</span>
+            <div class="heatmap-bar"><div class="heatmap-fill" style="width: 0%"></div></div>
+            <span class="heatmap-value">0条</span>
+          </div>
+          <div class="heatmap-row">
+            <span class="heatmap-day">周六</span>
+            <div class="heatmap-bar"><div class="heatmap-fill" style="width: 0%"></div></div>
+            <span class="heatmap-value">0条</span>
+          </div>
+          <div class="heatmap-row">
+            <span class="heatmap-day">周日</span>
+            <div class="heatmap-bar"><div class="heatmap-fill" style="width: 20%"></div></div>
+            <span class="heatmap-value">1条</span>
+          </div>
+        </div>
+
+        <!-- Weekly Highlight -->
+        <div class="highlight-section">
+          <div class="insight-card">
+            <div class="insight-card__label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+              本周高亮
+            </div>
+            <div class="insight-card__text">
+              "OpenMy 的价值不在转写，在于让 Agent 读懂你的上下文。"
+            </div>
+            <div class="insight-card__source">-- 4月8日 产品方向讨论</div>
+          </div>
+        </div>
+
+        <!-- Decisions -->
+        <div class="list-section">
+          <div class="list-section__header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            本周决策
+          </div>
+          <div class="entry-item">
+            <div class="entry-bullet"></div>
+            <div class="entry-text">先做 cli 和终端版本，前端可视化放到后面再做</div>
+            <span class="pill pill--accent">产品路线</span>
+          </div>
+        </div>
+
+        <!-- Follow-ups -->
+        <div class="list-section">
+          <div class="list-section__header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            待跟进
+          </div>
+          <div class="entry-item">
+            <div class="entry-bullet"></div>
+            <div class="entry-text">检查转写错误词并确认词库修改有没有真正生效</div>
+            <span class="pill pill--warning">转写准确率</span>
+          </div>
+        </div>
+
+        <!-- Daily Summaries -->
+        <div class="list-section">
+          <div class="list-section__header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            每日概要
+          </div>
+          <div class="daily-summary-row" onclick="switchPage('daily', null)">
+            <div class="record-item__date">4月8日</div>
+            <div class="record-item__summary">复盘 OpenMy 转写准确率，收拢产品方向。倾向先做 cli 和终端版本...</div>
+            <div class="record-item__count">4条</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGE: MONTHLY (placeholder) -->
+      <div class="page" id="page-monthly">
+        <div class="weekly__header">
+          <div class="weekly__title">月报</div>
+          <div class="weekly__meta">2026年4月 &middot; 2 天有记录 &middot; 5 条 &middot; 1.5k 字</div>
+        </div>
+
+        <div class="stats-cards">
+          <div class="stats-card-item">
+            <div class="stats-card-item__value">2</div>
+            <div class="stats-card-item__label">活跃天数</div>
+            <div class="stats-card-item__trend stats-card-item__trend--neutral">共 30 天</div>
+          </div>
+          <div class="stats-card-item">
+            <div class="stats-card-item__value">5</div>
+            <div class="stats-card-item__label">录音条数</div>
+          </div>
+          <div class="stats-card-item">
+            <div class="stats-card-item__value">1.5k</div>
+            <div class="stats-card-item__label">提取字数</div>
+          </div>
+        </div>
+
+        <div class="insight-card" style="animation-delay: 0.15s">
+          <div class="insight-card__label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            本月 Top 洞察
+          </div>
+          <div class="insight-card__text">
+            "产品改名成 OpenMy 更顺，也更容易借到原有用户热度。"
+          </div>
+          <div class="insight-card__source">-- 4月8日</div>
+        </div>
+
+        <div class="list-section" style="animation-delay: 0.2s">
+          <div class="list-section__header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            本月决策
+          </div>
+          <div class="entry-item">
+            <div class="entry-bullet"></div>
+            <div class="entry-text">先做 cli 和终端版本，前端可视化放到后面再做</div>
+            <span class="pill pill--accent">产品路线</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- Search Modal Overlay -->
+<div class="modal-backdrop is-open" id="search-modal-backdrop" class="is-open" onclick="if(event.target===this) this.classList.remove('is-open')">
+  <div class="search-modal">
+    <div class="search-modal__input-area">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" value="黄底的卡片真的很丑" placeholder="Search for sources to chat with..." autofocus>
+    </div>
+    
+    <div class="search-modal__filters">
+      <div class="filter-pill">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        All
+      </div>
+      <div class="filter-pill">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Documents
+      </div>
+      <div class="filter-pill">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        Reports
+      </div>
+      <div class="filter-pill active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+        Audio
+      </div>
+    </div>
+
+    <div class="search-modal__results">
+      <div class="result-section-title">
+        <span>Audio (1 result)</span>
+      </div>
+      
+      <div class="audio-result">
+        <!-- Audio Player Timeline -->
+        <div class="audio-player">
+          <button class="audio-player__btn">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M5 3v18l15-9L5 3z"/></svg>
+          </button>
+          <div class="audio-player__time">0:12</div>
+          <div class="audio-player__timeline">
+            <!-- Mock Waveform -->
+            <div class="waveform">
+              <div class="waveform-bar filled" style="height: 20%"></div>
+              <div class="waveform-bar filled" style="height: 40%"></div>
+              <div class="waveform-bar filled" style="height: 80%"></div>
+              <div class="waveform-bar filled" style="height: 60%"></div>
+              <div class="waveform-bar filled" style="height: 100%"></div>
+              <div class="waveform-bar filled" style="height: 70%"></div>
+              <div class="waveform-bar filled" style="height: 30%"></div>
+              <div class="waveform-bar filled" style="height: 50%"></div>
+              <div class="waveform-bar filled" style="height: 90%"></div>
+              <div class="waveform-bar filled" style="height: 60%"></div>
+              <div class="waveform-bar filled" style="height: 40%"></div>
+              <div class="waveform-bar filled" style="height: 20%"></div>
+              
+              <div class="waveform-bar" style="height: 30%"></div>
+              <div class="waveform-bar" style="height: 50%"></div>
+              <div class="waveform-bar" style="height: 80%"></div>
+              <div class="waveform-bar" style="height: 100%"></div>
+              <div class="waveform-bar" style="height: 60%"></div>
+              <div class="waveform-bar" style="height: 40%"></div>
+              <div class="waveform-bar" style="height: 20%"></div>
+              <div class="waveform-bar" style="height: 40%"></div>
+              <div class="waveform-bar" style="height: 70%"></div>
+              <div class="waveform-bar" style="height: 90%"></div>
+              <div class="waveform-bar" style="height: 50%"></div>
+              <div class="waveform-bar" style="height: 30%"></div>
+            </div>
+            <div class="timeline-scrubber" style="left: 50%"></div>
+          </div>
+          <div class="audio-player__time">0:24</div>
+        </div>
+
+        <!-- Transcript Context -->
+        <div class="transcript-match">
+          ...提供一个可以拖拽的时间轴概念。现在的这个核心动画实在太丑了，<mark>这个黄底的卡片真的很丑</mark>，这个黄色底非常丑...
+        </div>
+      </div>
+    </div>
+</div>
+</div>
+
+<!-- User Settings Modal -->
+<div class="modal-backdrop" id="user-modal-backdrop" onclick="if(event.target===this) this.classList.remove('is-open')">
+  <div class="search-modal" style="max-width: 400px; padding: var(--space-6);">
+    <div style="font-family: var(--font-display); font-size: 18px; font-weight: 600; margin-bottom: var(--space-5); display: flex; align-items: center; gap: var(--space-2);">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      个人资料
+    </div>
+    
+    <div style="display: flex; flex-direction: column; gap: var(--space-5);">
+      <div>
+        <label style="display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-3);">头像</label>
+        <div style="display: flex; align-items: center; gap: var(--space-4);">
+          <div id="modal-avatar-preview" style="width: 64px; height: 64px; border-radius: 50%; background: var(--bg-canvas); border: 1px solid var(--border); overflow: hidden; flex-shrink: 0;">
+            <img src="https://ui-avatars.com/api/?name=Sam+Smith&background=EFF6FF&color=2563EB" style="width:100%; height:100%; object-fit:cover;">
+          </div>
+          <div>
+            <button onclick="document.getElementById('avatar-upload').click()" class="sidebar__nav-btn" style="padding: 0 var(--space-4); margin-bottom: 4px;">上传新照片</button>
+            <div style="font-size: 11px; color: var(--text-tertiary);">支持 jpg, png, webp</div>
+          </div>
+          <input type="file" id="avatar-upload" accept="image/*" style="display: none;" onchange="handleAvatarUpload(event)">
+        </div>
+      </div>
+
+      <div>
+        <label style="display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-3);">姓名或称呼</label>
+        <input type="text" id="modal-username-input" value="Sam Smith" style="width: 100%; height: 38px; padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--font-body); font-size: 14px; outline: none; transition: border-color 0.15s;" onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+
+      <button onclick="saveUserProfile()" class="sidebar__nav-btn active" style="margin-top: var(--space-2); height: 40px; font-size: 14px; border-radius: var(--radius-sm); border: none;">保存更改</button>
+    </div>
+  </div>
+</div>
+
+<!-- Correction Slide-over Drawer -->
+<div class="drawer-backdrop" id="drawer-backdrop" onclick="if(event.target===this) closeDrawer()">
+  <div class="correction-drawer">
+    <div style="padding: var(--space-5); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+      <div style="font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: var(--space-2);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        智能纠错与提取
+      </div>
+      <button onclick="closeDrawer()" style="background: none; border: none; color: var(--text-tertiary); cursor: pointer;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+    
+    <div style="padding: var(--space-5); flex: 1; overflow-y: auto;">
+      <div style="font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-3);">原声音频对话</div>
+      
+      <div style="background: white; border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-6);">
+        <div style="display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-4);">
+          <button style="width: 32px; height: 32px; border-radius: 50%; background: var(--text-primary); color: white; border: none; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M5 3v18l15-9L5 3z"/></svg>
+          </button>
+          <div style="flex: 1; display: flex; align-items: center; gap: 2px;">
+            <div style="width: 3px; height: 16px; background: var(--accent); border-radius: 2px;"></div>
+            <div style="width: 3px; height: 24px; background: var(--accent); border-radius: 2px;"></div>
+            <div style="width: 3px; height: 12px; background: var(--border); border-radius: 2px;"></div>
+            <div style="width: 3px; height: 32px; background: var(--border); border-radius: 2px;"></div>
+            <div style="width: 3px; height: 20px; background: var(--border); border-radius: 2px;"></div>
+          </div>
+          <span style="font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono);">0:12</span>
+        </div>
+        <div style="font-size: 14px; line-height: 1.6; color: var(--text-secondary);">
+          “提供一个可以拖拽的时间轴概念。现在的这部分 UI 设计真的很粗糙，这个黄底的卡片真的很丑...”
+        </div>
+      </div>
+
+      <div style="font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-3);">修正后的结果预期记录</div>
+      <textarea style="width: 100%; height: 160px; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 14px; outline: none; transition: border-color 0.15s; resize: none; line-height: 1.6; background: white;" onfocus="this.style.borderColor='var(--border-focus)'" onblur="this.style.borderColor='var(--border)'">提供一个体验平滑的时间轴组件。当前 UI 存在明显的样式割裂问题，尤为突出的是黄色警告背景卡片，需要重新设计视觉层级。</textarea>
+    </div>
+
+    <div style="padding: var(--space-5); border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: var(--space-3);">
+      <button onclick="closeDrawer()" class="sidebar__nav-btn" style="padding: 0 var(--space-4);">取消</button>
+      <button onclick="closeDrawer()" class="sidebar__nav-btn active" style="padding: 0 var(--space-4); border: none;">确认替换原文</button>
+    </div>
+  </div>
+</div>
+
+<!-- User Profile Modal -->
+<div class="search-modal-backdrop" id="user-modal-backdrop" onclick="if(event.target===this) document.getElementById('user-modal-backdrop').classList.remove('is-open')">
+  <div class="search-modal" style="max-height: auto; max-width: 400px; padding: var(--space-6);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-5);">
+      <div style="font-size: 16px; font-weight: 600; color: var(--text-primary);">用户资料</div>
+      <button onclick="document.getElementById('user-modal-backdrop').classList.remove('is-open')" style="background: none; border: none; color: var(--text-tertiary); cursor: pointer;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+    
+    <div style="display: flex; flex-direction: column; align-items: center; margin-bottom: var(--space-6);">
+      <div style="position: relative; width: 80px; height: 80px; border-radius: 50%; background: var(--bg-canvas); border: 1px solid var(--border); overflow: hidden; display: flex; align-items: center; justify-content: center; cursor: pointer;" onclick="document.getElementById('avatar-upload').click()">
+        <img id="modal-avatar-preview" src="https://ui-avatars.com/api/?name=Sam+Smith&background=EFF6FF&color=2563EB" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover; transition: opacity 0.2s;">
+        <div class="avatar-hover-mask" style="position: absolute; inset: 0; background: rgba(0,0,0,0.5); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; opacity: 0; transition: opacity 0.2s;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="margin-bottom: 4px;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          更换
+        </div>
+      </div>
+      <input type="file" id="avatar-upload" accept="image/*" style="display: none;" onchange="handleModalAvatarUpload(event)">
+      <div style="font-size: 11px; color: var(--text-tertiary); margin-top: var(--space-2);">点击更换头像缩略图</div>
+    </div>
+
+    <div style="margin-bottom: var(--space-5);">
+      <label style="display: block; font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: var(--space-2);">称呼</label>
+      <input type="text" id="modal-username-input" value="Sam Smith" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; background: var(--bg-surface); outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+    </div>
+
+    <button class="audio-player__btn" style="width: 100%; padding: 12px; background: var(--accent); color: white; border: none; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; display: block;" onclick="saveMockUserProfile()">保存资料</button>
+  </div>
+</div>
+
+<!-- Page switcher badge -->
+<div class="page-switch-indicator">
+  <div class="page-switch-indicator__dot"></div>
+  <span>设计预览 &middot; Warm-Productivity</span>
+</div>
+
+<script>
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  sidebar.classList.toggle('collapsed');
+  const toggle = sidebar.querySelector('.sidebar__toggle svg');
+  if (sidebar.classList.contains('collapsed')) {
+    toggle.innerHTML = '<path d="M9 18l6-6-6-6"/>';
+  } else {
+    toggle.innerHTML = '<path d="M15 18l-6-6 6-6"/>';
+  }
+}
+
+// Bind search box in sidebar to open modal
+document.querySelector('.sidebar__search input').addEventListener('focus', function() {
+  this.blur(); // Remove focus from the fake sidebar input
+  document.getElementById('search-modal-backdrop').classList.add('is-open');
+  document.querySelector('.search-modal__input-area input').focus();
+});
+
+function switchPage(pageId, btn) {
+  // Hide all pages
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  // Show target
+  const target = document.getElementById('page-' + pageId);
+  if (target) {
+    target.classList.add('active');
+    // Re-trigger animations
+    target.querySelectorAll('.card, .stats-card-item, .insight-card, .category-section, .heatmap-card, .highlight-section, .list-section, .record-item, .dropzone-card').forEach(el => {
+      el.style.animation = 'none';
+      el.offsetHeight; // force reflow
+      el.style.animation = '';
+    });
+  }
+
+  // Update nav buttons
+  if (btn) {
+    document.querySelectorAll('.sidebar__nav-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  } else {
+    // Clicked a date — deselect nav buttons
+    document.querySelectorAll('.sidebar__nav-btn').forEach(b => b.classList.remove('active'));
+  }
+
+  // Update date items
+  if (pageId !== 'daily') {
+    document.querySelectorAll('.sidebar__date-item').forEach(d => d.classList.remove('active'));
+  }
+
+  // Scroll to top
+  document.querySelector('.main').scrollTo(0, 0);
+}
+
+// User Profile Mock Logic
+const DEFAULT_AVATAR = "https://ui-avatars.com/api/?name=Sam+Smith&background=EFF6FF&color=2563EB";
+let currentUserDetails = { name: "Sam Smith", avatar: DEFAULT_AVATAR };
+
+function initUserProfileMock() {
+  const stored = localStorage.getItem('openmy_mock_profile');
+  if (stored) {
+    currentUserDetails = JSON.parse(stored);
+    updateProfileUI();
+  }
+}
+
+function updateProfileUI() {
+  // Update sidebar avatar
+  const sidebarAvatar = document.querySelector('.sidebar__user-avatar img');
+  if (sidebarAvatar) sidebarAvatar.src = currentUserDetails.avatar;
+  const sidebarName = document.querySelector('.sidebar__text div');
+  if (sidebarName) sidebarName.textContent = currentUserDetails.name;
+  
+  // Update welcome message
+  const welcomeText = document.querySelector('.welcome__title-highlight');
+  if (welcomeText) welcomeText.textContent = `欢迎，${currentUserDetails.name}！👋`;
+
+  // Update modal fields
+  document.getElementById('modal-avatar-preview').src = currentUserDetails.avatar;
+  document.getElementById('modal-username-input').value = currentUserDetails.name;
+}
+
+function openUserProfileMock() {
+  document.getElementById('user-modal-backdrop').classList.add('is-open');
+  document.getElementById('modal-username-input').value = currentUserDetails.name;
+  document.getElementById('modal-avatar-preview').src = currentUserDetails.avatar;
+}
+
+function closeUserProfileMock() {
+  document.getElementById('user-modal-backdrop').classList.remove('is-open');
+}
+
+function handleModalAvatarUpload(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    document.getElementById('modal-avatar-preview').src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveMockUserProfile() {
+  const newName = document.getElementById('modal-username-input').value.trim() || 'Boss';
+  const newAvatar = document.getElementById('modal-avatar-preview').src;
+  
+  currentUserDetails = { name: newName, avatar: newAvatar };
+  localStorage.setItem('openmy_mock_profile', JSON.stringify(currentUserDetails));
+  
+  updateProfileUI();
+  closeUserProfileMock();
+  alert('资料已保存并局部刷新 UI！');
+}
+
+document.querySelector('.sidebar__user-avatar').addEventListener('click', openUserProfileMock);
+document.querySelector('.sidebar__user-avatar').nextElementSibling.addEventListener('click', openUserProfileMock);
+
+// Start
+window.addEventListener('load', () => {
+  initUserProfileMock();
+  setTimeout(() => {
+    document.querySelectorAll('.heatmap-fill').forEach(bar => {
+      const w = bar.style.width;
+      bar.style.width = '0%';
+      setTimeout(() => { bar.style.width = w; }, 100);
+    });
+  }, 500);
+  
+  // Load user profile
+  loadUserProfile();
+});
+
+// Profile System
+function loadUserProfile() {
+  const profileStr = localStorage.getItem('openmy_user_profile');
+  if (profileStr) {
+    try {
+      const profile = JSON.parse(profileStr);
+      if (profile.name || profile.avatar) {
+        updateProfileUI(profile.name, profile.avatar);
+      }
+    } catch(e) { console.error(e); }
+  }
+}
+
+function updateProfileUI(name, avatarUrl) {
+  // Update sidebar
+  document.querySelector('.sidebar__user-avatar img').src = avatarUrl;
+  document.querySelector('.sidebar__text div').textContent = name;
+  const welcomeHighlight = document.querySelector('.welcome__title-highlight');
+  if (welcomeHighlight) {
+    welcomeHighlight.textContent = `欢迎，${name}！👋`;
+  }
+  // Update modal preview
+  const modalPreview = document.querySelector('#modal-avatar-preview img');
+  if (modalPreview) modalPreview.src = avatarUrl;
+  const modalInput = document.querySelector('#modal-username-input');
+  if (modalInput) modalInput.value = name;
+}
+
+document.querySelector('.sidebar__user-avatar').addEventListener('click', () => {
+  document.getElementById('user-modal-backdrop').classList.add('is-open');
+});
+document.querySelector('.sidebar__text').addEventListener('click', () => {
+  document.getElementById('user-modal-backdrop').classList.add('is-open');
+});
+
+function handleAvatarUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(event) {
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+      if (width > height) {
+        if (width > 256) {
+          height = Math.round((height * 256) / width);
+          width = 256;
+        }
+      } else {
+        if (height > 256) {
+          width = Math.round((width * 256) / height);
+          height = 256;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      document.querySelector('#modal-avatar-preview img').src = dataUrl;
+    };
+    img.src = event.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveUserProfile() {
+  const name = document.getElementById('modal-username-input').value.trim() || 'Sam Smith';
+  const avatar = document.querySelector('#modal-avatar-preview img').src;
+  
+  const profile = { name, avatar };
+  localStorage.setItem('openmy_user_profile', JSON.stringify(profile));
+  
+  updateProfileUI(name, avatar);
+  document.getElementById('user-modal-backdrop').classList.remove('is-open');
+}
+
+// Drawer logic
+function openDrawer() {
+  document.getElementById('drawer-backdrop').classList.add('is-open');
+}
+function closeDrawer() {
+  document.getElementById('drawer-backdrop').classList.remove('is-open');
+}
+</script>
+
+</body>
+</html>

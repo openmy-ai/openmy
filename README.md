@@ -2,9 +2,9 @@
 
 <img src="docs/images/openmy-banner.png" alt="OpenMy" width="800" />
 
-# 把录音和屏幕，变成能被 Agent 长期记住的个人上下文
+# 100% 本地处理 · Agent-First · 可纠正
 
-OpenMy 会把已经落盘的音频、屏幕和每天的进展整理成**可查询、可纠正、可跨天积累**的上下文状态。你可以自己看日报，也可以把它接进自己的 Agent。
+把录音和屏幕变成你的 Agent 能长期记住的个人上下文——数据不出本机，转写错了能改，改了下次更准。
 
 [![Release](https://img.shields.io/github/v/release/openmy-ai/openmy?style=flat-square&color=blue)](https://github.com/openmy-ai/openmy/releases)
 [![MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)

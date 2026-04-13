@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenMy — 进度面板 Mockup</title>
+<style>
+  :root {
+    --bg: #FFFFFF;
+    --bg-hover: #F8F9FA;
+    --bg-active: #F1F5F9;
+    --bg-sidebar: #F7F8FA;
+    --text: #1A1A1A;
+    --text-secondary: #6B7280;
+    --text-light: #9CA3AF;
+    --border: #E5E7EB;
+    --accent: #2563EB;
+    --accent-light: #EFF6FF;
+    --success: #059669;
+    --success-bg: #d1fae5;
+    --warning: #d97706;
+    --warning-bg: #fef3c7;
+    --error: #dc2626;
+    --error-bg: #fef2f2;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --transition: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  [data-theme="dark"] {
+    --bg: #191A1F; --bg-hover: #25262B; --bg-active: #2D3748;
+    --bg-sidebar: #141518;
+    --text: #E5E7EB; --text-secondary: #9CA3AF; --text-light: #6B7280;
+    --border: #2D2E33; --accent: #3B82F6; --accent-light: #1E293B;
+    --success: #34d399; --success-bg: #064e3b;
+    --warning: #fbbf24; --warning-bg: #451a03;
+    --error: #f87171; --error-bg: #3b1818;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow: 0 4px 6px rgba(0,0,0,0.4);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  .theme-toggle {
+    position: fixed; top: 20px; right: 20px;
+    background: var(--bg-hover); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 8px 14px;
+    font-size: 12px; font-weight: 600; color: var(--text-secondary);
+    cursor: pointer; transition: all var(--transition);
+  }
+  .theme-toggle:hover { background: var(--bg-active); color: var(--text); }
+
+  .panel {
+    width: 100%; max-width: 680px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    animation: slideUp 0.5s ease;
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Header */
+  .panel-header {
+    padding: 24px 28px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .panel-header-left { display: flex; align-items: center; gap: 12px; }
+  .panel-logo {
+    width: 36px; height: 36px; background: var(--accent);
+    border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 800; color: white;
+  }
+  .panel-title { font-size: 16px; font-weight: 700; }
+  .panel-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+  .status-badge {
+    font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .status-running { background: var(--accent-light); color: var(--accent); }
+  .status-done { background: var(--success-bg); color: var(--success); }
+  .status-error { background: var(--error-bg); color: var(--error); }
+
+  /* Progress Bar */
+  .progress-section { padding: 20px 28px; }
+  .progress-bar-wrapper {
+    width: 100%; height: 8px; background: var(--bg-hover);
+    border-radius: 4px; overflow: hidden; margin-bottom: 10px;
+  }
+  .progress-bar-fill {
+    height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, var(--accent), #60a5fa);
+    transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+  }
+  .progress-bar-fill::after {
+    content: ''; position: absolute; right: 0; top: 0;
+    width: 40px; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3));
+    animation: shimmer 1.5s infinite;
+  }
+  @keyframes shimmer {
+    0% { transform: translateX(-40px); }
+    100% { transform: translateX(0); }
+  }
+  .progress-meta {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: var(--text-secondary);
+  }
+  .progress-pct { font-weight: 700; font-size: 20px; color: var(--text); }
+  .progress-time { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+  /* Steps */
+  .steps-section { padding: 0 28px 20px; }
+  .steps-title {
+    font-size: 11px; font-weight: 700; color: var(--text-light);
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;
+  }
+  .step {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px 14px; border-radius: var(--radius-sm);
+    margin-bottom: 4px; transition: background var(--transition);
+    position: relative;
+  }
+  .step:hover { background: var(--bg-hover); }
+  .step-icon {
+    width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; margin-top: 1px;
+  }
+  .step-done .step-icon { background: var(--success-bg); color: var(--success); }
+  .step-running .step-icon {
+    background: var(--accent-light); color: var(--accent);
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.3); }
+    50% { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0); }
+  }
+  .step-pending .step-icon { background: var(--bg-hover); color: var(--text-light); border: 1px dashed var(--border); }
+  .step-body { flex: 1; }
+  .step-header { display: flex; align-items: baseline; gap: 8px; }
+  .step-num { font-size: 12px; color: var(--text-light); font-weight: 600; }
+  .step-label { font-size: 14px; font-weight: 600; color: var(--text); }
+  .step-running .step-label { color: var(--accent); }
+  .step-pending .step-label { color: var(--text-light); }
+  .step-result {
+    font-size: 13px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5;
+  }
+  .step-duration {
+    font-size: 11px; color: var(--text-light); font-family: ui-monospace, monospace;
+    margin-left: auto; flex-shrink: 0; padding-top: 2px;
+  }
+
+  .step-connector {
+    position: absolute; left: 25px; top: 38px; bottom: -8px;
+    width: 2px; background: var(--border);
+  }
+  .step:last-child .step-connector { display: none; }
+  .step-done .step-connector { background: var(--success); opacity: 0.3; }
+
+  /* Spinner */
+  .spinner {
+    width: 14px; height: 14px; border: 2px solid var(--accent-light);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Log */
+  .log-section { padding: 0 28px 20px; }
+  .log-title {
+    font-size: 11px; font-weight: 700; color: var(--text-light);
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .log-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); animation: blink 1s infinite; }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .log-list {
+    background: var(--bg-hover); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 12px 14px;
+    max-height: 160px; overflow-y: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; line-height: 2;
+  }
+  .log-item { display: flex; gap: 10px; }
+  .log-time { color: var(--text-light); flex-shrink: 0; }
+  .log-msg { color: var(--text-secondary); }
+  .log-error { color: var(--error); font-weight: 600; }
+  .log-item + .log-item { border-top: 1px solid var(--border); padding-top: 4px; }
+
+  /* Actions */
+  .actions-section {
+    padding: 16px 28px; border-top: 1px solid var(--border);
+    display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;
+    background: var(--bg-hover);
+  }
+  .action-btn {
+    padding: 8px 18px; border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: all var(--transition); border: 1px solid var(--border);
+    background: var(--bg); color: var(--text-secondary);
+    font-family: var(--font-body);
+  }
+  .action-btn:hover { background: var(--bg-active); color: var(--text); border-color: var(--text-light); }
+  .action-btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .action-btn.primary:hover { opacity: 0.9; }
+  .action-btn.danger { color: var(--error); }
+  .action-btn.danger:hover { background: var(--error-bg); border-color: var(--error); }
+
+  /* Demo Controls */
+  .demo-bar {
+    width: 100%; max-width: 680px; margin-top: 24px;
+    padding: 16px 20px; background: var(--bg-hover);
+    border: 1px dashed var(--border); border-radius: var(--radius);
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .demo-bar-label { font-size: 12px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.05em; margin-right: 8px; }
+  .demo-btn {
+    padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--text-secondary); font-size: 12px;
+    font-weight: 600; cursor: pointer; transition: all var(--transition);
+    font-family: var(--font-body);
+  }
+  .demo-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .demo-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+  /* File info header */
+  .file-info {
+    padding: 12px 28px; background: var(--bg-hover);
+    border-bottom: 1px solid var(--border);
+    display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary);
+  }
+  .file-info-item { display: flex; align-items: center; gap: 4px; }
+  .file-info-label { color: var(--text-light); }
+  .file-info-value { font-weight: 600; color: var(--text); }
+</style>
+</head>
+<body>
+  <button class="theme-toggle" onclick="toggleTheme()">🌙 暗色</button>
+
+  <div class="panel" id="panel">
+    <!-- Header -->
+    <div class="panel-header">
+      <div class="panel-header-left">
+        <div class="panel-logo">O</div>
+        <div>
+          <div class="panel-title">正在处理</div>
+          <div class="panel-subtitle" id="fileName">DJI_0042.wav</div>
+        </div>
+      </div>
+      <span class="status-badge status-running" id="statusBadge">处理中</span>
+    </div>
+
+    <!-- File info -->
+    <div class="file-info">
+      <div class="file-info-item">
+        <span class="file-info-label">文件大小</span>
+        <span class="file-info-value">52.4 MB</span>
+      </div>
+      <div class="file-info-item">
+        <span class="file-info-label">预估时长</span>
+        <span class="file-info-value">~20 分钟</span>
+      </div>
+      <div class="file-info-item">
+        <span class="file-info-label">转写引擎</span>
+        <span class="file-info-value">Gemini 2.0 Flash</span>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-section">
+      <div class="progress-bar-wrapper">
+        <div class="progress-bar-fill" id="progressBar" style="width: 60%"></div>
+      </div>
+      <div class="progress-meta">
+        <span class="progress-pct" id="progressPct">60%</span>
+        <span class="progress-time" id="progressTime">12:30 / 20:00 · 剩余约 7 分 30 秒</span>
+      </div>
+    </div>
+
+    <!-- Steps -->
+    <div class="steps-section">
+      <div class="steps-title">处理阶段</div>
+      <div id="stepsList">
+        <!-- Step 1: Done -->
+        <div class="step step-done">
+          <div class="step-icon">✓</div>
+          <div class="step-body">
+            <div class="step-header">
+              <span class="step-num">1/4</span>
+              <span class="step-label">转写</span>
+            </div>
+            <div class="step-result">检测到 3 段对话，共 2,847 字</div>
+          </div>
+          <span class="step-duration">02:30</span>
+          <div class="step-connector"></div>
+        </div>
+
+        <!-- Step 2: Done -->
+        <div class="step step-done">
+          <div class="step-icon">✓</div>
+          <div class="step-body">
+            <div class="step-header">
+              <span class="step-num">2/4</span>
+              <span class="step-label">清洗</span>
+            </div>
+            <div class="step-result">去掉 47% 噪音和重复，保留 1,510 字</div>
+          </div>
+          <span class="step-duration">01:15</span>
+          <div class="step-connector"></div>
+        </div>
+
+        <!-- Step 3: Running -->
+        <div class="step step-running">
+          <div class="step-icon"><div class="spinner"></div></div>
+          <div class="step-body">
+            <div class="step-header">
+              <span class="step-num">3/4</span>
+              <span class="step-label">场景切分</span>
+            </div>
+            <div class="step-result">正在分析第 2 个话题段落…</div>
+          </div>
+          <span class="step-duration" id="runningTimer">00:18</span>
+          <div class="step-connector"></div>
+        </div>
+
+        <!-- Step 4: Pending -->
+        <div class="step step-pending">
+          <div class="step-icon">○</div>
+          <div class="step-body">
+            <div class="step-header">
+              <span class="step-num">4/4</span>
+              <span class="step-label">蒸馏</span>
+            </div>
+            <div class="step-result">等待中</div>
+          </div>
+          <span class="step-duration">–</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="log-section">
+      <div class="log-title">
+        <span class="log-dot"></span>
+        实时日志
+      </div>
+      <div class="log-list" id="logList">
+        <div class="log-item">
+          <span class="log-time">10:32:15</span>
+          <span class="log-msg">发现角色切换（AI → 用户），标记新场景</span>
+        </div>
+        <div class="log-item">
+          <span class="log-time">10:31:42</span>
+          <span class="log-msg">切分第 1 个场景，时长 4:20 / 1,247 字</span>
+        </div>
+        <div class="log-item">
+          <span class="log-time">10:31:10</span>
+          <span class="log-msg">清洗完成，保留 1,510 字（原始 2,847 字）</span>
+        </div>
+        <div class="log-item">
+          <span class="log-time">10:29:55</span>
+          <span class="log-msg">转写完成，检测到中英混合模式</span>
+        </div>
+        <div class="log-item">
+          <span class="log-time">10:27:25</span>
+          <span class="log-msg">开始转写 DJI_0042.wav (52.4 MB)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions-section" id="actionsSection">
+      <button class="action-btn" onclick="handlePause()">⏸ 暂停</button>
+      <button class="action-btn" onclick="handleSkip()">⏭ 跳过当前步骤</button>
+      <button class="action-btn danger" onclick="handleCancel()">✕ 取消</button>
+    </div>
+  </div>
+
+  <!-- Demo Controls -->
+  <div class="demo-bar">
+    <span class="demo-bar-label">🎬 演示模式</span>
+    <button class="demo-btn active" onclick="setScene('running')">处理中</button>
+    <button class="demo-btn" onclick="setScene('done')">已完成</button>
+    <button class="demo-btn" onclick="setScene('error')">出错</button>
+    <button class="demo-btn" onclick="setScene('paused')">已暂停</button>
+    <button class="demo-btn" onclick="startSimulation()">▶ 播放动画</button>
+  </div>
+
+<script>
+  // Theme toggle
+  function toggleTheme() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    document.documentElement.setAttribute('data-theme', isDark ? '' : 'dark');
+    document.querySelector('.theme-toggle').textContent = isDark ? '🌙 暗色' : '☀️ 亮色';
+  }
+
+  // Running timer
+  let timerSeconds = 18;
+  setInterval(() => {
+    const timerEl = document.getElementById('runningTimer');
+    if (timerEl && timerEl.closest('.step-running')) {
+      timerSeconds++;
+      const m = String(Math.floor(timerSeconds / 60)).padStart(2, '0');
+      const s = String(timerSeconds % 60).padStart(2, '0');
+      timerEl.textContent = `${m}:${s}`;
+    }
+  }, 1000);
+
+  // Demo scenes
+  function setScene(scene) {
+    document.querySelectorAll('.demo-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+
+    const badge = document.getElementById('statusBadge');
+    const progressBar = document.getElementById('progressBar');
+    const progressPct = document.getElementById('progressPct');
+    const progressTime = document.getElementById('progressTime');
+    const actions = document.getElementById('actionsSection');
+
+    if (scene === 'running') {
+      badge.className = 'status-badge status-running';
+      badge.textContent = '处理中';
+      progressBar.style.width = '60%';
+      progressPct.textContent = '60%';
+      progressTime.textContent = '12:30 / 20:00 · 剩余约 7 分 30 秒';
+      actions.innerHTML = `
+        <button class="action-btn" onclick="handlePause()">⏸ 暂停</button>
+        <button class="action-btn" onclick="handleSkip()">⏭ 跳过当前步骤</button>
+        <button class="action-btn danger" onclick="handleCancel()">✕ 取消</button>
+      `;
+      setSteps([
+        { status: 'done', label: '转写', result: '检测到 3 段对话，共 2,847 字', duration: '02:30' },
+        { status: 'done', label: '清洗', result: '去掉 47% 噪音和重复，保留 1,510 字', duration: '01:15' },
+        { status: 'running', label: '场景切分', result: '正在分析第 2 个话题段落…', duration: '00:18' },
+        { status: 'pending', label: '蒸馏', result: '等待中', duration: '–' },
+      ]);
+    } else if (scene === 'done') {
+      badge.className = 'status-badge status-done';
+      badge.textContent = '已完成';
+      progressBar.style.width = '100%';
+      progressPct.textContent = '100%';
+      progressTime.textContent = '15:42 / 15:42 · 已完成';
+      actions.innerHTML = `
+        <button class="action-btn primary" onclick="alert('查看日报')">📊 查看今日报告</button>
+        <button class="action-btn" onclick="alert('处理下一个')">📂 处理下一个</button>
+      `;
+      setSteps([
+        { status: 'done', label: '转写', result: '检测到 3 段对话，共 2,847 字', duration: '02:30' },
+        { status: 'done', label: '清洗', result: '去掉 47% 噪音和重复，保留 1,510 字', duration: '01:15' },
+        { status: 'done', label: '场景切分', result: '切出 3 个场景，最长 8:40', duration: '00:42' },
+        { status: 'done', label: '蒸馏', result: '生成 3 条摘要，含 2 个行动事项', duration: '00:28' },
+      ]);
+      addLogEntry('10:43:07', '✅ 全部处理完成！日报已更新。', false);
+    } else if (scene === 'error') {
+      badge.className = 'status-badge status-error';
+      badge.textContent = '出错';
+      progressBar.style.width = '75%';
+      progressPct.textContent = '75%';
+      progressTime.textContent = '处理中断';
+      actions.innerHTML = `
+        <button class="action-btn primary" onclick="alert('重试')">🔄 重试当前步骤</button>
+        <button class="action-btn" onclick="alert('跳过')">⏭ 跳过，使用已有结果</button>
+        <button class="action-btn danger" onclick="handleCancel()">✕ 取消</button>
+      `;
+      setSteps([
+        { status: 'done', label: '转写', result: '检测到 3 段对话，共 2,847 字', duration: '02:30' },
+        { status: 'done', label: '清洗', result: '去掉 47% 噪音和重复，保留 1,510 字', duration: '01:15' },
+        { status: 'done', label: '场景切分', result: '切出 3 个场景，最长 8:40', duration: '00:42' },
+        { status: 'error', label: '蒸馏', result: 'Gemini API 返回 429 Too Many Requests，等 30 秒后自动重试', duration: '–' },
+      ]);
+      addLogEntry('10:36:22', '❌ Gemini API 限流，30 秒后重试 (1/3)', true);
+    } else if (scene === 'paused') {
+      badge.className = 'status-badge';
+      badge.style.background = 'var(--warning-bg)';
+      badge.style.color = 'var(--warning)';
+      badge.textContent = '已暂停';
+      progressBar.style.width = '60%';
+      progressPct.textContent = '60%';
+      progressTime.textContent = '已暂停 · 剩余约 7 分 30 秒';
+      actions.innerHTML = `
+        <button class="action-btn primary" onclick="setScene('running')">▶ 继续</button>
+        <button class="action-btn danger" onclick="handleCancel()">✕ 取消</button>
+      `;
+    }
+  }
+
+  function setSteps(steps) {
+    const list = document.getElementById('stepsList');
+    list.innerHTML = steps.map((s, i) => {
+      const cls = `step step-${s.status}`;
+      let icon = '○';
+      if (s.status === 'done') icon = '✓';
+      else if (s.status === 'running') icon = '<div class="spinner"></div>';
+      else if (s.status === 'error') icon = '✕';
+      const showConnector = i < steps.length - 1;
+      return `
+        <div class="${cls}">
+          <div class="step-icon">${icon}</div>
+          <div class="step-body">
+            <div class="step-header">
+              <span class="step-num">${i+1}/${steps.length}</span>
+              <span class="step-label">${s.label}</span>
+            </div>
+            <div class="step-result" style="${s.status==='error'?'color:var(--error)':''}">${s.result}</div>
+          </div>
+          <span class="step-duration">${s.duration}</span>
+          ${showConnector ? '<div class="step-connector"></div>' : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  function addLogEntry(time, msg, isError) {
+    const list = document.getElementById('logList');
+    const item = document.createElement('div');
+    item.className = 'log-item';
+    item.style.animation = 'slideUp 0.3s ease';
+    item.innerHTML = `
+      <span class="log-time">${time}</span>
+      <span class="log-msg ${isError ? 'log-error' : ''}">${msg}</span>
+    `;
+    list.insertBefore(item, list.firstChild);
+  }
+
+  // Simulation
+  function startSimulation() {
+    let progress = 0;
+    const progressBar = document.getElementById('progressBar');
+    const progressPct = document.getElementById('progressPct');
+    const badge = document.getElementById('statusBadge');
+    badge.className = 'status-badge status-running';
+    badge.textContent = '处理中';
+
+    const phases = [
+      { at: 0, steps: [
+        { status: 'running', label: '转写', result: '正在上传至 Gemini…', duration: '00:00' },
+        { status: 'pending', label: '清洗', result: '等待中', duration: '–' },
+        { status: 'pending', label: '场景切分', result: '等待中', duration: '–' },
+        { status: 'pending', label: '蒸馏', result: '等待中', duration: '–' },
+      ], log: { time: '10:27:25', msg: '开始转写 DJI_0042.wav (52.4 MB)' }},
+      { at: 20, steps: [
+        { status: 'running', label: '转写', result: '已转写 60%，当前 1,704 字…', duration: '01:12' },
+        { status: 'pending', label: '清洗', result: '等待中', duration: '–' },
+        { status: 'pending', label: '场景切分', result: '等待中', duration: '–' },
+        { status: 'pending', label: '蒸馏', result: '等待中', duration: '–' },
+      ], log: { time: '10:28:37', msg: '检测到中英混合模式，切换多语言识别' }},
+      { at: 40, steps: [
+        { status: 'done', label: '转写', result: '检测到 3 段对话，共 2,847 字', duration: '02:30' },
+        { status: 'running', label: '清洗', result: '正在去除重复片段…', duration: '00:05' },
+        { status: 'pending', label: '场景切分', result: '等待中', duration: '–' },
+        { status: 'pending', label: '蒸馏', result: '等待中', duration: '–' },
+      ], log: { time: '10:29:55', msg: '转写完成，共 2,847 字' }},
+      { at: 55, steps: [
+        { status: 'done', label: '转写', result: '检测到 3 段对话，共 2,847 字', duration: '02:30' },
+        { status: 'done', label: '清洗', result: '去掉 47% 噪音和重复，保留 1,510 字', duration: '01:15' },
+        { status: 'running', label: '场景切分', result: '正在分析第 1 个话题段落…', duration: '00:08' },
+        { status: 'pending', label: '蒸馏', result: '等待中', duration: '–' },
+      ], log: { time: '10:31:10', msg: '清洗完成，保留 1,510 字（原始 2,847 字）' }},
+      { at: 80, steps: [
+        { status: 'done', label: '转写', result: '检测到 3 段对话，共 2,847 字', duration: '02:30' },
+        { status: 'done', label: '清洗', result: '去掉 47% 噪音和重复，保留 1,510 字', duration: '01:15' },
+        { status: 'done', label: '场景切分', result: '切出 3 个场景，最长 8:40', duration: '00:42' },
+        { status: 'running', label: '蒸馏', result: '正在生成摘要…', duration: '00:10' },
+      ], log: { time: '10:32:52', msg: '场景切分完成，共 3 个场景' }},
+      { at: 100, steps: [
+        { status: 'done', label: '转写', result: '检测到 3 段对话，共 2,847 字', duration: '02:30' },
+        { status: 'done', label: '清洗', result: '去掉 47% 噪音和重复，保留 1,510 字', duration: '01:15' },
+        { status: 'done', label: '场景切分', result: '切出 3 个场景，最长 8:40', duration: '00:42' },
+        { status: 'done', label: '蒸馏', result: '生成 3 条摘要，含 2 个行动事项', duration: '00:28' },
+      ], log: { time: '10:33:20', msg: '✅ 全部处理完成！日报已更新。' }},
+    ];
+
+    let phaseIdx = 0;
+    const interval = setInterval(() => {
+      progress += 1;
+      if (progress > 100) {
+        clearInterval(interval);
+        badge.className = 'status-badge status-done';
+        badge.textContent = '已完成';
+        return;
+      }
+      progressBar.style.width = progress + '%';
+      progressPct.textContent = progress + '%';
+
+      // Check phase transitions
+      while (phaseIdx < phases.length && progress >= phases[phaseIdx].at) {
+        const phase = phases[phaseIdx];
+        setSteps(phase.steps);
+        if (phase.log) addLogEntry(phase.log.time, phase.log.msg, false);
+        phaseIdx++;
+      }
+    }, 80);
+  }
+
+  function handlePause() { setScene('paused'); }
+  function handleSkip() { alert('跳过当前步骤，直接进入下一阶段'); }
+  function handleCancel() { if(confirm('确定取消？已完成的步骤结果会保留。')) alert('已取消'); }
+</script>
+</body>
+</html>
