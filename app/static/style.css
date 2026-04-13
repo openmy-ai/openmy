@@ -111,7 +111,7 @@ body {
 .sidebar-search-label { display:flex; align-items:center; gap:8px; }
 .logo-sub { font-size: 11px; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
 .report-links { padding: 4px 12px 0; display: flex; flex-wrap: wrap; gap: 8px; }
-.report-btn { border: 1px solid var(--border); background: var(--bg); color: var(--text-secondary); border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all var(--transition); }
+.report-btn { border: 1px solid var(--border); background: var(--bg); color: var(--text-secondary); border-radius: 999px; padding: 10px 14px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all var(--transition); min-height: 36px; }
 .report-btn:hover { background: var(--bg-hover); color: var(--text); }
 .report-btn.active { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
 
