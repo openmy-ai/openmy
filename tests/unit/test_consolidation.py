@@ -385,6 +385,44 @@ class TestConsolidation(unittest.TestCase):
             self.assertEqual(loop.current_state, "closed")
             self.assertTrue(loop.valid_until.startswith("2026-04-09"))
 
+    def test_consolidate_does_not_close_loop_on_short_generic_substring(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            self.write_json(data_root / "2026-04-08" / "2026-04-08.meta.json", {
+                "intents": [
+                    {
+                        "intent_id": "intent_open",
+                        "kind": "action_item",
+                        "what": "fix screen capture memory leak",
+                        "status": "open",
+                        "who": {"kind": "user", "label": "老板"},
+                        "confidence_label": "high",
+                        "confidence_score": 0.9,
+                    }
+                ]
+            })
+            self.write_json(data_root / "2026-04-09" / "2026-04-09.meta.json", {
+                "intents": [
+                    {
+                        "intent_id": "intent_done",
+                        "kind": "action_item",
+                        "what": "fix typo in README",
+                        "status": "done",
+                        "who": {"kind": "user", "label": "老板"},
+                        "confidence_label": "high",
+                        "confidence_score": 0.95,
+                    }
+                ]
+            })
+
+            ctx = consolidate(data_root)
+            loop = next(item for item in ctx.rolling_context.open_loops if item.title == "fix screen capture memory leak")
+
+            self.assertEqual(loop.current_state, "active")
+
     def test_consolidate_emits_recent_conflicts_for_incompatible_facts(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_root = Path(tmp_dir)

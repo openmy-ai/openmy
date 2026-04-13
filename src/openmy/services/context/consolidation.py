@@ -407,6 +407,37 @@ def _auto_close_loops(
     all_metas: list[tuple[str, dict]],
 ) -> None:
     """Fix I: 用新录音的 done intents 自动关闭匹配的 open_loops。"""
+
+    def _token_set(text: str) -> set[str]:
+        return {
+            token
+            for token in re.split(r"[^\w\u4e00-\u9fff]+", text.lower())
+            if token
+        }
+
+    def _done_matches_loop(done_what: str, loop_title: str) -> bool:
+        done_norm = done_what.strip().lower()
+        loop_norm = loop_title.strip().lower()
+        if not done_norm or not loop_norm:
+            return False
+        if done_norm == loop_norm:
+            return True
+
+        longer, shorter = (done_norm, loop_norm) if len(done_norm) >= len(loop_norm) else (loop_norm, done_norm)
+        min_match_length = max(4, int(len(loop_norm) * 0.5))
+        if len(shorter) >= min_match_length and shorter in longer:
+            return True
+
+        done_tokens = _token_set(done_norm)
+        loop_tokens = _token_set(loop_norm)
+        if not done_tokens or not loop_tokens:
+            return False
+        union = done_tokens | loop_tokens
+        if not union:
+            return False
+        similarity = len(done_tokens & loop_tokens) / len(union)
+        return similarity > 0.7
+
     done_whats: dict[str, str] = {}
     for date_str, meta in all_metas:
         for raw in meta.get("intents", []):
@@ -422,10 +453,8 @@ def _auto_close_loops(
     for title, loop in loops.items():
         if loop.status != "open":
             continue
-        title_lower = title.lower()
         for done_what, done_at in done_whats.items():
-            # 模糊匹配：done_what 包含在 loop title 里，或反过来
-            if done_what in title_lower or title_lower in done_what:
+            if _done_matches_loop(done_what, title):
                 loop.status = "closed"
                 loop.current_state = "closed"
                 loop.valid_until = done_at
