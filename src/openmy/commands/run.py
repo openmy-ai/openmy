@@ -38,12 +38,15 @@ def _discover_audio_inputs(date_str: str) -> tuple[list[str], str]:
     return discover_configured_audio_files(date_str), source_dir
 
 
+STALE_RUN_MIN_AGE_SECONDS = 300
+
+
 def _kill_stale_runs(date_str: str) -> int:
     if os.name == "nt":
         return 0
     try:
         result = subprocess.run(
-            ["ps", "-Ao", "pid=,command="],
+            ["ps", "-Ao", "pid=,etimes=,command="],
             check=False,
             capture_output=True,
             text=True,
@@ -56,13 +59,18 @@ def _kill_stale_runs(date_str: str) -> int:
         line = raw_line.strip()
         if not line:
             continue
-        pid_text, _, command = line.partition(" ")
-        if not pid_text.isdigit():
+        parts = line.split(None, 2)
+        if len(parts) < 3:
+            continue
+        pid_text, etimes_text, command_text = parts
+        if not pid_text.isdigit() or not etimes_text.isdigit():
             continue
         pid = int(pid_text)
+        etimes = int(etimes_text)
         if pid == current_pid:
             continue
-        command_text = command.strip()
+        if etimes < STALE_RUN_MIN_AGE_SECONDS:
+            continue
         if date_str not in command_text:
             continue
         if "openmy" not in command_text:

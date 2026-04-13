@@ -1404,12 +1404,12 @@ class TestOpenMyCli(unittest.TestCase):
         current_pid = os.getpid()
         ps_output = "\n".join(
             [
-                f"{current_pid} python -m openmy run 2099-01-24",
-                "4321 python -m openmy run 2099-01-24",
-                "9876 python -m openmy run 2099-01-25",
+                f"{current_pid} 999 python -m openmy run 2099-01-24",
+                "4321 601 python -m openmy run 2099-01-24",
+                "8765 20 python -m openmy run 2099-01-24",
+                "9876 800 python -m openmy run 2099-01-25",
             ]
         )
-
         with (
             patch("openmy.commands.run.subprocess.run") as run_mock,
             patch("openmy.commands.run.os.kill") as kill_mock,
