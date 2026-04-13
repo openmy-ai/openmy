@@ -80,6 +80,13 @@ class TestSkillDocs(unittest.TestCase):
         self.assertIn("默认动作现在是直接继续", content)
         self.assertIn("音频已经跑完了", content)
 
+    def test_day_run_skill_keeps_progress_table_template(self):
+        content = (SKILLS_ROOT / "openmy-day-run" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("进度表：", content)
+        self.assertIn("✅ 已发现音频", content)
+        self.assertIn("⏭️ 跳过步骤", content)
+        self.assertIn("❌ 失败步骤", content)
+
 
 if __name__ == "__main__":
     unittest.main()

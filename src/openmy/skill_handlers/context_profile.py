@@ -8,12 +8,22 @@ from openmy.skill_handlers.common import SkillDispatchError
 
 
 def _latest_summary_stem(root: Path) -> str:
-    if not root.exists():
+    try:
+        exists = root.exists()
+    except OSError:
         return ""
-    candidates = [item for item in root.glob('*.json') if item.is_file()]
+    if not exists:
+        return ""
+    try:
+        candidates = [item for item in root.glob('*.json') if item.is_file()]
+    except OSError:
+        return ""
     if not candidates:
         return ""
-    latest = max(candidates, key=lambda item: item.stat().st_mtime)
+    try:
+        latest = max(candidates, key=lambda item: item.stat().st_mtime)
+    except OSError:
+        return ""
     return latest.stem
 
 
@@ -183,10 +193,12 @@ def handle_profile_set(args: argparse.Namespace, *, cli_getter, build_success_pa
     export_key = str(getattr(args, "export_key", "") or "").strip()
     export_db = str(getattr(args, "export_db", "") or "").strip()
     screen_recognition = str(getattr(args, "screen_recognition", "") or "").strip().lower()
+    auto_detected_obsidian_export = False
 
     if not export_provider:
         if export_path:
             export_provider = "obsidian"
+            auto_detected_obsidian_export = True
         elif export_key or export_db:
             export_provider = "notion"
 
@@ -320,6 +332,8 @@ def handle_profile_set(args: argparse.Namespace, *, cli_getter, build_success_pa
         summary_parts.append(f"STT provider set to {stt_provider}.")
     if export_provider == "obsidian":
         summary_parts.append("Obsidian export configured.")
+        if auto_detected_obsidian_export:
+            summary_parts.append("Auto-detected Obsidian export from --export-path.")
     elif export_provider == "notion":
         summary_parts.append("Notion export configured.")
     if screen_recognition == "on":

@@ -27,7 +27,7 @@ from openmy.commands import screen as screen_cmd
 from openmy.commands import show as show_cmd
 from openmy.commands import self_update as self_update_cmd
 from openmy.utils.errors import FriendlyCliError
-from openmy.utils.paths import DATA_ROOT, PROJECT_ENV_PATH as _PROJECT_ENV_PATH, PROJECT_ROOT as _ROOT_DIR
+from openmy.utils.paths import DATA_ROOT, LEGACY_ROOT as _LEGACY_ROOT, PROJECT_ENV_PATH as _PROJECT_ENV_PATH, PROJECT_ROOT as _ROOT_DIR
 from openmy.services.feedback import ensure_install_time
 
 console = common_cmd.console
@@ -36,6 +36,7 @@ Markdown = _RichMarkdown
 Panel = _RichPanel
 PROJECT_ENV_PATH = _PROJECT_ENV_PATH
 ROOT_DIR = _ROOT_DIR
+LEGACY_ROOT = _LEGACY_ROOT
 
 DATE_RE = common_cmd.DATE_RE
 DATE_MD_RE = common_cmd.DATE_MD_RE
@@ -75,22 +76,6 @@ write_json = common_cmd.write_json
 get_screen_client = common_cmd.get_screen_client
 
 _show_main_menu = menu_cmd._show_main_menu
-find_all_dates = show_cmd.find_all_dates
-ensure_day_dir = show_cmd.ensure_day_dir
-read_json = show_cmd.read_json
-strip_document_header = show_cmd.strip_document_header
-get_date_status = show_cmd.get_date_status
-resolve_day_paths = show_cmd.resolve_day_paths
-stage_label = show_cmd.stage_label
-role_bar = show_cmd.role_bar
-read_scenes_payload = show_cmd.read_scenes_payload
-parse_audio_time = show_cmd.parse_audio_time
-infer_date_from_path = show_cmd.infer_date_from_path
-infer_scene_role_profile = show_cmd.infer_scene_role_profile
-rebuild_scene_stats = show_cmd.rebuild_scene_stats
-build_frozen_scene_stats = show_cmd.build_frozen_scene_stats
-freeze_scene_roles = show_cmd.freeze_scene_roles
-build_segmented_scenes_payload = show_cmd.build_segmented_scenes_payload
 _render_review = show_cmd._render_review
 
 _cmd_correct_typo = correct_cmd._cmd_correct_typo
@@ -108,6 +93,11 @@ cmd_quick_start = run_cmd.cmd_quick_start
 
 def _sync_runtime_overrides() -> None:
     _set_console_for_modules(console)
+    common_cmd.DATA_ROOT = DATA_ROOT
+    common_cmd.PROJECT_ENV_PATH = PROJECT_ENV_PATH
+    common_cmd.ROOT_DIR = ROOT_DIR
+    show_cmd.DATA_ROOT = DATA_ROOT
+    show_cmd.LEGACY_ROOT = LEGACY_ROOT
     common_cmd.get_stt_provider_name = get_stt_provider_name
     common_cmd.get_stt_api_key = get_stt_api_key
     common_cmd.get_llm_api_key = get_llm_api_key
@@ -130,6 +120,76 @@ def ensure_runtime_dependencies(*, stt_provider: str | None = None) -> None:
 def launch_local_report(host: str = "127.0.0.1", port: int = 8420) -> None:
     _sync_runtime_overrides()
     return common_cmd.launch_local_report(host=host, port=port)
+
+
+def find_all_dates():
+    _sync_runtime_overrides()
+    return show_cmd.find_all_dates()
+
+
+def ensure_day_dir(date_str: str):
+    _sync_runtime_overrides()
+    return show_cmd.ensure_day_dir(date_str)
+
+
+def read_json(path, default):
+    return show_cmd.read_json(path, default)
+
+
+def strip_document_header(markdown: str) -> str:
+    return show_cmd.strip_document_header(markdown)
+
+
+def get_date_status(date_str: str):
+    _sync_runtime_overrides()
+    return show_cmd.get_date_status(date_str)
+
+
+def resolve_day_paths(date_str: str):
+    _sync_runtime_overrides()
+    return show_cmd.resolve_day_paths(date_str)
+
+
+def stage_label(status):
+    return show_cmd.stage_label(status)
+
+
+def role_bar(distribution, width: int = 20):
+    return show_cmd.role_bar(distribution, width=width)
+
+
+def read_scenes_payload(date_str: str):
+    _sync_runtime_overrides()
+    return show_cmd.read_scenes_payload(date_str)
+
+
+def parse_audio_time(audio_path):
+    return show_cmd.parse_audio_time(audio_path)
+
+
+def infer_date_from_path(path):
+    return show_cmd.infer_date_from_path(path)
+
+
+def infer_scene_role_profile(addressed_to: str):
+    return show_cmd.infer_scene_role_profile(addressed_to)
+
+
+def rebuild_scene_stats(data):
+    return show_cmd.rebuild_scene_stats(data)
+
+
+def build_frozen_scene_stats(data):
+    return show_cmd.build_frozen_scene_stats(data)
+
+
+def freeze_scene_roles(data):
+    return show_cmd.freeze_scene_roles(data)
+
+
+def build_segmented_scenes_payload(markdown: str):
+    _sync_runtime_overrides()
+    return show_cmd.build_segmented_scenes_payload(markdown)
 
 
 def cmd_status(args: argparse.Namespace) -> int:

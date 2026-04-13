@@ -306,6 +306,33 @@ class TestSkillDispatch(unittest.TestCase):
             self.assertIn("OPENMY_EXPORT_PROVIDER=obsidian", env_text)
             self.assertIn(f"OPENMY_OBSIDIAN_VAULT_PATH={vault_path}", env_text)
 
+    def test_profile_set_auto_detects_obsidian_export_from_path(self):
+        from openmy import skill_dispatch
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            vault_path = Path(tmp_dir) / "vault"
+            vault_path.mkdir(parents=True, exist_ok=True)
+            env_path = Path(tmp_dir) / ".env"
+            env_path.write_text("", encoding="utf-8")
+
+            fake_cli = SimpleNamespace(DATA_ROOT=data_root, PROJECT_ENV_PATH=env_path)
+            with patch("openmy.skill_dispatch._cli", return_value=fake_cli):
+                args = self.make_args(
+                    action="profile.set",
+                    export_path=str(vault_path),
+                )
+                payload, exit_code = skill_dispatch.dispatch_skill_action("profile.set", args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["data"]["export"]["provider"], "obsidian")
+            self.assertIn("Auto-detected Obsidian export from --export-path.", payload["human_summary"])
+            env_text = env_path.read_text(encoding="utf-8")
+            self.assertIn("OPENMY_EXPORT_PROVIDER=obsidian", env_text)
+            self.assertIn(f"OPENMY_OBSIDIAN_VAULT_PATH={vault_path}", env_text)
+
     def test_profile_set_accepts_screen_recognition_and_persists_settings(self):
         from openmy import skill_dispatch
         from openmy.services.screen_recognition.settings import load_screen_context_settings
@@ -327,6 +354,17 @@ class TestSkillDispatch(unittest.TestCase):
             self.assertTrue(settings.enabled)
             self.assertEqual(settings.participation_mode, "summary_only")
             self.assertIn("SCREEN_RECOGNITION_ENABLED=true", env_path.read_text(encoding="utf-8"))
+
+    def test_latest_summary_stem_ignores_permission_errors(self):
+        from openmy.skill_handlers.context_profile import _latest_summary_stem
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            summary_path = root / "weekly.json"
+            summary_path.write_text("{}", encoding="utf-8")
+
+            with patch("pathlib.Path.stat", side_effect=PermissionError):
+                self.assertEqual(_latest_summary_stem(root), "")
 
     def test_day_run_uses_configured_audio_source_when_audio_missing(self):
         from openmy import skill_dispatch

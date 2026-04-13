@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -28,20 +29,19 @@ class TestFeedbackService(unittest.TestCase):
 
 class TestFeedbackCli(unittest.TestCase):
     def test_feedback_opt_in_command_creates_local_files(self):
-        import openmy.cli as cli
+        from openmy.commands import show as show_cmd
 
         with tempfile.TemporaryDirectory() as tmp_home:
-            parser = cli.build_parser()
-            args = parser.parse_args(["feedback", "--opt-in"])
             with patch.dict(os.environ, {"HOME": tmp_home}, clear=False):
-                result = cli.main_with_args(args)
+                result = show_cmd.cmd_feedback(Namespace(show=False, opt_in=True, opt_out=False, delete=False))
 
             self.assertEqual(result, 0)
             self.assertTrue((Path(tmp_home) / ".openmy" / "settings.json").exists())
             self.assertTrue((Path(tmp_home) / ".openmy" / "telemetry.json").exists())
 
     def test_feedback_show_command_reads_local_data(self):
-        import openmy.cli as cli
+        from rich.console import Console
+        from openmy.commands import show as show_cmd
         from openmy.services.feedback import save_settings, save_telemetry
 
         with tempfile.TemporaryDirectory() as tmp_home:
@@ -65,12 +65,13 @@ class TestFeedbackCli(unittest.TestCase):
                 root=root,
             )
 
-            parser = cli.build_parser()
-            args = parser.parse_args(["feedback", "--show"])
             output = io.StringIO()
-            with patch.dict(os.environ, {"HOME": tmp_home}, clear=False), patch.object(cli, "console") as fake_console, patch.object(cli, "Panel", side_effect=lambda content, **kwargs: content):
-                fake_console.print.side_effect = lambda *items, **kwargs: output.write(" ".join(str(item) for item in items))
-                result = cli.main_with_args(args)
+            test_console = Console(file=output, force_terminal=False, color_system=None)
+            with (
+                patch.dict(os.environ, {"HOME": tmp_home}, clear=False),
+                patch("openmy.commands.show.console", test_console),
+            ):
+                result = show_cmd.cmd_feedback(Namespace(show=True, opt_in=False, opt_out=False, delete=False))
 
             self.assertEqual(result, 0)
             self.assertIn("1800", output.getvalue())

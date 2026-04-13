@@ -5,8 +5,11 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
+import openmy.commands.common as common_cmd
+import openmy.commands.show as show_cmd
 from openmy.commands import run as run_command
 
 
@@ -14,6 +17,20 @@ class TestRunAggregation(unittest.TestCase):
     def write_json(self, path: Path, payload: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    def make_cli_stub(self, project_root: Path, data_root: Path, fake_briefing):
+        return SimpleNamespace(
+            ROOT_DIR=project_root,
+            DATA_ROOT=data_root,
+            ensure_day_dir=show_cmd.ensure_day_dir,
+            resolve_day_paths=show_cmd.resolve_day_paths,
+            read_json=show_cmd.read_json,
+            write_json=common_cmd.write_json,
+            freeze_scene_roles=show_cmd.freeze_scene_roles,
+            cmd_briefing=fake_briefing,
+            console=SimpleNamespace(print=lambda *args, **kwargs: None),
+            Panel=lambda content, **kwargs: content,
+        )
 
     def test_cmd_run_triggers_weekly_aggregation_on_seventh_briefing(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -37,13 +54,16 @@ class TestRunAggregation(unittest.TestCase):
                 return 0
 
             with (
-                patch.object(run_command, "_cli") as cli_mock,
+                patch("openmy.commands.show.DATA_ROOT", data_root),
+                patch("openmy.commands.show.LEGACY_ROOT", project_root),
                 patch("openmy.services.context.consolidation.consolidate", return_value={}),
                 patch("openmy.services.aggregation.generate_weekly_review") as weekly_mock,
                 patch("openmy.services.aggregation.generate_monthly_review") as monthly_mock,
+                patch.object(common_cmd, "ROOT_DIR", project_root),
+                patch.object(common_cmd, "DATA_ROOT", data_root),
             ):
-                cli_mock.return_value = __import__("openmy.cli", fromlist=["dummy"])
-                with patch.object(cli_mock.return_value, "ROOT_DIR", project_root), patch.object(cli_mock.return_value, "DATA_ROOT", data_root), patch.object(cli_mock.return_value, "cmd_briefing", side_effect=fake_briefing), patch.object(cli_mock.return_value, "console"):
+                cli_stub = self.make_cli_stub(project_root, data_root, fake_briefing)
+                with patch.object(run_command, "_cli", return_value=cli_stub):
                     result = run_command.cmd_run(argparse.Namespace(date=target_date, audio=[], skip_transcribe=True, skip_aggregate=False))
 
             self.assertEqual(result, 0)
@@ -74,13 +94,16 @@ class TestRunAggregation(unittest.TestCase):
                 return 0
 
             with (
-                patch.object(run_command, "_cli") as cli_mock,
+                patch("openmy.commands.show.DATA_ROOT", data_root),
+                patch("openmy.commands.show.LEGACY_ROOT", project_root),
                 patch("openmy.services.context.consolidation.consolidate", return_value={}),
                 patch("openmy.services.aggregation.generate_weekly_review") as weekly_mock,
                 patch("openmy.services.aggregation.generate_monthly_review") as monthly_mock,
+                patch.object(common_cmd, "ROOT_DIR", project_root),
+                patch.object(common_cmd, "DATA_ROOT", data_root),
             ):
-                cli_mock.return_value = __import__("openmy.cli", fromlist=["dummy"])
-                with patch.object(cli_mock.return_value, "ROOT_DIR", project_root), patch.object(cli_mock.return_value, "DATA_ROOT", data_root), patch.object(cli_mock.return_value, "cmd_briefing", side_effect=fake_briefing), patch.object(cli_mock.return_value, "console"):
+                cli_stub = self.make_cli_stub(project_root, data_root, fake_briefing)
+                with patch.object(run_command, "_cli", return_value=cli_stub):
                     result = run_command.cmd_run(argparse.Namespace(date=target_date, audio=[], skip_transcribe=True, skip_aggregate=False))
 
             self.assertEqual(result, 0)
@@ -103,12 +126,15 @@ class TestRunAggregation(unittest.TestCase):
                 return 0
 
             with (
-                patch.object(run_command, "_cli") as cli_mock,
+                patch("openmy.commands.show.DATA_ROOT", data_root),
+                patch("openmy.commands.show.LEGACY_ROOT", project_root),
                 patch("openmy.services.context.consolidation.consolidate", return_value={}),
                 patch("openmy.services.aggregation.generate_weekly_review", side_effect=RuntimeError("boom")),
+                patch.object(common_cmd, "ROOT_DIR", project_root),
+                patch.object(common_cmd, "DATA_ROOT", data_root),
             ):
-                cli_mock.return_value = __import__("openmy.cli", fromlist=["dummy"])
-                with patch.object(cli_mock.return_value, "ROOT_DIR", project_root), patch.object(cli_mock.return_value, "DATA_ROOT", data_root), patch.object(cli_mock.return_value, "cmd_briefing", side_effect=fake_briefing), patch.object(cli_mock.return_value, "console"):
+                cli_stub = self.make_cli_stub(project_root, data_root, fake_briefing)
+                with patch.object(run_command, "_cli", return_value=cli_stub):
                     result = run_command.cmd_run(argparse.Namespace(date=target_date, audio=[], skip_transcribe=True, skip_aggregate=False))
 
             self.assertEqual(result, 0)
