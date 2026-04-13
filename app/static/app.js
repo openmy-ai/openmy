@@ -242,6 +242,11 @@ function formatFriendlyDate(dateStr) {
   return `${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
+function formatPageDate(dateStr) {
+  const date = parseIsoDate(dateStr);
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
 function formatRangeLabel(start, end) {
   return `${formatShortDate(start)}–${formatShortDate(end)}`;
 }
@@ -883,7 +888,7 @@ function renderDayLayout() {
   document.getElementById('main').innerHTML = `
     <article class="daily-article">
       <header class="page-header">
-        <div class="page-title">${escapeHtml(detail.date)}</div>
+        <div class="page-title">${escapeHtml(formatPageDate(detail.date))}</div>
         <div class="page-meta">${headerMeta.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>
       </header>
       ${summaryText ? `<section class="summary-callout"><p>${escapeHtml(summaryText)}</p></section>` : ''}
