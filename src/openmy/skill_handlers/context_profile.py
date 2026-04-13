@@ -7,10 +7,22 @@ from pathlib import Path
 from openmy.skill_handlers.common import SkillDispatchError
 
 
+def _latest_summary_stem(root: Path) -> str:
+    if not root.exists():
+        return ""
+    candidates = [item for item in root.glob('*.json') if item.is_file()]
+    if not candidates:
+        return ""
+    latest = max(candidates, key=lambda item: item.stat().st_mtime)
+    return latest.stem
+
+
 def handle_status_get(args: argparse.Namespace, *, cli_getter, build_success_payload):
     del args
     cli = cli_getter()
     items = []
+    latest_weekly = _latest_summary_stem(cli.DATA_ROOT / 'weekly')
+    latest_monthly = _latest_summary_stem(cli.DATA_ROOT / 'monthly')
     for date_str in cli.find_all_dates():
         item = dict(cli.get_date_status(date_str))
         item["date"] = date_str
@@ -20,7 +32,13 @@ def handle_status_get(args: argparse.Namespace, *, cli_getter, build_success_pay
     human_summary = "No OpenMy data found." if not items else f"{len(items)} days of data available; latest: {latest_date}."
     payload = build_success_payload(
         action="status.get",
-        data={"items": items, "total_days": len(items), "latest_date": latest_date},
+        data={
+            "items": items,
+            "total_days": len(items),
+            "latest_date": latest_date,
+            "weekly_summary_date": latest_weekly,
+            "monthly_summary_date": latest_monthly,
+        },
         human_summary=human_summary,
         artifacts={"data_root": str(cli.DATA_ROOT)},
         next_actions=[] if items else ["Process one day of audio first, then check status again."],
@@ -85,6 +103,7 @@ def handle_context_query(args: argparse.Namespace, *, cli_getter, build_success_
         "open": "open item",
         "closed": "closed item",
         "evidence": "evidence item",
+        "decision": "decision",
     }
     kind = str(getattr(args, "kind", "") or "").strip()
     noun = label_map.get(kind, "item")
@@ -152,12 +171,25 @@ def handle_profile_get(args: argparse.Namespace, *, cli_getter, build_success_pa
 
 
 def handle_profile_set(args: argparse.Namespace, *, cli_getter, build_success_payload, upsert_project_env_fn):
-    from openmy.config import DEFAULT_STT_MODELS
+    from openmy.config import DEFAULT_STT_MODELS, EXPORT_PROVIDERS
     from openmy.services.context.consolidation import profile_path, save_profile_settings
+    from openmy.services.screen_recognition.settings import load_screen_context_settings, save_screen_context_settings
 
     cli = cli_getter()
     audio_source = str(getattr(args, "audio_source", "") or "").strip()
     stt_provider = str(getattr(args, "stt_provider", "") or "").strip().lower()
+    export_provider = str(getattr(args, "export_provider", "") or "").strip().lower()
+    export_path = str(getattr(args, "export_path", "") or "").strip()
+    export_key = str(getattr(args, "export_key", "") or "").strip()
+    export_db = str(getattr(args, "export_db", "") or "").strip()
+    screen_recognition = str(getattr(args, "screen_recognition", "") or "").strip().lower()
+
+    if not export_provider:
+        if export_path:
+            export_provider = "obsidian"
+        elif export_key or export_db:
+            export_provider = "notion"
+
     if audio_source:
         audio_source_path = Path(audio_source).expanduser()
         if not audio_source_path.exists() or not audio_source_path.is_dir():
@@ -177,6 +209,48 @@ def handle_profile_set(args: argparse.Namespace, *, cli_getter, build_success_pa
             hint="Pass one of: gemini, faster-whisper, funasr, groq, dashscope, deepgram.",
         )
 
+    if export_provider and export_provider not in EXPORT_PROVIDERS:
+        raise SkillDispatchError(
+            action="profile.set",
+            error_code="invalid_export_provider",
+            message="Unknown export provider.",
+            hint="Pass one of: obsidian, notion.",
+        )
+
+    if export_provider == "obsidian":
+        export_path_obj = Path(export_path).expanduser() if export_path else None
+        if export_path and (not export_path_obj.exists() or not export_path_obj.is_dir()):
+            raise SkillDispatchError(
+                action="profile.set",
+                error_code="invalid_export_path",
+                message="Obsidian export path does not exist.",
+                hint="Pass an existing folder path for --export-path.",
+            )
+        if not export_path:
+            raise SkillDispatchError(
+                action="profile.set",
+                error_code="missing_export_path",
+                message="Obsidian export needs a vault path.",
+                hint="Pass --export-path /path/to/your/vault together with --export-provider obsidian.",
+            )
+        export_path = str(export_path_obj)
+    elif export_provider == "notion":
+        if not export_key or not export_db:
+            raise SkillDispatchError(
+                action="profile.set",
+                error_code="missing_notion_export_fields",
+                message="Notion export needs both API key and database ID.",
+                hint="Pass --export-key and --export-db together with --export-provider notion.",
+            )
+
+    if screen_recognition and screen_recognition not in {"on", "off"}:
+        raise SkillDispatchError(
+            action="profile.set",
+            error_code="invalid_screen_recognition",
+            message="Unknown screen recognition value.",
+            hint="Pass --screen-recognition on or --screen-recognition off.",
+        )
+
     updates = {
         "name": str(getattr(args, "name", "") or "").strip(),
         "language": str(getattr(args, "language", "") or "").strip(),
@@ -184,35 +258,85 @@ def handle_profile_set(args: argparse.Namespace, *, cli_getter, build_success_pa
         "audio_source_dir": audio_source,
     }
     final_updates = {key: value for key, value in updates.items() if value}
-    if not final_updates and not stt_provider:
+    if not final_updates and not stt_provider and not export_provider and not screen_recognition:
         raise SkillDispatchError(
             action="profile.set",
             error_code="missing_profile_fields",
             message="No profile fields provided.",
-            hint="Pass at least one of --name, --language, --timezone, --audio-source, or --stt-provider.",
+            hint="Pass at least one profile field, an export setting, or --screen-recognition.",
         )
 
     profile = save_profile_settings(cli.DATA_ROOT, final_updates)
     artifacts = {"profile": str(profile_path(cli.DATA_ROOT))}
+    updated_fields = sorted(final_updates.keys())
+
     env_path = None
+
+    def _write_env(key: str, value: str) -> None:
+        nonlocal env_path
+        env_path = upsert_project_env_fn(key, value)
+
     if audio_source:
-        env_path = upsert_project_env_fn("OPENMY_AUDIO_SOURCE_DIR", audio_source)
+        _write_env("OPENMY_AUDIO_SOURCE_DIR", audio_source)
     if stt_provider:
-        env_path = upsert_project_env_fn("OPENMY_STT_PROVIDER", stt_provider)
+        _write_env("OPENMY_STT_PROVIDER", stt_provider)
+        updated_fields.append("stt_provider")
+    export_payload: dict[str, str] = {}
+    if export_provider:
+        _write_env("OPENMY_EXPORT_PROVIDER", export_provider)
+        updated_fields.append("export_provider")
+        export_payload["provider"] = export_provider
+        if export_provider == "obsidian":
+            _write_env("OPENMY_OBSIDIAN_VAULT_PATH", export_path)
+            updated_fields.append("export_path")
+            export_payload["path"] = export_path
+        elif export_provider == "notion":
+            _write_env("NOTION_API_KEY", export_key)
+            _write_env("NOTION_DATABASE_ID", export_db)
+            updated_fields.extend(["export_key", "export_db"])
+            export_payload["database_id"] = export_db
+    screen_payload: dict[str, str | bool] = {}
+    if screen_recognition:
+        settings = load_screen_context_settings(data_root=cli.DATA_ROOT)
+        enabled = screen_recognition == "on"
+        settings.enabled = enabled
+        settings.participation_mode = "summary_only" if enabled else "off"
+        save_screen_context_settings(settings, data_root=cli.DATA_ROOT)
+        _write_env("SCREEN_RECOGNITION_ENABLED", "true" if enabled else "false")
+        artifacts["screen_settings"] = str((cli.DATA_ROOT / 'runtime' / 'screen_context_settings.json'))
+        updated_fields.append("screen_recognition")
+        screen_payload = {
+            "enabled": enabled,
+            "mode": settings.participation_mode,
+        }
+
     if env_path:
         artifacts["env"] = str(env_path)
-    updated_fields = sorted(final_updates.keys())
+
+    summary_parts: list[str] = []
+    if final_updates:
+        summary_parts.append(f"Profile updated for {profile.get('name', 'user')}.")
     if stt_provider:
-        updated_fields.append("stt_provider")
-    if stt_provider and final_updates:
-        human_summary = f"Profile updated for {profile.get('name', 'user')} and STT provider set to {stt_provider}."
-    elif stt_provider:
-        human_summary = f"STT provider set to {stt_provider}."
-    else:
-        human_summary = f"Profile updated for {profile.get('name', 'user')}."
+        summary_parts.append(f"STT provider set to {stt_provider}.")
+    if export_provider == "obsidian":
+        summary_parts.append("Obsidian export configured.")
+    elif export_provider == "notion":
+        summary_parts.append("Notion export configured.")
+    if screen_recognition == "on":
+        summary_parts.append("Screen recognition is enabled.")
+    elif screen_recognition == "off":
+        summary_parts.append("Screen recognition is disabled.")
+    human_summary = " ".join(summary_parts) or f"Profile updated for {profile.get('name', 'user')}."
+
     payload = build_success_payload(
         action="profile.set",
-        data={"profile": profile, "updated_fields": updated_fields, "stt_provider": stt_provider},
+        data={
+            "profile": profile,
+            "updated_fields": updated_fields,
+            "stt_provider": stt_provider,
+            "export": export_payload,
+            "screen_recognition": screen_payload,
+        },
         human_summary=human_summary,
         artifacts=artifacts,
         next_actions=["Run openmy skill context.get --json if you want a fresh context snapshot."],

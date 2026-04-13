@@ -10,7 +10,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from openmy.config import ROLE_RECOGNITION_ENABLED, get_user_canonical_name, get_user_preferred_name
+from openmy.config import ROLE_RECOGNITION_ENABLED
 from openmy.domain.intent import (
     DONE_STATUSES,
     Event,
