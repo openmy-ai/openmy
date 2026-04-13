@@ -2,9 +2,23 @@
 name = "openmy"
 version = "0.2.0"
 description = "OpenMy — 个人上下文引擎"
+readme = "README.md"
 requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "OpenMy contributors" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+urls = { Homepage = "https://github.com/openmy-ai/openmy", Repository = "https://github.com/openmy-ai/openmy", Issues = "https://github.com/openmy-ai/openmy/issues" }
 dependencies = [
-    "google-genai>=1.12.1",
     "rich>=13.0",
     "watchdog>=4.0.0",
 ]
@@ -13,6 +27,9 @@ dependencies = [
 openmy = "openmy.cli:main"
 
 [project.optional-dependencies]
+cloud = [
+    "google-genai>=1.12.1",
+]
 local = [
     "faster-whisper>=1.1.0",
 ]

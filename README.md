@@ -52,6 +52,7 @@ openmy quick-start --demo
 
 > 依赖只有两样：Python 3.10+ 和 FFmpeg。  
 > 想先走本地转写，再补一条：`pip install "openmy[local]"`。
+> 想开云端 Gemini（双子）这条路，再补一条：`pip install "openmy[cloud]"`。
 > `--demo` 会先跑内置示例，先确认整条链路能走通，再换你自己的音频。
 
 如果你是在仓库里开发：

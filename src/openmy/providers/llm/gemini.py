@@ -33,10 +33,10 @@ class GeminiLLMProvider(TextGenerationProvider):
             raise FriendlyCliError(
                 "Gemini 依赖没装好，当前不能走这条整理路线。",
                 code="gemini_llm_sdk_missing",
-                fix='先运行 `pip install google-genai`，再重试。',
+                fix='先运行 `pip install "openmy[cloud]"`，再重试。',
                 doc_url=doc_url("语音转写"),
                 message_en="Gemini SDK is unavailable.",
-                fix_en="Run pip install google-genai, then retry.",
+                fix_en='Run pip install "openmy[cloud]", then retry.',
             )
         if not self.api_key:
             raise FriendlyCliError(

@@ -52,6 +52,7 @@ openmy quick-start --demo
 
 > You only need Python 3.10+ and FFmpeg.  
 > If you want the local speech-to-text route first, add `pip install "openmy[local]"`.
+> If you want the Gemini cloud route, add `pip install "openmy[cloud]"`.
 > `--demo` runs the bundled sample first so you can verify the full flow before switching to your own audio.
 
 If you are working from the repository:
