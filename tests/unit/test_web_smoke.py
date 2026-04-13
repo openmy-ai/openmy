@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import uuid
 import tempfile
 import threading
 import time
@@ -27,6 +28,32 @@ class TestWebSmoke(unittest.TestCase):
                 return payload
             time.sleep(0.01)
         self.fail(f"job {job_id} did not reach status {expected_status}")
+
+    def post_json(self, base_url: str, path: str, payload: dict):
+        request = Request(
+            f"{base_url}{path}",
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urlopen(request, timeout=2) as response:
+            return json.loads(response.read().decode("utf-8")), response.status
+
+    def post_multipart(self, base_url: str, path: str, *, filename: str, content: bytes, content_type: str = "audio/wav"):
+        boundary = f"----OpenMyBoundary{uuid.uuid4().hex}"
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f"Content-Type: {content_type}\r\n\r\n"
+        ).encode("utf-8") + content + f"\r\n--{boundary}--\r\n".encode("utf-8")
+        request = Request(
+            f"{base_url}{path}",
+            data=body,
+            method="POST",
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        )
+        with urlopen(request, timeout=2) as response:
+            return json.loads(response.read().decode("utf-8")), response.status
 
     def start_server(self, data_root: Path, legacy_root: Path, runner: JobRunner):
         patches = [
@@ -242,11 +269,70 @@ class TestWebSmoke(unittest.TestCase):
             finally:
                 self.stop_server(server, patches)
 
-            self.assertEqual(context_payload["status_line"], "最近主要推进 OpenMy；当前有 2 个待办未闭环；高频互动对象是 伴侣。")
-            self.assertEqual(context_payload["today_focus"], ["前端补齐", "pipeline"])
-            self.assertEqual(jobs_payload[0]["job_id"], created["job_id"])
-            self.assertEqual(detail_payload["status"], "succeeded")
-            self.assertIn("context started", detail_payload["log_lines"])
+        self.assertEqual(context_payload["status_line"], "最近主要推进 OpenMy；当前有 2 个待办未闭环；高频互动对象是 伴侣。")
+        self.assertEqual(context_payload["today_focus"], ["前端补齐", "pipeline"])
+        self.assertEqual(jobs_payload[0]["job_id"], created["job_id"])
+        self.assertEqual(detail_payload["status"], "succeeded")
+        self.assertIn("context started", detail_payload["log_lines"])
+
+    def test_upload_endpoint_accepts_audio_file(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner()
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                payload, status = self.post_multipart(base_url, "/api/upload", filename="demo.wav", content=b"RIFFdemo")
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["file_path"].endswith(".wav"))
+        self.assertEqual(payload["filename"], "demo.wav")
+        self.assertGreater(payload["size_bytes"], 0)
+
+    def test_upload_endpoint_rejects_unsupported_extension(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner()
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                with self.assertRaises(HTTPError) as ctx:
+                    self.post_multipart(base_url, "/api/upload", filename="notes.txt", content=b"plain text", content_type="text/plain")
+                payload = json.loads(ctx.exception.read().decode("utf-8"))
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertIn("unsupported file type", payload["error"])
+
+    def test_pipeline_job_action_endpoints_update_status(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner()
+            created = runner.create_job(kind="run", target_date="2026-04-08", steps=["转写", "清洗"])
+            runner.update_job(created["job_id"], status="running", can_skip=True)
+
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                paused, _ = self.post_json(base_url, f"/api/pipeline/jobs/{created['job_id']}/pause", {})
+                resumed, _ = self.post_json(base_url, f"/api/pipeline/jobs/{created['job_id']}/resume", {})
+                skipped, _ = self.post_json(base_url, f"/api/pipeline/jobs/{created['job_id']}/skip", {})
+                cancelled, _ = self.post_json(base_url, f"/api/pipeline/jobs/{created['job_id']}/cancel", {})
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertEqual(paused["status"], "paused")
+        self.assertEqual(resumed["status"], "running")
+        self.assertIn("已收到跳过当前步骤的请求", skipped["log_lines"])
+        self.assertEqual(cancelled["status"], "cancelled")
 
     def test_server_serves_day_workspace_contract(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

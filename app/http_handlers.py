@@ -39,6 +39,8 @@ from app.pipeline_api import (
     get_pipeline_job_payload,
     get_pipeline_jobs_payload,
     handle_create_pipeline_job,
+    handle_job_action,
+    handle_upload_request,
 )
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -161,6 +163,11 @@ class BrainHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        if path == "/api/upload":
+            payload = handle_upload_request(self)
+            send_json(self, payload, status=200 if payload.get("file_path") else 400)
+            return
+
         if self.headers.get("Content-Type", "").strip().lower() != "application/json":
             send_json(self, {"error": "unsupported media type", "expected": "application/json"}, status=415)
             return
@@ -195,6 +202,11 @@ class BrainHandler(SimpleHTTPRequestHandler):
         elif path == "/api/pipeline/jobs":
             payload = handle_create_pipeline_job(data)
             send_json(self, payload, status=200 if payload.get("job_id") else 400)
+        elif path.startswith("/api/pipeline/jobs/"):
+            suffix = path.removeprefix("/api/pipeline/jobs/")
+            job_id, _, action = suffix.partition("/")
+            payload, status = handle_job_action(job_id, action)
+            send_json(self, payload, status=status)
         elif path == "/api/onboarding/select":
             payload = update_onboarding_provider_payload(data)
             send_json(self, payload, status=200 if payload.get('success') else 400)

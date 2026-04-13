@@ -134,6 +134,67 @@ class TestJobRunner(unittest.TestCase):
             self.assertIn("进程重启前任务未完成", payload["error"])
             self.assertIsNotNone(payload["finished_at"])
 
+    def test_structured_steps_drive_progress_and_eta(self):
+        runner = JobRunner()
+        job = runner.create_job(
+            kind="run",
+            target_date="2026-04-10",
+            steps=[
+                {"name": "transcribe", "label": "转写"},
+                {"name": "clean", "label": "清洗"},
+            ],
+            source_file="demo.wav",
+            source_size_bytes=20 * 1024 * 1024,
+        )
+
+        initial = runner.get_job(job["job_id"])
+        self.assertEqual(initial["progress_pct"], 0)
+        self.assertGreater(initial["eta_seconds"], 0)
+
+        runner.set_step(job["job_id"], {"name": "transcribe", "label": "转写", "status": "running"})
+        running = runner.get_job(job["job_id"])
+        self.assertEqual(running["current_step"], "transcribe")
+        self.assertEqual(running["progress_pct"], 25)
+        self.assertGreater(running["eta_seconds"], 0)
+
+        runner.set_step(
+            job["job_id"],
+            {"name": "transcribe", "label": "转写", "status": "done", "result_summary": "检测到 3 段对话"},
+        )
+        completed = runner.get_job(job["job_id"])
+        self.assertEqual(completed["steps"][0]["status"], "done")
+        self.assertEqual(completed["steps"][0]["result_summary"], "检测到 3 段对话")
+        self.assertEqual(completed["progress_pct"], 50)
+
+    def test_pause_resume_cancel_and_skip_update_job_state(self):
+        runner = JobRunner()
+        job = runner.create_job(
+            kind="run",
+            target_date="2026-04-10",
+            steps=["转写", "清洗"],
+        )
+        runner.update_job(job["job_id"], status="running")
+
+        runner.pause_job(job["job_id"])
+        paused = runner.get_job(job["job_id"])
+        self.assertEqual(paused["status"], "paused")
+        self.assertFalse(paused["can_pause"])
+
+        runner.resume_job(job["job_id"])
+        resumed = runner.get_job(job["job_id"])
+        self.assertEqual(resumed["status"], "running")
+        self.assertTrue(resumed["can_pause"])
+
+        runner.update_job(job["job_id"], can_skip=True)
+        runner.skip_job_step(job["job_id"])
+        skipped = runner.get_job(job["job_id"])
+        self.assertIn("已收到跳过当前步骤的请求", skipped["log_lines"])
+
+        runner.cancel_job(job["job_id"])
+        cancelled = runner.get_job(job["job_id"])
+        self.assertEqual(cancelled["status"], "cancelled")
+        self.assertEqual(cancelled["eta_seconds"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -91,6 +91,14 @@ class TestFrontendShell(unittest.TestCase):
         self.assertIn("刷新上下文", self.content)
         self.assertIn("重新运行", self.content)
 
+    def test_home_page_contains_dropzone_and_progress_panel(self):
+        self.assertIn("renderHomeDropZone", self.content)
+        self.assertIn("renderHomeProgressPanel", self.content)
+        self.assertIn("homeDropzone", self.content)
+        self.assertIn("/api/upload", self.content)
+        self.assertIn("runPipelineAction", self.content)
+        self.assertIn("['queued', 'running', 'paused'].includes(job.status)", self.content)
+
     def test_timeline_distillation_uses_plain_summary_fallback(self):
         match = re.search(
             r"function getSegmentDistillation\(segment, meta\) \{(?P<body>.*?)\n\}\n\nfunction initCharts",

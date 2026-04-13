@@ -492,6 +492,32 @@ class TestAppServer(unittest.TestCase):
         self.assertEqual(payload["target_date"], "2026-04-08")
         self.assertEqual(payload["status"], "queued")
 
+    def test_create_pipeline_job_endpoint_accepts_audio_files(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            runner = JobRunner(job_dir=Path(tmp_dir))
+
+            def fake_run(kind, target_date, handle):
+                handle.step({"name": "transcribe", "label": "转写", "status": "running"})
+                handle.log("audio pipeline started")
+
+            audio_path = str(Path(tmp_dir) / "sample.wav")
+            Path(audio_path).write_bytes(b"RIFFdemo")
+
+            with patch.object(app_server, "JOB_RUNNER", runner), patch.object(app_server, "run_pipeline_job_command", side_effect=fake_run):
+                payload = app_server.handle_create_pipeline_job(
+                    {
+                        "kind": "run",
+                        "audio_files": [audio_path],
+                        "source_file": "sample.wav",
+                        "source_size_bytes": 8,
+                    }
+                )
+                self.wait_for_job_status(runner, payload["job_id"], "succeeded")
+
+        self.assertEqual(payload["source_file"], "sample.wav")
+        self.assertEqual(payload["source_size_bytes"], 8)
+        self.assertEqual(len(payload["steps"]), 4)
+
     def test_jobs_list_endpoint_returns_recent_jobs(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             runner = JobRunner(job_dir=Path(tmp_dir))
