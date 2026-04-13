@@ -13,6 +13,11 @@ from app.job_runner import JobRunner
 
 
 class TestAppServer(unittest.TestCase):
+    def test_bootstrap_root_resolves_from_server_file(self):
+        expected_root = Path(__file__).resolve().parents[2]
+        self.assertEqual(app_server.BOOTSTRAP_ROOT, expected_root)
+        self.assertEqual(app_server.SRC_DIR, expected_root / "src")
+
     def wait_for_job_status(self, runner: JobRunner, job_id: str, expected_status: str, timeout: float = 1.0):
         deadline = time.time() + timeout
         while time.time() < deadline:
