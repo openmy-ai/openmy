@@ -411,13 +411,49 @@ def get_date_detail(date: str):
             seg["role"] = None
             seg["summary"] = ""
 
+    screen_events = _load_screen_events_summary(server, date)
+
     return {
         "date": date,
         "segments": segments,
         "meta": meta,
         "scenes": scenes,
         "word_count": len(re.sub(r"\s+", "", content)),
+        "screen_events": screen_events,
     }
+
+
+def _load_screen_events_summary(server, date: str) -> list[dict]:
+    screen_path = server.DATA_ROOT / date / "screen_events.json"
+    if not screen_path.exists():
+        return []
+    try:
+        raw = json.loads(screen_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(raw, list):
+        return []
+
+    # Aggregate by app_name + window_name, keep first/last timestamp
+    buckets: dict[str, dict] = {}
+    for event in raw:
+        app = str(event.get("app_name", "") or "").strip()
+        if not app:
+            continue
+        key = app
+        if key not in buckets:
+            buckets[key] = {
+                "app": app,
+                "first_seen": event.get("timestamp", ""),
+                "last_seen": event.get("timestamp", ""),
+                "count": 0,
+                "sample_text": str(event.get("text", "") or "")[:120],
+            }
+        buckets[key]["last_seen"] = event.get("timestamp", "")
+        buckets[key]["count"] += 1
+
+    result = sorted(buckets.values(), key=lambda x: x["count"], reverse=True)
+    return result[:20]
 
 
 def get_date_meta_payload(date: str):

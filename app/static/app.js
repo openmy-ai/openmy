@@ -908,6 +908,7 @@ function renderDayLayout() {
           `).join('')}
         </div>
       </section>
+      ${renderScreenActivity(detail.screen_events)}
       <section class="article-section">
         <h2>数据图表</h2>
         <div class="charts-grid">
@@ -918,6 +919,29 @@ function renderDayLayout() {
   `;
   document.getElementById('settingsBtn')?.classList.remove('active');
   setTimeout(initCharts, 0);
+}
+
+function renderScreenActivity(events) {
+  if (!events || !events.length) return '';
+  return `
+    <section class="article-section">
+      <h2>屏幕活动</h2>
+      <div class="screen-activity-list">
+        ${events.map((item) => {
+          const timeStart = item.first_seen ? new Date(item.first_seen).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '';
+          const timeEnd = item.last_seen ? new Date(item.last_seen).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '';
+          const timeRange = timeStart === timeEnd ? timeStart : `${timeStart} – ${timeEnd}`;
+          return `
+            <div class="screen-activity-item">
+              <span class="screen-activity-app">${escapeHtml(item.app)}</span>
+              <span class="screen-activity-time">${escapeHtml(timeRange)}</span>
+              <span class="screen-activity-count">${item.count}次</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </section>
+  `;
 }
 
 function renderMetaPanels(meta) {

@@ -577,3 +577,15 @@ body {
 
 .home-header-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .text-muted { color: var(--text-light); font-style: italic; }
+
+/* Screen Activity */
+.screen-activity-list { display: flex; flex-direction: column; gap: 2px; }
+.screen-activity-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  font-size: 13px; transition: background var(--transition);
+}
+.screen-activity-item:hover { background: var(--bg-hover); }
+.screen-activity-app { font-weight: 500; color: var(--text); min-width: 120px; }
+.screen-activity-time { color: var(--text-secondary); flex: 1; }
+.screen-activity-count { color: var(--text-light); font-size: 12px; }
