@@ -30,7 +30,7 @@
   </button>
   <div class="sidebar-backdrop" onclick="closeSidebar()"></div>
   <aside class="sidebar" role="navigation" aria-label="日期导航">
-    <div class="logo" onclick="renderHomePage()" role="button" tabindex="0">
+    <div class="logo" onclick="state.showWikiHome=false;renderHomePage()" role="button" tabindex="0">
       <div class="logo-title"><img class="logo-mark" src="/static/icons/logo.png" alt=""><span>OpenMy</span></div>
       <div class="logo-sub">每日上下文</div>
     </div>
@@ -42,7 +42,7 @@
     </div>
     <div class="stats" id="stats"></div>
     <div class="report-links">
-      <button class="report-btn" id="homeBtn" onclick="renderHomePage()">首页</button>
+      <button class="report-btn" id="homeBtn" onclick="state.showWikiHome=false;renderHomePage()">首页</button>
       <button class="report-btn" id="weeklyBtn" onclick="renderWeeklyReport()">周报</button>
       <button class="report-btn" id="monthlyBtn" onclick="renderMonthlyReport()">月报</button>
     </div>

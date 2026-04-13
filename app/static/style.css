@@ -494,3 +494,86 @@ body {
 .transcription-actions { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top: 16px; flex-wrap: wrap; }
 .transcription-current { font-size: 12px; color: var(--text-secondary); }
 @media (max-width: 900px) { .transcription-grid { grid-template-columns: 1fr; } }
+
+/* Wiki Home */
+.wiki-home .home-meta { line-height: 1.7; }
+.wiki-notice {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; margin-bottom: 20px;
+  background: var(--accent-light); border-radius: var(--radius-sm);
+  font-size: 13px; color: var(--text-secondary);
+}
+.wiki-notice .action-btn { padding: 4px 10px; font-size: 12px; }
+
+.wiki-section { margin-bottom: 24px; }
+.wiki-section .section-kicker { margin-bottom: 10px; }
+
+.wiki-steps { display: flex; flex-direction: column; gap: 6px; }
+.wiki-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 14px; background: var(--bg-hover);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; text-align: left; width: 100%;
+  font-family: inherit; font-size: inherit; color: inherit;
+  transition: all var(--transition);
+}
+.wiki-step:hover { background: var(--bg-active); border-color: var(--accent); }
+.wiki-step-num {
+  width: 22px; height: 22px; flex-shrink: 0;
+  background: var(--accent); color: white;
+  border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-size: 12px; font-weight: 600; margin-top: 1px;
+}
+.wiki-step-body { display: flex; flex-direction: column; }
+.wiki-step-title { font-size: 14px; font-weight: 500; color: var(--text); }
+.wiki-step-desc { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+
+.wiki-features { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.wiki-feature {
+  padding: 12px 14px; background: var(--bg-hover);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; text-align: left; width: 100%;
+  font-family: inherit; font-size: inherit; color: inherit;
+  transition: all var(--transition);
+}
+.wiki-feature:hover { background: var(--bg-active); border-color: var(--accent); }
+.wiki-feature-title { display: block; font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+.wiki-feature-desc { display: block; font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+@media (max-width: 700px) { .wiki-features { grid-template-columns: 1fr; } }
+
+.wiki-engines { display: flex; flex-direction: column; gap: 4px; }
+.wiki-engine {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; background: var(--bg-hover);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; width: 100%;
+  font-family: inherit; font-size: 13px; color: inherit;
+  transition: all var(--transition);
+}
+.wiki-engine:hover { background: var(--bg-active); border-color: var(--accent); }
+.wiki-engine-tag {
+  font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 500;
+  flex-shrink: 0;
+}
+.tag-local { background: var(--success-bg); color: var(--success); }
+.tag-cloud { background: var(--accent-light); color: var(--accent); }
+.wiki-engine-name { font-weight: 500; color: var(--text); }
+.wiki-engine-note { margin-left: auto; font-size: 12px; color: var(--text-light); }
+
+.wiki-cmd-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.wiki-cmd-table td { padding: 7px 0; border-bottom: 1px solid var(--bg-hover); vertical-align: top; }
+.wiki-cmd-table td:first-child {
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 12px; color: var(--accent); white-space: nowrap; padding-right: 20px;
+}
+.wiki-cmd-table td:last-child { color: var(--text-secondary); }
+
+.wiki-links {
+  display: flex; gap: 16px; padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.wiki-links a { font-size: 13px; color: var(--accent); text-decoration: none; }
+.wiki-links a:hover { text-decoration: underline; }
+
+.home-help-row { display: flex; justify-content: flex-end; margin-top: 16px; }
+.text-muted { color: var(--text-light); font-style: italic; }

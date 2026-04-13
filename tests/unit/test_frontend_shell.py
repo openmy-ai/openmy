@@ -58,12 +58,15 @@ class TestFrontendShell(unittest.TestCase):
     def test_home_page_contains_onboarding_card(self):
         self.assertIn("renderOnboardingCard", self.content)
         self.assertIn("renderTranscriptionSettings", self.content)
-        self.assertIn("网页首配入口", self.content)
-        self.assertIn("homeOnboardingSlot", self.content)
         self.assertIn("selectOnboardingProvider", self.content)
         self.assertIn("selectTranscriptionOption", self.content)
         self.assertIn("confirmTranscriptionProvider", self.content)
         self.assertIn("transcriptionSettingsSection", self.content)
+
+    def test_home_page_wiki_view(self):
+        self.assertIn("renderWikiHome", self.content)
+        self.assertIn("renderRecentSummaryHome", self.content)
+        self.assertIn("showWikiHome", self.content)
 
     def test_index_renders_meta_panels_inside_day_view(self):
         self.assertIn("renderMetaPanels", self.content)

@@ -25,6 +25,7 @@ const state = {
   context: {},
   onboarding: {},
   selectedTranscriptionProvider: '',
+  showWikiHome: false,
   settingsSection: '',
   loops: [],
   projects: [],
@@ -543,56 +544,138 @@ function renderHomePage() {
   closeSidebar();
   setRoute('home');
   state.currentDate = '';
-  const main = document.getElementById('main');
   const visibleDates = getVisibleDates();
-  if (!visibleDates.length) {
-    main.innerHTML = `
-      <div class="home-page">
-        <h1>OpenMy</h1>
-        <div class="home-meta">还没有可读数据。先把首配路线定下来，再跑第一次 quick-start（快速开始）。</div>
-        <div id="homeOnboardingSlot">${renderOnboardingCard()}</div>
-      </div>
-    `;
-    return;
+  if (visibleDates.length && !state.showWikiHome) {
+    renderRecentSummaryHome(visibleDates);
+  } else {
+    renderWikiHome();
   }
+}
 
-  const weekDates = latestWeekDates();
-  const latest = latestDateInfo();
-  const activeProjects = (state.context.active_projects || []).map((item) => item.title || item.project_id).filter(Boolean);
-  const projectItems = activeProjects.slice(0, 3).map((name) => `${name}(${countKeywordDays(name, weekDates)}d)`);
-  const decisionItems = (state.context.recent_decisions || []).slice(0, 3).map((item) => plainText(item.decision || item.summary || ''));
-  const loopItems = (state.context.open_loops || []).slice(0, 3).map((item) => plainText(item.title || item.loop_id || ''));
+function renderWikiHome() {
+  const main = document.getElementById('main');
+  const onboarding = state.onboarding || {};
+  const needsSetup = !onboarding.current_provider;
+  const setupNotice = needsSetup
+    ? `<div class="wiki-notice"><span>还没配置转写引擎</span> <button class="action-btn" type="button" onclick="openSettings('transcription')">去设置</button></div>`
+    : '';
+
+  main.innerHTML = `
+    <div class="home-page wiki-home">
+      ${setupNotice}
+      <h1>OpenMy</h1>
+      <div class="home-meta">把你每天说的话变成可搜索、可回顾的个人上下文。<br>录音 → 转写 → 整理 → 浏览，全部在本地完成。</div>
+
+      <div class="wiki-section">
+        <div class="section-kicker">快速开始</div>
+        <div class="wiki-steps">
+          <button class="wiki-step" type="button" onclick="openSettings('transcription')">
+            <span class="wiki-step-num">1</span>
+            <span class="wiki-step-body">
+              <span class="wiki-step-title">选择转写引擎</span>
+              <span class="wiki-step-desc">本地免费或云端更快，6种引擎可选</span>
+            </span>
+          </button>
+          <button class="wiki-step" type="button" onclick="showToast('在终端运行 openmy quick-start 开始转写')">
+            <span class="wiki-step-num">2</span>
+            <span class="wiki-step-body">
+              <span class="wiki-step-title">运行转写</span>
+              <span class="wiki-step-desc">终端输入 openmy quick-start，跟着提示走</span>
+            </span>
+          </button>
+          <button class="wiki-step" type="button" onclick="document.querySelector('.date-list')?.scrollIntoView({behavior:'smooth'})">
+            <span class="wiki-step-num">3</span>
+            <span class="wiki-step-body">
+              <span class="wiki-step-title">回来看结果</span>
+              <span class="wiki-step-desc">刷新页面，左边出现日期，点进去看内容</span>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div class="wiki-section">
+        <div class="section-kicker">功能</div>
+        <div class="wiki-features">
+          <button class="wiki-feature" type="button" onclick="openSettings('transcription')">
+            <span class="wiki-feature-title">音频转文字</span>
+            <span class="wiki-feature-desc">6种转写引擎，中英文，本地或云端</span>
+          </button>
+          <button class="wiki-feature" type="button" onclick="showToast('转写完成后自动生成摘要、决策和待办')">
+            <span class="wiki-feature-title">自动整理</span>
+            <span class="wiki-feature-desc">转写完自动提取摘要、决策、待办和洞察</span>
+          </button>
+          <button class="wiki-feature" type="button" onclick="openSpotlight()">
+            <span class="wiki-feature-title">全文搜索</span>
+            <span class="wiki-feature-desc">按关键词搜索所有日期的对话内容</span>
+          </button>
+          <button class="wiki-feature" type="button" onclick="openSettings()">
+            <span class="wiki-feature-title">屏幕记录</span>
+            <span class="wiki-feature-desc">自动截屏加文字识别，和语音对照</span>
+          </button>
+          <button class="wiki-feature" type="button" onclick="toggleSidebarDict()">
+            <span class="wiki-feature-title">纠错词典</span>
+            <span class="wiki-feature-desc">转写有误点一下纠正，下次自动生效</span>
+          </button>
+          <button class="wiki-feature" type="button" onclick="renderWeeklyReport()">
+            <span class="wiki-feature-title">周报月报</span>
+            <span class="wiki-feature-desc">自动汇总一周或一个月的记录和趋势</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="wiki-section">
+        <div class="section-kicker">转写引擎</div>
+        <div class="wiki-engines">
+          <button class="wiki-engine" type="button" onclick="openSettings('transcription')"><span class="wiki-engine-tag tag-local">本地</span><span class="wiki-engine-name">FunASR</span><span class="wiki-engine-note">中文优先，不要密钥</span></button>
+          <button class="wiki-engine" type="button" onclick="openSettings('transcription')"><span class="wiki-engine-tag tag-local">本地</span><span class="wiki-engine-name">Faster Whisper</span><span class="wiki-engine-note">通用，不要密钥</span></button>
+          <button class="wiki-engine" type="button" onclick="openSettings('transcription')"><span class="wiki-engine-tag tag-cloud">云端</span><span class="wiki-engine-name">Gemini</span><span class="wiki-engine-note">速度快，推荐</span></button>
+          <button class="wiki-engine" type="button" onclick="openSettings('transcription')"><span class="wiki-engine-tag tag-cloud">云端</span><span class="wiki-engine-name">DashScope</span><span class="wiki-engine-note">中文精度高</span></button>
+          <button class="wiki-engine" type="button" onclick="openSettings('transcription')"><span class="wiki-engine-tag tag-cloud">云端</span><span class="wiki-engine-name">Groq</span><span class="wiki-engine-note">极快</span></button>
+          <button class="wiki-engine" type="button" onclick="openSettings('transcription')"><span class="wiki-engine-tag tag-cloud">云端</span><span class="wiki-engine-name">Deepgram</span><span class="wiki-engine-note">英文场景</span></button>
+        </div>
+      </div>
+
+      <div class="wiki-section">
+        <div class="section-kicker">常用命令</div>
+        <table class="wiki-cmd-table">
+          <tbody>
+            <tr><td>openmy quick-start</td><td>交互式引导，从选引擎到出结果</td></tr>
+            <tr><td>openmy run --date 2026-04-08</td><td>处理指定日期的录音</td></tr>
+            <tr><td>openmy report</td><td>打开这个网页界面</td></tr>
+            <tr><td>openmy screen on</td><td>开启屏幕截图记录</td></tr>
+            <tr><td>openmy correct typo</td><td>纠正转写错误</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="wiki-section wiki-links">
+        <a href="https://github.com/openmy-ai/openmy" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/openmy-ai/openmy#readme" target="_blank" rel="noopener">完整文档</a>
+        <a href="https://github.com/openmy-ai/openmy/issues" target="_blank" rel="noopener">反馈问题</a>
+      </div>
+    </div>
+  `;
+}
+
+function renderRecentSummaryHome(visibleDates) {
+  const main = document.getElementById('main');
+  const recentDates = visibleDates.slice(0, 7);
 
   main.innerHTML = `
     <div class="home-page">
       <h1>OpenMy</h1>
-      <div class="home-meta">本周 ${formatRangeLabel(weekDates[weekDates.length - 1]?.date || latest.date, weekDates[0]?.date || latest.date)} · ${weekDates.length}天 · ${weekDates.reduce((sum, item) => sum + (item.segments || 0), 0)}条记录</div>
-
-      <div id="homeOnboardingSlot">${renderOnboardingCard()}</div>
-
-      <div class="home-block">
-        <div class="section-kicker">待办</div>
-        ${renderChipList(loopItems, '当前没有待办')}
+      <div class="home-meta">最近记录</div>
+      <div class="daily-link-list">
+        ${recentDates.map((item) => `
+          <button class="daily-link-item" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
+            <span class="daily-link-date">${escapeHtml(formatShortDate(item.date))}</span>
+            <span class="daily-link-summary">${item.segments ? escapeHtml(truncateSummary(item.summary || item.timeline?.[0]?.preview || '')) : '<span class="text-muted">仅屏幕截图</span>'}</span>
+            <span class="daily-link-count">${item.segments ? item.segments + '条' : '截屏'}</span>
+          </button>
+        `).join('')}
       </div>
-      <div class="home-block">
-        <div class="section-kicker">项目</div>
-        ${renderChipList(projectItems, '当前没有项目')}
-      </div>
-      <div class="home-block">
-        <div class="section-kicker">决策</div>
-        ${renderChipList(decisionItems, '当前没有决策')}
-      </div>
-      <div class="home-block">
-        <div class="section-kicker">每日记录</div>
-        <div class="daily-link-list">
-          ${weekDates.map((item) => `
-            <button class="daily-link-item" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
-              <span class="daily-link-date">${escapeHtml(formatShortDate(item.date))}</span>
-              <span class="daily-link-summary">${escapeHtml(truncateSummary(item.summary || item.timeline?.[0]?.preview || ''))}</span>
-              <span class="daily-link-count">${item.segments || 0}条</span>
-            </button>
-          `).join('')}
-        </div>
+      <div class="home-help-row">
+        <button class="report-btn" type="button" onclick="state.showWikiHome=true;renderHomePage()">使用说明</button>
       </div>
     </div>
   `;
