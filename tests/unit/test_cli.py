@@ -1885,7 +1885,12 @@ class TestOpenMyCli(unittest.TestCase):
                 temp_env,
             ), patch("openmy.services.screen_recognition.settings.load_screen_context_settings", return_value=settings), patch(
                 "openmy.services.screen_recognition.settings.save_screen_context_settings"
-            ) as save_mock:
+            ) as save_mock, patch(
+                "openmy.services.screen_recognition.capture.is_capture_supported", return_value=True
+            ), patch(
+                "openmy.services.screen_recognition.capture.start_capture_daemon",
+                return_value=argparse.Namespace(pid=12345),
+            ):
                 result = openmy_cli.cmd_screen(argparse.Namespace(action="on"))
 
             self.assertEqual(result, 0)
