@@ -83,6 +83,8 @@ class DaemonStatus:
     last_capture_at: str = ""
     last_error: str = ""
     last_frame_id: int = 0
+    last_window_id: str = ""
+    last_content_hash: str = ""
     log_path: str = ""
 
     @classmethod
@@ -96,6 +98,8 @@ class DaemonStatus:
             last_capture_at=str(payload.get("last_capture_at", "") or ""),
             last_error=str(payload.get("last_error", "") or ""),
             last_frame_id=int(payload.get("last_frame_id", 0) or 0),
+            last_window_id=str(payload.get("last_window_id", "") or ""),
+            last_content_hash=str(payload.get("last_content_hash", "") or ""),
             log_path=str(payload.get("log_path", "") or ""),
         )
 

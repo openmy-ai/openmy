@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import ctypes
+import gc
+import multiprocessing as mp
 import os
+import queue
+import shlex
 import signal
 import subprocess
 import sys
@@ -10,6 +15,7 @@ from pathlib import Path
 
 from openmy.services.screen_recognition.capture_common import (
     DEFAULT_CAPTURE_INTERVAL_SECONDS,
+    DEFAULT_CAPTURE_WORKER_TIMEOUT_SECONDS,
     DEFAULT_DATA_ROOT,
     DEFAULT_SCREENSHOT_RETENTION_HOURS,
     DaemonStatus,
@@ -67,11 +73,90 @@ class OcrCache:
             self._items.popitem(last=False)
 
 
+def _capture_worker(
+    screenshot_path: str,
+    data_root: str | None,
+    languages: list[str] | None,
+    result_queue: mp.Queue,
+) -> None:
+    root = Path(data_root) if data_root else None
+    payload = extract_text_from_image(Path(screenshot_path), data_root=root, languages=languages)
+    result_queue.put(
+        {
+            "text": payload.text,
+            "text_json": payload.text_json,
+            "confidence": payload.confidence,
+            "engine": payload.engine,
+        }
+    )
+
+
+def _ocr_context() -> mp.context.BaseContext:
+    return mp.get_context("spawn")
+
+
+def _release_memory_pressure() -> None:
+    gc.collect()
+    if sys.platform != "darwin":
+        return
+    try:
+        libc = ctypes.CDLL("libSystem.B.dylib")
+        relief = libc.malloc_zone_pressure_relief
+        relief.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+        relief.restype = ctypes.c_size_t
+        relief(None, 0)
+    except Exception:  # pragma: no cover
+        return
+
+
+def _run_ocr_in_subprocess(
+    screenshot_path: Path,
+    *,
+    data_root: Path | None = None,
+    languages: list[str] | None = None,
+    timeout_seconds: int = DEFAULT_CAPTURE_WORKER_TIMEOUT_SECONDS,
+) -> OcrPayload:
+    context = _ocr_context()
+    result_queue = context.Queue()
+    process = context.Process(
+        target=_capture_worker,
+        args=(str(screenshot_path), str(data_root) if data_root else None, languages, result_queue),
+    )
+    process.start()
+    process.join(timeout_seconds)
+    if process.is_alive():
+        process.terminate()
+        process.join(1)
+        if process.is_alive():
+            process.kill()
+            process.join(1)
+        result_queue.close()
+        result_queue.join_thread()
+        process.close()
+        raise TimeoutError(f"屏幕识别子进程超时（{timeout_seconds}秒）")
+    try:
+        payload = result_queue.get_nowait()
+    except queue.Empty as exc:  # pragma: no cover
+        raise RuntimeError("屏幕识别子进程没有返回结果") from exc
+    finally:
+        result_queue.close()
+        result_queue.join_thread()
+        process.close()
+    return OcrPayload(
+        text=str(payload.get("text", "") or ""),
+        text_json=[item for item in payload.get("text_json", []) if isinstance(item, dict)],
+        confidence=float(payload.get("confidence", 0.0) or 0.0),
+        engine=str(payload.get("engine", "") or ""),
+    )
+
+
 def capture_screen_event(
     *,
     data_root: Path | None = None,
     frame_id: int | None = None,
     languages: list[str] | None = None,
+    ocr_cache: OcrCache | None = None,
+    worker_timeout_seconds: int = DEFAULT_CAPTURE_WORKER_TIMEOUT_SECONDS,
 ) -> ScreenEventRecord:
     now = _now_local()
     date_str = now.date().isoformat()
@@ -82,7 +167,21 @@ def capture_screen_event(
     metadata = get_frontmost_context(data_root=data_root)
     capture_screenshot(shot_path)
     content_hash = _file_hash(shot_path)
-    ocr = extract_text_from_image(shot_path, data_root=data_root, languages=languages)
+    window_id = f"{metadata.app_name}::{metadata.window_name}"
+    ocr = ocr_cache.get(window_id, content_hash) if ocr_cache is not None else None
+    if ocr is None:
+        try:
+            ocr = _run_ocr_in_subprocess(
+                shot_path,
+                data_root=data_root,
+                languages=languages,
+                timeout_seconds=worker_timeout_seconds,
+            )
+        except Exception:
+            shot_path.unlink(missing_ok=True)
+            raise
+        if ocr_cache is not None:
+            ocr_cache.put(window_id, content_hash, ocr)
     return ScreenEventRecord(
         frame_id=frame_number,
         timestamp=now.isoformat(),
@@ -95,6 +194,32 @@ def capture_screen_event(
         ocr_engine=ocr.engine,
         ocr_text_json=ocr.text_json,
     )
+
+
+def capture_once(
+    *,
+    data_root: Path | None = None,
+    retention_hours: int = DEFAULT_SCREENSHOT_RETENTION_HOURS,
+    ocr_cache: OcrCache | None = None,
+) -> tuple[ScreenEventRecord, str, bool]:
+    root = Path(data_root or DEFAULT_DATA_ROOT)
+    status = read_status(root)
+    event = capture_screen_event(data_root=root, ocr_cache=ocr_cache)
+    window_id = f"{event.app_name}::{event.window_name}"
+    is_duplicate = window_id == status.last_window_id and event.content_hash == status.last_content_hash
+    if is_duplicate:
+        Path(event.screenshot_path).unlink(missing_ok=True)
+    else:
+        append_event(event, data_root=root)
+        cleanup_old_snapshots(data_root=root, retention_hours=retention_hours)
+    status.last_capture_at = event.timestamp
+    status.last_frame_id = event.frame_id
+    status.last_window_id = window_id
+    status.last_content_hash = event.content_hash
+    status.last_error = ""
+    write_status(status, root)
+    _release_memory_pressure()
+    return event, window_id, is_duplicate
 
 
 def start_capture_daemon(
@@ -116,18 +241,20 @@ def start_capture_daemon(
         return status
 
     log_handle = open(log_path(data_root), "a", encoding="utf-8")
-    cmd = [
-        sys.executable,
-        "-m",
-        "openmy.cli",
-        "_screen-capture-loop",
-        "--interval",
-        str(interval_seconds),
-        "--retention-hours",
-        str(retention_hours),
-        "--data-root",
-        str(Path(data_root or DEFAULT_DATA_ROOT)),
-    ]
+    tick_cmd = " ".join(
+        shlex.quote(part)
+        for part in [
+            sys.executable,
+            "-m",
+            "openmy.services.screen_recognition.capture_tick",
+            "--retention-hours",
+            str(retention_hours),
+            "--data-root",
+            str(Path(data_root or DEFAULT_DATA_ROOT)),
+        ]
+    )
+    shell_script = f"while true; do {tick_cmd}; sleep {max(1, int(interval_seconds))}; done"
+    cmd = ["/bin/sh", "-lc", shell_script]
     process = subprocess.Popen(
         cmd,
         cwd=str(PROJECT_ROOT),
@@ -178,39 +305,9 @@ def run_capture_loop(
     write_status(status, root)
 
     ocr_cache = OcrCache()
-    last_key = ""
-    last_hash = ""
     while True:
         try:
-            event = capture_screen_event(data_root=root)
-            window_id = f"{event.app_name}::{event.window_name}"
-            if window_id == last_key and event.content_hash == last_hash:
-                Path(event.screenshot_path).unlink(missing_ok=True)
-            else:
-                cached = ocr_cache.get(window_id, event.content_hash)
-                if cached is not None:
-                    event.text = cached.text
-                    event.ocr_text_json = cached.text_json
-                    event.ocr_engine = cached.engine
-                else:
-                    ocr_cache.put(
-                        window_id,
-                        event.content_hash,
-                        OcrPayload(
-                            text=event.text,
-                            text_json=list(event.ocr_text_json),
-                            confidence=0.0,
-                            engine=event.ocr_engine,
-                        ),
-                    )
-                append_event(event, data_root=root)
-                last_key = window_id
-                last_hash = event.content_hash
-                status.last_capture_at = event.timestamp
-                status.last_frame_id = event.frame_id
-                status.last_error = ""
-                write_status(status, root)
-                cleanup_old_snapshots(data_root=root, retention_hours=retention_hours)
+            capture_once(data_root=root, retention_hours=retention_hours, ocr_cache=ocr_cache)
         except KeyboardInterrupt:
             break
         except Exception as exc:

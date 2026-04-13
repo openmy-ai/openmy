@@ -5,12 +5,16 @@ from pathlib import Path
 from unittest.mock import patch
 
 from openmy.adapters.screen_recognition.client import ScreenRecognitionClient
+from openmy.services.screen_recognition.capture_common import CaptureMetadata, OcrPayload
 from openmy.services.screen_recognition.capture import (
+    OcrCache,
     ScreenEventRecord,
     activity_summary,
     append_event,
+    capture_screen_event,
     query_events,
     search_elements,
+    start_capture_daemon,
 )
 
 
@@ -164,6 +168,49 @@ class TestLocalScreenRecognitionClient(unittest.TestCase):
 
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].app_name, "OpenMy")
+
+
+class TestCaptureWorkerIsolation(unittest.TestCase):
+    def test_capture_screen_event_reuses_cached_ocr_payload(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            cache = OcrCache()
+
+            def fake_capture_screenshot(path: Path, display_id: str | None = None):
+                path.write_bytes(b"image")
+                return path
+
+            metadata = CaptureMetadata(app_name="OpenMy", window_name="日报", browser_url="")
+            payload = OcrPayload(text="缓存文本", text_json=[{"text": "缓存文本"}], confidence=1.0, engine="apple-vision")
+
+            with (
+                patch("openmy.services.screen_recognition.capture_engine.get_frontmost_context", return_value=metadata),
+                patch("openmy.services.screen_recognition.capture_engine.capture_screenshot", side_effect=fake_capture_screenshot),
+                patch("openmy.services.screen_recognition.capture_engine._file_hash", return_value="hash-1"),
+                patch("openmy.services.screen_recognition.capture_engine._run_ocr_in_subprocess", return_value=payload) as worker_mock,
+            ):
+                first = capture_screen_event(data_root=data_root, ocr_cache=cache)
+                second = capture_screen_event(data_root=data_root, ocr_cache=cache)
+
+        self.assertEqual(worker_mock.call_count, 1)
+        self.assertEqual(first.text, "缓存文本")
+        self.assertEqual(second.text, "缓存文本")
+
+    def test_start_capture_daemon_uses_lightweight_module_entry(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+
+            with (
+                patch("openmy.services.screen_recognition.capture_engine.is_capture_supported", return_value=True),
+                patch("openmy.services.screen_recognition.capture_engine._pid_is_running", return_value=False),
+                patch("openmy.services.screen_recognition.capture_engine.subprocess.Popen") as popen_mock,
+            ):
+                popen_mock.return_value.pid = 12345
+                status = start_capture_daemon(data_root=data_root, interval_seconds=15, retention_hours=24)
+
+        launched_cmd = " ".join(popen_mock.call_args.args[0])
+        self.assertIn("openmy.services.screen_recognition.capture_tick", launched_cmd)
+        self.assertEqual(status.pid, 12345)
 
 
 if __name__ == "__main__":

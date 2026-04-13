@@ -21,7 +21,7 @@ class TestScreenSettings(unittest.TestCase):
 
         self.assertTrue(settings.enabled)
         self.assertEqual(settings.participation_mode, "summary_only")
-        self.assertEqual(settings.capture_interval_seconds, 5)
+        self.assertEqual(settings.capture_interval_seconds, 15)
         self.assertEqual(settings.screenshot_retention_hours, 24)
 
     def test_round_trip_file_persists_exclusions(self):
