@@ -11,12 +11,13 @@ def send_json(handler: SimpleHTTPRequestHandler, payload: dict | list, status: i
     handler.send_header('Content-Type', 'application/json; charset=utf-8')
     handler.send_header('Content-Length', str(len(body)))
     handler.end_headers()
-    handler.wfile.write(body)
+    if handler.command != "HEAD":
+        handler.wfile.write(body)
 
 
 def send_options(handler: SimpleHTTPRequestHandler) -> None:
     handler.send_response(204)
-    handler.send_header('Allow', 'GET,POST,OPTIONS')
+    handler.send_header('Allow', 'GET,HEAD,POST,OPTIONS')
     handler.end_headers()
 
 
@@ -27,4 +28,5 @@ def serve_index(handler: SimpleHTTPRequestHandler) -> None:
     handler.send_header('Content-Type', 'text/html; charset=utf-8')
     handler.send_header('Content-Length', str(len(body)))
     handler.end_headers()
-    handler.wfile.write(body)
+    if handler.command != "HEAD":
+        handler.wfile.write(body)

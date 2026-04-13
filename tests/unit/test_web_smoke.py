@@ -139,6 +139,7 @@ class TestWebSmoke(unittest.TestCase):
 
             self.assertEqual(payload["headline"], "先别自己挑，先按推荐路线走：本地中文优先")
             self.assertIn("profile.set", payload["primary_action"])
+            self.assertNotIn("state_path", payload)
 
     def test_server_updates_onboarding_provider(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -164,6 +165,59 @@ class TestWebSmoke(unittest.TestCase):
             self.assertTrue(payload["success"])
             self.assertEqual(payload["provider"], "funasr")
             self.assertEqual(payload["onboarding"]["current_provider"], "funasr")
+            self.assertNotIn("state_path", payload["onboarding"])
+
+    def test_server_serves_health_payload(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner()
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                payload = self.fetch_json(base_url, "/api/health")
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertEqual(payload, {"status": "ok"})
+
+    def test_server_serves_favicon_redirect(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner()
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                request = Request(f"{base_url}/favicon.ico", method="GET")
+                with urlopen(request, timeout=2) as response:
+                    final_url = response.geturl()
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertTrue(final_url.endswith("/static/icons/logo.svg"))
+
+    def test_server_head_on_onboarding_returns_200(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            self.seed_onboarding(data_root)
+
+            runner = JobRunner()
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                request = Request(f"{base_url}/api/onboarding", method="HEAD")
+                with urlopen(request, timeout=2) as response:
+                    status_code = response.status
+                    content_length = response.headers.get("Content-Length")
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertEqual(status_code, 200)
+        self.assertIsNotNone(content_length)
 
     def test_server_serves_context_and_pipeline_contract(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -213,6 +267,23 @@ class TestWebSmoke(unittest.TestCase):
             self.assertEqual(detail_payload["meta"]["daily_summary"], "今天主要补前端工作台。")
             self.assertEqual(meta_payload["intents"][0]["what"], "补前端")
             self.assertEqual(briefing_payload["summary"], "今天主要推进前端补齐。")
+
+    def test_server_dates_hide_demo_year_entries(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            self.seed_day(data_root, "2026-04-08")
+            self.seed_day(data_root, "2099-12-31")
+
+            runner = JobRunner()
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            try:
+                payload = self.fetch_json(base_url, "/api/dates")
+            finally:
+                self.stop_server(server, patches)
+
+        self.assertEqual([item["date"] for item in payload], ["2026-04-08"])
 
     def test_server_does_not_expose_repo_files(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

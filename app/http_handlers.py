@@ -53,11 +53,19 @@ def _valid_date_or_400(handler: SimpleHTTPRequestHandler, date_str: str) -> bool
 
 class BrainHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
+        self._dispatch_request()
+
+    def do_HEAD(self):
+        self._dispatch_request()
+
+    def _dispatch_request(self):
         parsed = urlparse(self.path)
         path = parsed.path
         params = parse_qs(parsed.query)
 
-        if path == "/api/context":
+        if path == "/api/health":
+            send_json(self, {"status": "ok"})
+        elif path == "/api/context":
             send_json(self, get_context_payload())
         elif path == "/api/onboarding":
             send_json(self, get_onboarding_payload())
@@ -139,6 +147,10 @@ class BrainHandler(SimpleHTTPRequestHandler):
             send_json(self, get_corrections())
         elif path == "/api/settings/screen-context":
             send_json(self, get_screen_context_settings_payload())
+        elif path == "/favicon.ico":
+            self.send_response(301)
+            self.send_header("Location", "/static/icons/logo.svg")
+            self.end_headers()
         elif path.startswith("/static/"):
             self._serve_static(path)
         elif path in {"/", "/index.html"}:
@@ -214,7 +226,8 @@ class BrainHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
-        self.wfile.write(payload)
+        if self.command != "HEAD":
+            self.wfile.write(payload)
 
     def log_message(self, format, *args):
         pass

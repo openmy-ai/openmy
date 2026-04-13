@@ -152,6 +152,12 @@ def _build_current_onboarding_payload(provider_override: str | None = None) -> d
     }
 
 
+def _public_onboarding_payload(payload: dict) -> dict:
+    sanitized = dict(payload or {})
+    sanitized.pop('state_path', None)
+    return sanitized
+
+
 def update_onboarding_provider_payload(data: dict) -> dict:
     provider = str((data or {}).get('provider', '')).strip().lower()
     if not provider:
@@ -166,7 +172,7 @@ def update_onboarding_provider_payload(data: dict) -> dict:
     return {
         'success': True,
         'provider': provider,
-        'onboarding': onboarding,
+        'onboarding': _public_onboarding_payload(onboarding),
         'human_summary': f'STT provider set to {provider}.',
     }
 
@@ -175,10 +181,10 @@ def get_onboarding_payload() -> dict:
     server = _server()
     existing = load_onboarding_state(server.DATA_ROOT) or {}
     if existing:
-        return existing
+        return _public_onboarding_payload(existing)
     payload = _build_current_onboarding_payload()
     save_onboarding_state(server.DATA_ROOT, payload)
-    return payload
+    return _public_onboarding_payload(payload)
 
 def get_context_payload() -> dict:
     snapshot = load_active_context_snapshot()
@@ -280,6 +286,8 @@ def get_all_dates():
     server = _server()
     dates = []
     for date in server.list_dates():
+        if str(date).startswith("2099-"):
+            continue
         paths = server.resolve_day_paths(date)
         transcript_path = paths["transcript"]
         if not transcript_path.exists():
