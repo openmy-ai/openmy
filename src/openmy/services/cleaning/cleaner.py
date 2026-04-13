@@ -15,7 +15,6 @@ import shutil
 import sys
 from pathlib import Path
 
-from openmy.config import TIME_HEADER_LOSS_THRESHOLD
 
 # ── 时间头保护 ────────────────────────────────────────────
 TIME_HEADER_RE = re.compile(r'^##\s+\d{1,2}:\d{2}', re.MULTILINE)

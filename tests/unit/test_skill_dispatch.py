@@ -30,6 +30,11 @@ class TestSkillDispatch(unittest.TestCase):
             "timezone": None,
             "audio_source": None,
             "stt_provider": None,
+            "export_provider": None,
+            "export_path": None,
+            "export_key": None,
+            "export_db": None,
+            "screen_recognition": None,
             "week": None,
             "month": None,
         }
@@ -177,7 +182,6 @@ class TestSkillDispatch(unittest.TestCase):
         self.assertEqual(payload["error_code"], "invalid_date")
 
     def test_vocab_init_creates_files_from_example(self):
-        from pathlib import Path
 
         from openmy import skill_dispatch
         from openmy.services.cleaning.cleaner import CORRECTIONS_FILE, VOCAB_FILE
@@ -234,7 +238,6 @@ class TestSkillDispatch(unittest.TestCase):
     def test_profile_set_accepts_stt_provider_and_syncs_env(self):
         from openmy import skill_dispatch
 
-        data_root = skill_dispatch._cli().DATA_ROOT
         env_path = skill_dispatch._cli().PROJECT_ENV_PATH
         original_env = env_path.read_text(encoding="utf-8") if env_path.exists() else None
 
@@ -274,6 +277,56 @@ class TestSkillDispatch(unittest.TestCase):
             self.assertIn("OPENMY_AUDIO_SOURCE_DIR=", env_path.read_text(encoding="utf-8"))
             saved = json.loads(profile_path(data_root).read_text(encoding="utf-8"))
             self.assertEqual(saved["audio_source_dir"], str(audio_source))
+
+    def test_profile_set_accepts_obsidian_export_and_syncs_env(self):
+        from openmy import skill_dispatch
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            vault_path = Path(tmp_dir) / "vault"
+            vault_path.mkdir(parents=True, exist_ok=True)
+            env_path = Path(tmp_dir) / ".env"
+            env_path.write_text("", encoding="utf-8")
+
+            fake_cli = SimpleNamespace(DATA_ROOT=data_root, PROJECT_ENV_PATH=env_path)
+            with patch("openmy.skill_dispatch._cli", return_value=fake_cli):
+                args = self.make_args(
+                    action="profile.set",
+                    export_provider="obsidian",
+                    export_path=str(vault_path),
+                )
+                payload, exit_code = skill_dispatch.dispatch_skill_action("profile.set", args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["data"]["export"]["provider"], "obsidian")
+            self.assertEqual(payload["data"]["export"]["path"], str(vault_path))
+            env_text = env_path.read_text(encoding="utf-8")
+            self.assertIn("OPENMY_EXPORT_PROVIDER=obsidian", env_text)
+            self.assertIn(f"OPENMY_OBSIDIAN_VAULT_PATH={vault_path}", env_text)
+
+    def test_profile_set_accepts_screen_recognition_and_persists_settings(self):
+        from openmy import skill_dispatch
+        from openmy.services.screen_recognition.settings import load_screen_context_settings
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            env_path = Path(tmp_dir) / ".env"
+            env_path.write_text("", encoding="utf-8")
+
+            fake_cli = SimpleNamespace(DATA_ROOT=data_root, PROJECT_ENV_PATH=env_path)
+            with patch("openmy.skill_dispatch._cli", return_value=fake_cli):
+                args = self.make_args(action="profile.set", screen_recognition="on")
+                payload, exit_code = skill_dispatch.dispatch_skill_action("profile.set", args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(payload["data"]["screen_recognition"]["enabled"])
+            settings = load_screen_context_settings(data_root=data_root)
+            self.assertTrue(settings.enabled)
+            self.assertEqual(settings.participation_mode, "summary_only")
+            self.assertIn("SCREEN_RECOGNITION_ENABLED=true", env_path.read_text(encoding="utf-8"))
 
     def test_day_run_uses_configured_audio_source_when_audio_missing(self):
         from openmy import skill_dispatch

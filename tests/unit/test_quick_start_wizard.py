@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import argparse
 import tempfile
 import unittest
 from pathlib import Path

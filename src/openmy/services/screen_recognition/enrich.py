@@ -4,7 +4,7 @@ from openmy.domain.models import SceneBlock, ScreenSession
 from openmy.services.screen_recognition.align import align_scene_sessions
 from openmy.services.screen_recognition.privacy import apply_privacy_filters
 from openmy.services.screen_recognition.sessionize import sessionize_screen_events
-from openmy.services.screen_recognition.settings import ScreenContextSettings, load_screen_context_settings
+from openmy.services.screen_recognition.settings import ScreenContextSettings
 from openmy.services.screen_recognition.summary import (
     build_screen_context,
     detect_completion_candidates,

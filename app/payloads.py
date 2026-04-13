@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from openmy.config import DEFAULT_STT_MODELS, LOCAL_STT_PROVIDERS, get_stt_api_key, get_stt_provider_name, stt_provider_requires_api_key
-from openmy.services.onboarding.state import load_onboarding_state, save_onboarding_state
+from openmy.services.onboarding.state import save_onboarding_state
 from openmy.services.screen_recognition.settings import (
     ScreenContextSettings,
     load_screen_context_settings,

@@ -9,7 +9,7 @@ from typing import Any
 
 from openmy.utils.io import safe_write_json
 from openmy.utils.paths import DATA_ROOT as DEFAULT_DATA_ROOT
-from openmy.utils.paths import PROJECT_ROOT
+from openmy.utils.paths import PROJECT_ROOT as _PROJECT_ROOT
 
 RUNTIME_DIRNAME = "screen_capture"
 EVENT_FILENAME = "screen_events.json"
@@ -25,6 +25,7 @@ DEFAULT_SCREENSHOT_RETENTION_HOURS = 24
 DEFAULT_EVENT_RETENTION_DAYS = 14
 DEFAULT_CAPTURE_WORKER_TIMEOUT_SECONDS = 30
 DEFAULT_OCR_LANGUAGES = ["zh-Hans", "zh-Hant", "en-US"]
+PROJECT_ROOT = _PROJECT_ROOT
 
 
 @dataclass

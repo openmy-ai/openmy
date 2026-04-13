@@ -18,7 +18,6 @@ from openmy.config import (
     LOCAL_STT_PROVIDERS,
     get_audio_source_dir,
     get_export_provider_name,
-    get_llm_api_key,
     get_stage_llm_model,
     get_stt_api_key,
     get_stt_provider_name,
@@ -867,7 +866,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     if enrichment_plan["enabled"]:
         _mark_step(date_str, run_status, "transcribe_enrich", "running", message="正在执行 WhisperX 精标")
         try:
-            enrichment = run_transcription_enrichment(
+            run_transcription_enrichment(
                 cli.ensure_day_dir(date_str),
                 diarize=bool(enrichment_plan.get("diarize", False)),
             )

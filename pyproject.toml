@@ -59,4 +59,4 @@ line-length = 100
 extend-exclude = [".omx"]
 
 [tool.ruff.lint]
-ignore = ["E402", "E741", "F401", "F541", "F841"]
+ignore = ["E402", "E741", "F541"]

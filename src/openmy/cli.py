@@ -32,14 +32,11 @@ from rich.table import Table
 from openmy.config import (
     GEMINI_MODEL,
     get_llm_api_key,
-    get_stage_llm_model,
     get_stt_api_key,
     get_stt_align_enabled,
     get_stt_diarization_enabled,
     get_stt_enrich_mode,
-    get_stt_model,
     get_stt_provider_name,
-    has_llm_credentials,
     stt_provider_requires_api_key,
 )
 from openmy.utils.io import safe_write_json
@@ -1163,7 +1160,6 @@ def cmd_distill(args: argparse.Namespace) -> int:
         return 1
 
     from openmy.services.distillation.distiller import summarize_scene
-    model = get_stage_llm_model("distill") or GEMINI_MODEL
 
     pending = [scene for scene in data.get("scenes", []) if not scene.get("summary")]
     if not pending:
@@ -1727,7 +1723,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_screen_loop.add_argument("--data-root", default=str(DATA_ROOT), help=argparse.SUPPRESS)
 
     p_query = sub.add_parser("query", help=_help_text("基于结构化上下文查询项目/人物/待办/证据", "Query projects, people, open loops, or evidence from structured context."))
-    p_query.add_argument("--kind", required=True, choices=["project", "person", "open", "closed", "evidence"])
+    p_query.add_argument("--kind", required=True, choices=["project", "person", "open", "closed", "evidence", "decision"])
     p_query.add_argument("--query", default="", help=_help_text("查询关键词（project / person / evidence 必填）", "Search keyword. Required for project, person, and evidence queries."))
     p_query.add_argument("--limit", type=int, default=5, help=_help_text("最多返回多少条命中", "Maximum number of matches to return."))
     p_query.add_argument("--include-evidence", action="store_true", help=_help_text("返回证据来源", "Include evidence references in the output."))
@@ -1740,7 +1736,7 @@ def build_parser() -> argparse.ArgumentParser:
     agent_mode.add_argument("--ingest", help=_help_text("处理某天输入 YYYY-MM-DD", "Process one day's input in YYYY-MM-DD format."))
     agent_mode.add_argument("--reject-decision", dest="reject_decision", help=_help_text("排除一条不重要的决策", "Reject one decision that should not be kept."))
     agent_mode.add_argument("--query", help=_help_text("按结构化结果查询项目/人物/待办/证据", "Query projects, people, open loops, or evidence from structured context."))
-    p_agent.add_argument("--query-kind", default="project", choices=["project", "person", "open", "closed", "evidence"])
+    p_agent.add_argument("--query-kind", default="project", choices=["project", "person", "open", "closed", "evidence", "decision"])
     p_agent.add_argument("--limit", type=int, default=5, help=_help_text("给 --query 使用", "Maximum results for --query."))
     p_agent.add_argument("--include-evidence", action="store_true", help=_help_text("给 --query 使用：带上证据来源", "Include evidence references for --query."))
     p_agent.add_argument("--audio", nargs="+", help=_help_text("给 --ingest 使用的音频文件路径", "Audio file paths for --ingest."))
@@ -1767,7 +1763,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["done", "abandoned"],
         help=_help_text("给 correction.apply 使用的 close-loop 状态", "Loop-closing status for correction.apply."),
     )
-    p_skill.add_argument("--kind", choices=["project", "person", "open", "closed", "evidence"], help=_help_text("给 context.query 使用", "Query kind for context.query."))
+    p_skill.add_argument("--kind", choices=["project", "person", "open", "closed", "evidence", "decision"], help=_help_text("给 context.query 使用", "Query kind for context.query."))
     p_skill.add_argument("--query", default="", help=_help_text("给 context.query 使用的查询词", "Search query for context.query."))
     p_skill.add_argument("--limit", type=int, default=5, help=_help_text("给 context.query 使用的最大命中数", "Maximum number of matches for context.query."))
     p_skill.add_argument("--include-evidence", action="store_true", help=_help_text("给 context.query 返回证据来源", "Include evidence references for context.query."))
@@ -1777,6 +1773,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_skill.add_argument("--language", help=_help_text("给 profile.set 使用的语言", "Language for profile.set."))
     p_skill.add_argument("--timezone", help=_help_text("给 profile.set 使用的时区", "Timezone for profile.set."))
     p_skill.add_argument("--audio-source", help=_help_text("给 profile.set 使用的录音固定目录", "Fixed audio source directory for profile.set."))
+    p_skill.add_argument("--export-provider", choices=["obsidian", "notion"], help=_help_text("给 profile.set 使用的导出目标", "Export target for profile.set."))
+    p_skill.add_argument("--export-path", help=_help_text("给 profile.set 使用的 Obsidian 目录", "Obsidian vault path for profile.set."))
+    p_skill.add_argument("--export-key", help=_help_text("给 profile.set 使用的 Notion key", "Notion API key for profile.set."))
+    p_skill.add_argument("--export-db", help=_help_text("给 profile.set 使用的 Notion 数据库编号", "Notion database ID for profile.set."))
+    p_skill.add_argument("--screen-recognition", choices=["on", "off"], help=_help_text("给 profile.set 使用的屏幕识别开关", "Screen recognition toggle for profile.set."))
     p_skill.add_argument("--week", help=_help_text("给 aggregate 使用的周，例如 2026-W15", "ISO week for aggregate, for example 2026-W15."))
     p_skill.add_argument("--month", help=_help_text("给 aggregate 使用的月，例如 2026-04", "Month for aggregate, for example 2026-04."))
     p_skill.add_argument("--payload-json", help=_help_text("给 submit 类动作使用的 JSON 字符串", "JSON string payload for submit actions."))

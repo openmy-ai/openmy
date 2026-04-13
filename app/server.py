@@ -24,42 +24,13 @@ SRC_DIR = BOOTSTRAP_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from app.context_api import (
-    handle_close_loop,
-    handle_merge_project,
-    handle_reject_decision,
-    handle_reject_loop,
-    handle_reject_project,
-    refresh_active_context_snapshot,
-)
+from app import context_api as context_api_module
 from app.http_handlers import BrainHandler
 from app.job_runner import JobRunner
-from app.payloads import (
-    get_all_dates,
-    get_briefing,
-    get_context_decisions_payload,
-    get_context_loops_payload,
-    get_context_payload,
-    get_context_projects_payload,
-    get_corrections,
-    get_date_briefing_payload,
-    get_date_detail,
-    get_date_meta_payload,
-    get_onboarding_payload,
-    get_stats,
-    handle_correction,
-    load_active_context_snapshot,
-    search_content,
-)
-from app.pipeline_api import (
-    build_pipeline_command,
-    get_pipeline_job_payload,
-    get_pipeline_jobs_payload,
-    handle_create_pipeline_job,
-    run_pipeline_job_command,
-)
-from openmy.services.cleaning.cleaner import sync_correction_to_vocab
-from openmy.services.segmentation.segmenter import parse_time_segments
+from app import payloads as payloads_module
+from app import pipeline_api as pipeline_api_module
+from openmy.services.cleaning import cleaner as cleaner_module
+from openmy.services.segmentation import segmenter as segmenter_module
 from openmy.utils.paths import DATA_ROOT, LEGACY_ROOT, PROJECT_ROOT as ROOT_DIR
 
 try:
@@ -78,6 +49,34 @@ TIME_HEADER_RE = re.compile(r"^##\s+(\d{1,2}:\d{2})", re.MULTILINE)
 DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})$")
 DATE_MD_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
 JOB_RUNNER = JobRunner()
+handle_close_loop = context_api_module.handle_close_loop
+handle_merge_project = context_api_module.handle_merge_project
+handle_reject_decision = context_api_module.handle_reject_decision
+handle_reject_loop = context_api_module.handle_reject_loop
+handle_reject_project = context_api_module.handle_reject_project
+refresh_active_context_snapshot = context_api_module.refresh_active_context_snapshot
+get_all_dates = payloads_module.get_all_dates
+get_briefing = payloads_module.get_briefing
+get_context_decisions_payload = payloads_module.get_context_decisions_payload
+get_context_loops_payload = payloads_module.get_context_loops_payload
+get_context_payload = payloads_module.get_context_payload
+get_context_projects_payload = payloads_module.get_context_projects_payload
+get_corrections = payloads_module.get_corrections
+get_date_briefing_payload = payloads_module.get_date_briefing_payload
+get_date_detail = payloads_module.get_date_detail
+get_date_meta_payload = payloads_module.get_date_meta_payload
+get_onboarding_payload = payloads_module.get_onboarding_payload
+get_stats = payloads_module.get_stats
+handle_correction = payloads_module.handle_correction
+load_active_context_snapshot = payloads_module.load_active_context_snapshot
+search_content = payloads_module.search_content
+build_pipeline_command = pipeline_api_module.build_pipeline_command
+get_pipeline_job_payload = pipeline_api_module.get_pipeline_job_payload
+get_pipeline_jobs_payload = pipeline_api_module.get_pipeline_jobs_payload
+handle_create_pipeline_job = pipeline_api_module.handle_create_pipeline_job
+run_pipeline_job_command = pipeline_api_module.run_pipeline_job_command
+sync_correction_to_vocab = cleaner_module.sync_correction_to_vocab
+parse_time_segments = segmenter_module.parse_time_segments
 
 
 def list_dates() -> list[str]:
