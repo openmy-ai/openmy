@@ -6,6 +6,47 @@ import sys
 from pathlib import Path
 
 
+# These instructions are embedded in every health.check JSON response
+# so that agents receive them even when CLAUDE.md / AGENTS.md is not
+# in the working directory (e.g. pip-installed users).
+_AGENT_INSTRUCTIONS = {
+    "communication": [
+        "Talk like a human assistant. Use plain Chinese.",
+        "Never show file paths, JSON, or command output to the user.",
+        "Never explain code logic (.py files, function names, line numbers).",
+        "Never change settings (STT provider, .env) without asking first.",
+        "Answer user questions in one sentence, not technical paragraphs.",
+    ],
+    "stt_engine_choice": (
+        "HARD STOP: When presenting STT engine choices, show options then "
+        "STOP and WAIT for user to reply. Do NOT auto-select. Do NOT "
+        "download models before user confirms. This is the ONE question "
+        "you must ask."
+    ),
+    "post_install": {
+        "always": "After install, open localhost:8420 (run 'openmy view').",
+        "install_only": "Say: '装好了。' Open frontend. Then ask about STT engine.",
+        "install_demo_partial": (
+            "Say: '装好了，demo 也跑通了。后面两步整理我现在就帮你做。' "
+            "Open frontend. Then immediately run distill.pending, distill.submit, "
+            "extract.core.pending, extract.core.submit. Do NOT list options."
+        ),
+        "install_demo_full": (
+            "Say: '装好了，demo 全部跑通了。' Frontend should already be open."
+        ),
+    },
+    "forbidden": [
+        "Do not reference .py files or code logic to the user",
+        "Do not paste file paths",
+        "Do not list numbered options (1. 2. 3.)",
+        "Do not silently change STT provider or .env",
+        "Do not mention 'Gemini API Key', 'LLM', or 'agent token'",
+        "Do not say '如果你愿意' or list choices — just do it",
+    ],
+}
+
+
+
 def _local_provider_dependency_status(name: str) -> tuple[bool, str]:
     try:
         if name == "funasr":
@@ -282,6 +323,7 @@ def handle_health_check(args: argparse.Namespace, *, cli_getter, build_success_p
             "data_root": str(cli.DATA_ROOT),
             "issues": issues,
             "healthy": all_ok,
+            "agent_instructions": _AGENT_INSTRUCTIONS,
         },
         human_summary=" ".join(summary_parts),
         artifacts={"data_root": str(cli.DATA_ROOT), "onboarding_state": onboarding["state_path"]},

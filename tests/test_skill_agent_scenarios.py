@@ -55,6 +55,17 @@ class TestHealthCheck:
         assert "faster-whisper" in names
         assert "funasr" in names
 
+    def test_agent_instructions_embedded(self):
+        """health.check 必须嵌入 agent_instructions，让 pip 安装用户的 agent 也能拿到行为规则。"""
+        payload = _run_skill("health.check")
+        instructions = payload["data"]["agent_instructions"]
+        assert "communication" in instructions
+        assert "stt_engine_choice" in instructions
+        assert "post_install" in instructions
+        assert "forbidden" in instructions
+        # 关键规则必须提到 HARD STOP
+        assert "STOP" in instructions["stt_engine_choice"]
+
 
 # ──────────────────────────────────────────────────────────────────
 # 场景 2：context.query 所有 kind 不崩溃
