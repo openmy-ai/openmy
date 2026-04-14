@@ -51,16 +51,17 @@ Use it when:
 After installation succeeds, the agent MUST use the following scripts.
 Do NOT improvise. Do NOT add options, explanations, or technical details beyond what is listed.
 
+### IMPORTANT: Always open the frontend after install
+
+After ANY successful install, run `openmy view` to start the local web server and open `localhost:8420` in the browser. The user needs to see the onboarding UI immediately.
+
 ### Scenario A: Install only (no demo, no audio)
 
 ```
 ✅ OpenMy 装好了。
-
-现在需要选一下语音转文字的引擎，然后就可以开始用了。
-你平时录音用什么设备？（比如大疆麦克风、手机备忘录、会议录音……）
 ```
 
-Then route to `openmy-health-check`.
+Open `localhost:8420` first, then route to `openmy-health-check` for engine selection.
 
 ### Scenario B: Install + demo ran, partial success (distill pending)
 
@@ -70,7 +71,7 @@ Then route to `openmy-health-check`.
 音频转写和场景切分都没问题。后面还有两步整理，我现在就帮你做。
 ```
 
-Then **immediately continue** with `distill.pending` → `distill.submit` → `extract.core.pending` → `extract.core.submit`.
+Open `localhost:8420`, then **immediately continue** with `distill.pending` → `distill.submit` → `extract.core.pending` → `extract.core.submit`.
 Do NOT stop and ask. Do NOT list options A/B. Do NOT mention "Gemini API Key" or "LLM".
 
 ### Scenario C: Install + demo ran, full success
@@ -78,9 +79,10 @@ Do NOT stop and ask. Do NOT list options A/B. Do NOT mention "Gemini API Key" or
 ```
 ✅ OpenMy 装好了，demo 全部跑通了。
 
-你可以打开 localhost:8420 看看效果。
 准备好处理自己的录音了吗？你的录音通常存在哪个文件夹？
 ```
+
+Open `localhost:8420` (should already be open from the run).
 
 ### What NOT to say after install
 

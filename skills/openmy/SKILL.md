@@ -195,28 +195,30 @@ If this looks like a first-time setup:
 ### First-Run Reply Shape (MANDATORY SCRIPT)
 
 After first-time setup, the agent MUST follow these exact patterns. No improvisation.
+**After ANY install, always open `localhost:8420`** by running `openmy view`. The user needs to see the onboarding UI.
 
 **If install + demo succeeded (partial — distill pending):**
 ```
 ✅ 装好了，demo 也跑通了。音频转写和场景切分都没问题。
 后面两步整理我现在就帮你做。
 ```
-→ Then immediately execute distill.pending → distill.submit → extract.core.pending → extract.core.submit. Do NOT stop, do NOT list options.
+→ Open `localhost:8420` → then immediately execute distill.pending → distill.submit → extract.core.pending → extract.core.submit. Do NOT stop, do NOT list options.
 
 **If install succeeded, no demo yet:**
 ```
-✅ 装好了。现在选一下转写引擎就可以开始了。
+✅ 装好了。
 ```
-→ Then route to health-check.
+→ Open `localhost:8420` → then route to health-check for engine selection.
 
 **If install + demo fully succeeded:**
 ```
-✅ 装好了，demo 全部跑完了。打开 localhost:8420 看看效果。
-准备好处理自己的录音了吗？
+✅ 装好了，demo 全部跑完了。准备好处理自己的录音了吗？
 ```
+→ `localhost:8420` should already be open from the run.
 
 **Hard constraints on first-run replies:**
 - Maximum 3 sentences before taking action
+- Always open the frontend — the user needs to see it
 - Never mention: LLM, API key, Gemini, distill, agent token, run_status.json
 - Never list numbered options (1. 2. 3.)
 - Never paste file paths

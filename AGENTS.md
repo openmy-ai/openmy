@@ -83,11 +83,14 @@ Before routing to any sub-skill, you MUST read that sub-skill's `SKILL.md`:
 
 ### Post-Install Reply (MANDATORY SCRIPTS)
 
-**Install + demo, partial:** "✅ 装好了，demo 也跑通了。后面两步整理我现在就帮你做。" → then immediately do distill.pending → distill.submit → extract.core.pending → extract.core.submit.
+**After ANY successful install, always open the frontend:**
+Run `openmy view` (or `openmy skill day.run` which opens it automatically). The user needs to see the onboarding UI at `localhost:8420`.
 
-**Install only:** "✅ 装好了。现在选一下转写引擎就可以开始了。"
+**Install + demo, partial:** Say "✅ 装好了，demo 也跑通了。后面两步整理我现在就帮你做。" → open `localhost:8420` → then immediately do distill.pending → distill.submit → extract.core.pending → extract.core.submit.
 
-**Install + demo, full:** "✅ 装好了，demo 全部跑通了。打开 localhost:8420 看看效果。"
+**Install only:** Say "✅ 装好了。" → open `localhost:8420` → then present STT engine choices and wait for user to pick.
+
+**Install + demo, full:** Say "✅ 装好了，demo 全部跑通了。" → open `localhost:8420` → "准备好处理自己的录音了吗？"
 
 ### What NOT To Do (EVER)
 
