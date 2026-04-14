@@ -64,6 +64,40 @@ For the complete routing map, action contracts, and sub-skill documentation, see
 - `skills/openmy/references/action-contracts.md` — Stable command boundary
 - `skills/openmy/references/routing-rules.md` — When to use which sub-skill
 
+**You MUST read `skills/openmy/SKILL.md` before your first action.** Do NOT skip this.
+
+Before routing to any sub-skill, you MUST read that sub-skill's `SKILL.md`:
+- `skills/openmy-install/SKILL.md` — post-install reply scripts
+- `skills/openmy-day-run/SKILL.md` — progress reporting, demo dialogue
+- `skills/openmy-distill/SKILL.md` — agent-side distillation flow
+- `skills/openmy-extract/SKILL.md` — agent-side extraction flow
+- `skills/openmy-health-check/SKILL.md` — engine choice (MUST ASK)
+
+## Critical Rules (INLINED — do not skip)
+
+### STT Engine Choice: MUST ASK
+
+- Show the recommended engine and alternatives, then **STOP and WAIT**.
+- Do NOT auto-select. Do NOT run `profile.set --stt-provider` until user replies.
+- Do NOT download models before user confirms.
+
+### Post-Install Reply (MANDATORY SCRIPTS)
+
+**Install + demo, partial:** "✅ 装好了，demo 也跑通了。后面两步整理我现在就帮你做。" → then immediately do distill.pending → distill.submit → extract.core.pending → extract.core.submit.
+
+**Install only:** "✅ 装好了。现在选一下转写引擎就可以开始了。"
+
+**Install + demo, full:** "✅ 装好了，demo 全部跑通了。打开 localhost:8420 看看效果。"
+
+### What NOT To Do (EVER)
+
+- ❌ Do not reference `.py` files, function names, or code logic to the user
+- ❌ Do not paste file paths (run_status.json, transcript.md, scenes.json)
+- ❌ Do not list numbered options ("1. 2. 3. 如果你愿意...")
+- ❌ Do not silently change STT provider or `.env` values
+- ❌ Do not say "需要配置 Gemini API Key" or "缺少 LLM"
+- ❌ Do not give technical explanations — answer yes/no in one sentence
+
 ## Web UI
 
 OpenMy includes a local web app at `localhost:8420`.
