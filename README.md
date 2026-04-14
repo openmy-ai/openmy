@@ -46,22 +46,27 @@ OpenMy 不只是把音频变成文字。
 ## ⚡ 一分钟跑起来
 
 ```bash
+git clone https://github.com/openmy-ai/openmy.git && cd openmy
+bash scripts/install-skills.sh
+openmy quick-start --demo
+```
+
+> 依赖只有两样：Python 3.10+ 和 FFmpeg。
+> `install-skills.sh` 会自动创建虚拟环境、安装依赖、给你的 Agent 工具（Claude Code / Gemini CLI / Codex）链接技能说明。
+> `--demo` 会先跑内置示例，先确认整条链路能走通，再换你自己的音频。
+
+<details>
+<summary>如果你只想快速试用（不需要 Agent 技能）</summary>
+
+```bash
 pip install openmy
 openmy quick-start --demo
 ```
 
-> 依赖只有两样：Python 3.10+ 和 FFmpeg。  
-> 想先走本地转写，再补一条：`pip install "openmy[local]"`。
-> 想开云端 Gemini（双子）这条路，再补一条：`pip install "openmy[cloud]"`。
-> `--demo` 会先跑内置示例，先确认整条链路能走通，再换你自己的音频。
+> ⚠️ 这种方式安装后，Agent 工具（Claude Code 等）无法读到技能说明。
+> 如果你想让 Agent 帮你操作 OpenMy，请用上面的 `git clone` 方式。
 
-如果你是在仓库里开发：
-
-```bash
-git clone https://github.com/openmy-ai/openmy.git && cd openmy
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[local]"
-```
+</details>
 
 ### 跑通演示以后，下一步怎么做
 
@@ -151,15 +156,17 @@ graph TD
 
 把这段话直接发给你的 Agent：
 
-> 帮我装上 OpenMy。GitHub 地址：https://github.com/openmy-ai/openmy  
-> 装好以后跑一下内置 demo，让我看看效果。
+> 帮我装上 OpenMy。先 clone 仓库：`git clone https://github.com/openmy-ai/openmy.git`
+> 然后进目录跑 `bash scripts/install-skills.sh`，再跑内置 demo 让我看看效果。
 
 正常情况下，Agent 会自己做完这几步：
 
-1. 安装 OpenMy（`pip install openmy`）
-2. 检查环境，告诉你先走哪条转写路线更稳
-3. 跑内置 demo
-4. 打开本地日报页给你看结果
+1. Clone 仓库，进入目录
+2. 运行 `install-skills.sh`（自动装依赖 + 链接技能说明）
+3. 跑内置 demo（`openmy quick-start --demo`）
+4. 打开本地页面 `localhost:8420` 给你看结果
+
+> ⚠️ 不要让 Agent 用 `pip install openmy`，那样它读不到技能说明。
 
 OpenMy 的核心不是某个命令行壳子，而是**稳定的上下文状态 + 稳定的动作契约**。
 

@@ -13,8 +13,10 @@ Guide the agent through first-time installation when `openmy` command is not ava
 
 Use it when:
 - `openmy` command is not available
-- the user just cloned the repo
+- the user says "install openmy" or "set up openmy"
 - `health.check` fails with import errors
+
+**IMPORTANT**: Always use `git clone`, never `pip install openmy`. The agent needs the repo for CLAUDE.md and skills/ directory.
 
 ## Action
 
@@ -26,6 +28,7 @@ Use it when:
 - Run the setup yourself whenever the machine is ready.
 - If Python version is too low, tell the user one concrete command to fix it.
 - Do not skip a failed step and jump ahead.
+- **NEVER use `pip install openmy`.** Always clone the repo.
 
 ## Output
 
@@ -36,15 +39,14 @@ Use it when:
 
 ## Steps
 
-1. Confirm you are in an OpenMy repo.
-   - If `pyproject.toml` is missing or does not declare `openmy`, switch to the correct repo root first.
-2. Check Python version (`>= 3.10`).
-3. Create virtual environment: `python3 -m venv .venv`
-4. Install the project with the repo-local interpreter: `.venv/bin/pip install -e .`
-5. Copy `.env.example` to `.env` if missing.
-6. Verify the command entry with `.venv/bin/openmy --help`.
-7. Run `bash scripts/install-skills.sh`.
-8. Route to `openmy-health-check`.
+1. Clone the repo: `git clone https://github.com/openmy-ai/openmy.git && cd openmy`
+   - If already in the repo (pyproject.toml exists with openmy), skip this step.
+2. Run `bash scripts/install-skills.sh`
+   - This script handles: Python check, venv creation, pip install, .env setup, skill symlinking.
+3. Verify: `.venv/bin/openmy --help`
+4. Run demo: `openmy quick-start --demo`
+5. Open frontend: `openmy view`
+6. Route to `openmy-health-check`.
 
 ## Post-Install Reply Script (MANDATORY)
 
