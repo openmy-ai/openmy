@@ -183,7 +183,7 @@ If this looks like a first-time setup:
 
 1. **Always start with `openmy-health-check`** — it now gives a recommended route, a one-line headline, and grouped engine choices.
 2. **Auto-setup profile** — if `health.check` says profile is missing or still has defaults (`name=User`, `timezone=UTC`), detect the system timezone and conversation language, then run `profile.set` immediately. Do NOT ask the user — just set it and tell them what you did.
-3. **Ask only one choice question** — do not dump all engines raw. Read `health.check` → `data.onboarding`, present the recommended route first, then ask whether the user wants to go with that route. This is the ONE question you must ask during first setup. After the user picks, run `openmy skill profile.set --stt-provider <chosen> --json` so the project `.env` is updated for them.
+3. **Ask the user to choose an STT engine — then STOP and WAIT.** Present the recommended route first, then ask. **Do NOT auto-select.** Do NOT run `profile.set --stt-provider` until the user replies. Do NOT start downloading models. This is the ONE question you must ask during first setup, and you must wait for the answer before proceeding.
 4. Route to `openmy-vocab-init` if vocab is missing.
 5. Help the user locate the first audio file.
 6. Route to `openmy-day-run`.

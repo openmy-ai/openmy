@@ -38,7 +38,7 @@ When presenting results to users:
 
 1. Start with `openmy skill health.check --json`
 2. Auto-detect profile (timezone, language) — do NOT ask the user, just set it
-3. Ask which STT engine to use — this is the ONE question you must ask
+3. Ask which STT engine to use — this is the ONE question you must ask. **Present the choices, then STOP and WAIT for the user to reply before proceeding. Do NOT auto-select.**
 4. Initialize vocab with `openmy skill vocab.init --json`
 5. Help locate the first audio file
 6. Process it with `openmy skill day.run`

@@ -71,6 +71,13 @@ Your reply to the user MUST follow this order. No filler, no long warning block.
 要不要先按推荐路线来？
 ```
 
+**HARD STOP: must wait for user response.**
+- After showing engine choices, STOP and WAIT for the user to pick one.
+- Do NOT auto-select the recommended engine. Do NOT run `profile.set --stt-provider` until the user replies.
+- Do NOT start downloading models or running `day.run` until the user has chosen.
+- The user saying "ok" / "good" / "that one" / "recommended" counts as choosing. Silence does not.
+- This is the ONE question in the entire setup where you MUST wait. Everything else can be auto.
+
 - Read the recommendation from `data.onboarding.headline`, `data.onboarding.primary_action`, and `data.onboarding.choices`.
 - Do NOT explain what LLM keys are, what vocab is, or what screen recognition does unless the user explicitly asks.
 - Do NOT dump raw `issues` first. Recommendation first, details later.
@@ -105,3 +112,15 @@ Your reply to the user MUST follow this order. No filler, no long warning block.
 - If profile is missing, run `profile.set` silently (auto-detect timezone/language). Do NOT ask the user.
 - If vocab is missing, run `vocab.init` silently. Do NOT tell the user.
 - If `llm_available` is false, do NOT mention it unless the user asks. Audio processing works without it.
+
+### Auto vs Must-Ask
+
+| Action | Auto | Must Ask |
+|--------|------|----------|
+| Detect timezone and language | Yes | |
+| Set profile basics | Yes | |
+| Initialize vocab | Yes | |
+| **Choose STT engine** | | **Yes** |
+| Download local model | | **Yes (after user chose)** |
+| Start transcription | | **Yes (after engine confirmed)** |
+
