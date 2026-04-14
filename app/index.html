@@ -89,14 +89,34 @@
 
 <div class="toast" id="toast"></div>
 
-<div class="correction-popover" id="correctionPopover">
-  <div class="cp-header">
-    <span class="cp-title">纠正识别</span>
-    <button class="cp-close" onclick="closeCorrectionPopover()">关闭</button>
+<div class="drawer-backdrop" id="correctionPopover" onclick="if(event.target===this) closeCorrectionPopover()">
+  <div class="correction-drawer" role="dialog" aria-modal="true" aria-label="纠错抽屉">
+    <div class="cp-header cp-header-drawer">
+      <div>
+        <div class="cp-title">智能纠错</div>
+        <div class="cp-subtitle">把错词改掉，顺手留下更像人话的版本</div>
+      </div>
+      <button class="cp-close" onclick="closeCorrectionPopover()">关闭</button>
+    </div>
+    <div class="cp-body">
+      <div class="cp-block">
+        <div class="cp-label">选中的原词</div>
+        <div class="cp-wrong" id="cpWrongText"></div>
+      </div>
+      <div class="cp-block">
+        <div class="cp-label">原句参考</div>
+        <div class="cp-context" id="cpContextText">先在日报里选中一段文字，再来纠正。</div>
+      </div>
+      <div class="cp-block">
+        <div class="cp-label">你想改成什么</div>
+        <input class="cp-input" id="cpRightInput" placeholder="改成更准的说法" autocomplete="off">
+      </div>
+      <div class="cp-actions">
+        <button class="action-btn" type="button" onclick="closeCorrectionPopover()">先不改</button>
+        <button class="cp-submit" type="button" onclick="submitInlineCorrection()">保存这次纠正</button>
+      </div>
+    </div>
   </div>
-  <div class="cp-wrong" id="cpWrongText"></div>
-  <input class="cp-input" id="cpRightInput" placeholder="改成…" autocomplete="off">
-  <button class="cp-submit" onclick="submitInlineCorrection()">纠正</button>
 </div>
 
 </body>

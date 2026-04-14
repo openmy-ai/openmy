@@ -476,6 +476,82 @@ function uniqueTextItems(items, limit = 4) {
   return values.slice(0, limit);
 }
 
+function deriveProjectItemsFromDates(dates, limit = 4) {
+  const counts = new Map();
+  dates.forEach((item) => {
+    const projectNames = [
+      ...(item.decisions || []).map((entry) => entry.project),
+      ...(item.todos || []).map((entry) => entry.project),
+      ...(item.events || []).map((entry) => entry.project),
+    ].filter(Boolean);
+    [...new Set(projectNames)].forEach((name) => {
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+  });
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([name, count]) => ({ label: name, meta: `${count} 天出现` }));
+}
+
+function deriveLoopItemsFromDates(dates, limit = 4) {
+  return uniqueTextItems(
+    dates.flatMap((item) => (item.todos || []).map((entry) => entry.task || entry.what || '')),
+    limit,
+  ).map((text) => ({ label: text, meta: '来自最近录音' }));
+}
+
+function looksWeakSummary(text) {
+  const summary = plainText(text || '');
+  if (!summary) return true;
+  if (summary.length < 18) return true;
+  const weakPatterns = ['主要用了', '主要在', '今天主要', '这段时间主要', '我主要', '暂无摘要'];
+  return weakPatterns.some((pattern) => summary.includes(pattern));
+}
+
+function buildDailySummary(detail, meta) {
+  const primary = plainText(meta.daily_summary || state.currentBriefing?.summary || state.context.status_line || '');
+  if (!looksWeakSummary(primary)) return primary;
+
+  const insight = plainText((meta.insights || [])[0]?.content || '');
+  const decision = plainText((meta.decisions || [])[0]?.decision || (meta.decisions || [])[0]?.what || '');
+  const todo = plainText((meta.todos || [])[0]?.task || (meta.intents || [])[0]?.summary || '');
+  const preview = plainText(detail.segments?.[0]?.summary || detail.segments?.[0]?.preview || detail.segments?.[0]?.text || '').slice(0, 120);
+
+  const lines = [
+    insight && `今天最值得记住的是：${insight}`,
+    decision && `今天定下来的是：${decision}`,
+    todo && `接下来要盯的是：${todo}`,
+  ].filter(Boolean);
+
+  if (lines.length) return lines.join(' ');
+  return preview || primary || '今天还没有可以展示的摘要。';
+}
+
+function buildWeeklySlots(dates) {
+  if (!dates.length) return [];
+  const latest = parseIsoDate(dates[0].date);
+  const day = latest.getDay() || 7;
+  const monday = new Date(latest);
+  monday.setDate(latest.getDate() - day + 1);
+  const map = new Map(dates.map((item) => [item.date, item]));
+  return Array.from({ length: 7 }, (_, index) => {
+    const current = new Date(monday);
+    current.setDate(monday.getDate() + index);
+    const date = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+    return map.get(date) || {
+      date,
+      segments: 0,
+      word_count: 0,
+      summary: '',
+      timeline: [],
+      decisions: [],
+      todos: [],
+      isPlaceholder: true,
+    };
+  });
+}
+
 function setRoute(route) {
   state.route = route;
   document.getElementById('settingsBtn')?.classList.remove('active');
@@ -827,17 +903,20 @@ function renderRecentSummaryHome(visibleDates) {
   const today = new Date();
   const monthDay = `${today.getMonth() + 1}月${today.getDate()}日`;
 
-  const todayItem = recentDates.find((item) => item.date === today.toISOString().slice(0, 10));
-  const todaySummary = todayItem
-    ? truncateSummary(todayItem.summary || todayItem.timeline?.[0]?.preview || '')
-    : '';
+  const todayItem = recentDates.find((item) => item.date === today.toISOString().slice(0, 10)) || recentDates[0];
+  const todaySummary = todayItem ? truncateSummary(buildDailySummary({ segments: todayItem.timeline || [] }, todayItem), 90) : '';
 
   const totalSegments = recentDates.reduce((sum, item) => sum + (item.segments || 0), 0);
   const totalWords = recentDates.reduce((sum, item) => sum + (item.word_count || 0), 0);
   const activeDays = recentDates.filter((item) => item.segments > 0).length;
 
-  const projects = (state.context.active_projects || []).slice(0, 4);
-  const loops = (state.context.open_loops || state.loops || []).slice(0, 4);
+  const projectItems = (state.context.active_projects || []).slice(0, 4).map((item) => ({
+    label: item.title || item.project_id || '',
+    meta: item.status || item.summary || '活跃中',
+  }));
+  const fallbackProjectItems = deriveProjectItemsFromDates(recentDates, 4);
+  const loopItems = deriveLoopItemsFromDates(recentDates, 4);
+  const correctionCount = (state.corrections || []).length;
 
   main.innerHTML = `
     <div class="home-page">
@@ -861,60 +940,76 @@ function renderRecentSummaryHome(visibleDates) {
         </div>
       </div>
 
-      <div class="home-card-grid">
+      <div class="home-card-grid home-card-grid--dense">
         <div class="home-card home-card-grid--full" onclick="${todayItem ? `loadDate('${escapeHtml(todayItem.date)}')` : ''}">
           <div class="home-card-header">
             <span class="home-card-title">今日摘要</span>
-            ${todayItem ? `<span class="home-card-badge">${todayItem.segments}条记录</span>` : ''}
+            ${todayItem ? `<span class="home-card-badge">${todayItem.segments || 0}条记录</span>` : ''}
           </div>
           <div class="home-card-body">
             ${todaySummary ? escapeHtml(todaySummary) : '<span class="text-muted">今天还没有录音</span>'}
           </div>
         </div>
 
-        ${projects.length ? `
+        <div class="home-card">
+          <div class="home-card-header">
+            <span class="home-card-title">最近录音</span>
+            <span class="home-card-badge">${recentDates.length}</span>
+          </div>
+          <div class="home-card-list">
+            ${recentDates.slice(0, 3).map((item) => `
+              <button type="button" onclick="loadDate('${escapeHtml(item.date)}')">
+                <div class="home-card-list-title">${escapeHtml(formatFriendlyDate(item.date))}</div>
+                <div class="home-card-list-meta">${escapeHtml(truncateSummary(item.summary || item.timeline?.[0]?.preview || '还没有摘要', 40))}</div>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="home-card">
+          <div class="home-card-header">
+            <span class="home-card-title">待纠错</span>
+            <span class="home-card-badge">${correctionCount}</span>
+          </div>
+          <div class="home-card-body">
+            ${correctionCount ? `词典里已经收了 ${correctionCount} 条纠正，点开可以继续加。` : '现在还没有纠错记录。你可以在日报里选中文字，右侧会滑出纠错抽屉。'}
+          </div>
+          <div class="home-card-footer">
+            <button class="action-btn" type="button" onclick="openCorrectionPopover('', 0, 0, '先从日报里选中一句话，抽屉就会带着原句打开。')">打开纠错抽屉</button>
+          </div>
+        </div>
+
         <div class="home-card">
           <div class="home-card-header">
             <span class="home-card-title">活跃项目</span>
-            <span class="home-card-badge">${projects.length}</span>
+            <span class="home-card-badge">${(projectItems.length || fallbackProjectItems.length || loopItems.length) ? (projectItems.length || fallbackProjectItems.length || loopItems.length) : 0}</span>
           </div>
-          <div class="context-card-list">
-            ${projects.map((item) => `
-              <div class="context-card-item">
-                <span>${escapeHtml(item.title || item.project_id || '')}</span>
-              </div>
-            `).join('')}
-          </div>
-        </div>` : ''}
-
-        ${loops.length ? `
-        <div class="home-card">
-          <div class="home-card-header">
-            <span class="home-card-title">待跟进</span>
-            <span class="home-card-badge">${loops.length}</span>
-          </div>
-          <div class="context-card-list">
-            ${loops.map((item) => `
-              <div class="context-card-item">
-                <span>${escapeHtml(item.task || item.what || item.text || '')}</span>
-              </div>
-            `).join('')}
-          </div>
-        </div>` : ''}
+          ${(projectItems.length || fallbackProjectItems.length) ? `
+            <div class="home-card-list">
+              ${(projectItems.length ? projectItems : fallbackProjectItems).map((item) => `
+                <div class="home-card-list-item">
+                  <div class="home-card-list-title">${escapeHtml(item.label || '')}</div>
+                  <div class="home-card-list-meta">${escapeHtml(item.meta || '')}</div>
+                </div>
+              `).join('')}
+            </div>
+          ` : loopItems.length ? `
+            <div class="home-card-body">最近更像项目的事情还没被归类出来，我先把待做的事摆在这里。</div>
+            <div class="home-card-list">
+              ${loopItems.slice(0, 2).map((item) => `
+                <div class="home-card-list-item">
+                  <div class="home-card-list-title">${escapeHtml(item.label || '')}</div>
+                  <div class="home-card-list-meta">${escapeHtml(item.meta || '')}</div>
+                </div>
+              `).join('')}
+            </div>
+          ` : `
+            <div class="home-card-body text-muted">等你再跑几天录音，这里会自己长出项目卡片。</div>
+          `}
+        </div>
       </div>
 
       <div id="homePipelineSlot">${renderHomePipelineSlotCard(getHomePipelineJob())}</div>
-
-      <div class="section-kicker" style="margin-bottom:12px">最近录音</div>
-      <div class="daily-link-list-v2">
-        ${recentDates.map((item) => `
-          <button class="daily-link-v2" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
-            <span class="dl-date">${escapeHtml(formatFriendlyDate(item.date))}</span>
-            <span class="dl-summary">${item.segments ? escapeHtml(truncateSummary(item.summary || item.timeline?.[0]?.preview || '')) : '<span class="text-muted">仅屏幕截图</span>'}</span>
-            <span class="dl-count">${item.segments ? `${item.segments}条` : '截屏'}</span>
-          </button>
-        `).join('')}
-      </div>
 
       <div style="text-align:center;padding:24px 0">
         <button class="report-btn" type="button" onclick="state.showWikiHome=true;renderHomePage()">使用说明</button>
@@ -931,28 +1026,31 @@ function renderReportPage(title, dates, extraMeta = '', isWeekly = false) {
     return;
   }
 
-  const totalSegments = dates.reduce((sum, item) => sum + (item.segments || 0), 0);
-  const totalWords = dates.reduce((sum, item) => sum + (item.word_count || 0), 0);
-  const activeDays = dates.filter((item) => item.segments > 0).length;
+  const displayDates = isWeekly ? buildWeeklySlots(dates) : dates;
+  const totalSegments = displayDates.reduce((sum, item) => sum + (item.segments || 0), 0);
+  const totalWords = displayDates.reduce((sum, item) => sum + (item.word_count || 0), 0);
+  const activeDays = displayDates.filter((item) => item.segments > 0).length;
 
   const activeProjects = (state.context.active_projects || []).map((item) => item.title || item.project_id).filter(Boolean);
-  const projectItems = activeProjects.slice(0, 4).map((name) => `${name}(${countKeywordDays(name, dates)}d)`);
+  const projectItems = activeProjects.length ? activeProjects.slice(0, 4).map((name) => `${name}(${countKeywordDays(name, displayDates)}d)`) : deriveProjectItemsFromDates(displayDates, 4).map((item) => `${item.label}(${item.meta.replace(' 天出现', 'd')})`);
   const decisionItems = uniqueTextItems(
-    dates.flatMap((item) => (item.decisions || []).map((decision) => decision.decision || decision.what || '')),
+    displayDates.flatMap((item) => (item.decisions || []).map((decision) => decision.decision || decision.what || '')),
     4,
   );
   const loopItems = uniqueTextItems(
-    dates.flatMap((item) => (item.todos || []).map((todo) => todo.task || todo.what || '')),
+    displayDates.flatMap((item) => (item.todos || []).map((todo) => todo.task || todo.what || '')),
     4,
   );
 
-  const allSummaries = dates.map((item) => item.summary || '').filter(Boolean);
+  const allSummaries = displayDates.map((item) => item.summary || item.timeline?.[0]?.preview || '').filter(Boolean);
   const highlightText = allSummaries.length
     ? allSummaries.reduce((longest, current) => (longest.length > current.length ? longest : current), '').slice(0, 200)
     : '';
 
-  const weekDays = ['一', '二', '三', '四', '五', '六', '日'];
-  const maxSegments = Math.max(...dates.map((item) => item.segments || 0), 1);
+  const maxSegments = Math.max(...displayDates.map((item) => item.segments || 0), 1);
+  const sparseNote = isWeekly && activeDays <= 1
+    ? `这周目前只录到 ${activeDays || 0} 天，我先把 7 天骨架铺出来，免得周报只剩一根孤零零的柱子。`
+    : '';
 
   main.innerHTML = `
     <div class="report-page">
@@ -963,7 +1061,7 @@ function renderReportPage(title, dates, extraMeta = '', isWeekly = false) {
         <div class="stat-card">
           <div class="stat-card-value">${activeDays}</div>
           <div class="stat-card-label">活跃天数</div>
-          ${dates.length > activeDays ? `<div class="stat-card-delta negative">${dates.length}天中</div>` : ''}
+          ${displayDates.length > activeDays ? `<div class="stat-card-delta negative">${displayDates.length}天中</div>` : ''}
         </div>
         <div class="stat-card">
           <div class="stat-card-value">${totalSegments}</div>
@@ -975,16 +1073,18 @@ function renderReportPage(title, dates, extraMeta = '', isWeekly = false) {
         </div>
       </div>
 
+      ${sparseNote ? `<div class="week-sparse-note">${escapeHtml(sparseNote)}</div>` : ''}
+
       ${isWeekly ? `
       <div class="section-kicker" style="margin-bottom:12px">每日活跃度</div>
       <div class="week-heatmap">
-        ${dates.slice().reverse().map((item, index) => {
+        ${displayDates.map((item) => {
           const segments = item.segments || 0;
           const percent = Math.round((segments / maxSegments) * 100);
           const dayLabel = formatFriendlyDate(item.date).replace(/[0-9]+月/, '').trim();
           return `
-            <div class="week-heatmap-day ${segments > 0 ? 'active' : ''}">
-              <div class="heatmap-label">${escapeHtml(dayLabel || weekDays[index] || '')}</div>
+            <div class="week-heatmap-day ${segments > 0 ? 'active' : 'is-empty'}">
+              <div class="heatmap-label">${escapeHtml(dayLabel || '')}</div>
               <div class="heatmap-bar-wrapper">
                 <div class="heatmap-bar" style="height:${Math.max(percent, 6)}%"></div>
               </div>
@@ -996,7 +1096,7 @@ function renderReportPage(title, dates, extraMeta = '', isWeekly = false) {
       ${highlightText ? `
       <div class="week-highlight">
         <div class="week-highlight-label">本周高亮</div>
-        <div class="week-highlight-text">${escapeHtml(truncateSummary(highlightText))}</div>
+        <div class="week-highlight-text">${escapeHtml(truncateSummary(highlightText, 90))}</div>
       </div>` : ''}
 
       ${projectItems.length ? `<div class="report-block">
@@ -1017,10 +1117,10 @@ function renderReportPage(title, dates, extraMeta = '', isWeekly = false) {
       <div class="report-block">
         <div class="section-kicker">每日概要</div>
         <div class="daily-link-list-v2">
-          ${dates.map((item) => `
-            <button class="daily-link-v2" type="button" onclick="loadDate('${escapeHtml(item.date)}')">
+          ${displayDates.map((item) => `
+            <button class="daily-link-v2" type="button" ${item.isPlaceholder ? 'disabled' : `onclick="loadDate('${escapeHtml(item.date)}')"`}>
               <span class="dl-date">${escapeHtml(formatFriendlyDate(item.date))}</span>
-              <span class="dl-summary">${escapeHtml(truncateSummary(item.summary || item.timeline?.[0]?.preview || ''))}</span>
+              <span class="dl-summary">${escapeHtml(item.isPlaceholder ? '这一天还没有录音' : truncateSummary(item.summary || item.timeline?.[0]?.preview || ''))}</span>
               <span class="dl-count">${item.segments || 0}条</span>
             </button>
           `).join('')}
@@ -1167,9 +1267,12 @@ function renderDayLayout() {
   const meta = state.currentMeta || {};
   if (!detail) return;
 
-  const summaryText = plainText(meta.daily_summary || state.currentBriefing?.summary || state.context.status_line || '');
+  const summaryText = buildDailySummary(detail, meta);
   const times = detail.segments.map((segment) => segment.time).filter(Boolean).sort();
   const timeSpan = times.length >= 2 ? `${times[0]} - ${times[times.length - 1]}` : (times[0] || '');
+  const summaryHint = looksWeakSummary(meta.daily_summary || state.currentBriefing?.summary || '')
+    ? '这段摘要还是有点空，我先把洞察、决定和待办拼成一句更像人话的小结。'
+    : '';
 
   document.getElementById('main').innerHTML = `
     <article class="daily-article">
@@ -1196,6 +1299,7 @@ function renderDayLayout() {
       <section class="summary-callout-v2">
         <div class="callout-label">AI 摘要</div>
         <p>${escapeHtml(summaryText)}</p>
+        ${summaryHint ? `<div class="summary-hint">${escapeHtml(summaryHint)}</div>` : ''}
       </section>` : ''}
 
       ${renderMetaPanels(meta)}
@@ -2024,47 +2128,46 @@ function toggleSidebarDict() {
   list.classList.toggle('open');
 }
 
-// === Inline Correction Popover ===
+// === Correction Drawer ===
 document.addEventListener('mouseup', (e) => {
   const selection = window.getSelection();
   const selectedText = selection?.toString().trim();
   if (!selectedText || selectedText.length < 2 || selectedText.length > 50) return;
   const targetEl = e.target;
-  if (targetEl.closest('input, textarea, button, select, .correction-popover, .spotlight-modal')) return;
+  if (targetEl.closest('input, textarea, button, select, .correction-drawer, .spotlight-modal')) return;
   if (!targetEl.closest('.seg-raw, .seg-distilled, .record-card, .briefing-card, .spotlight-result-item, .event-item, .prop-item, .time-block')) return;
-  openCorrectionPopover(selectedText, e.clientX, e.clientY);
+  const contextText = plainText(targetEl.closest('.record-card, .briefing-card, .event-item, .prop-item, .time-block')?.textContent || selectedText);
+  openCorrectionPopover(selectedText, e.clientX, e.clientY, contextText);
 });
 
-function openCorrectionPopover(wrongText, mouseX, mouseY) {
-  const popover = document.getElementById('correctionPopover');
+function openCorrectionPopover(wrongText = '', mouseX = 0, mouseY = 0, contextText = '') {
+  const drawer = document.getElementById('correctionPopover');
   const wrongEl = document.getElementById('cpWrongText');
+  const contextEl = document.getElementById('cpContextText');
   const rightInput = document.getElementById('cpRightInput');
-  wrongEl.textContent = wrongText;
-  rightInput.value = '';
-  popover.style.display = 'block';
-  const rect = popover.getBoundingClientRect();
-  let top = mouseY + 12;
-  let left = mouseX - 24;
-  if (top + rect.height > window.innerHeight) top = mouseY - rect.height - 12;
-  if (left + rect.width > window.innerWidth) left = window.innerWidth - rect.width - 16;
-  if (left < 8) left = 8;
-  popover.style.top = top + 'px';
-  popover.style.left = left + 'px';
-  setTimeout(() => rightInput.focus(), 50);
+  wrongEl.textContent = wrongText || '先在日报里选中一段文字';
+  contextEl.textContent = contextText || '先从日报里选中一句话，抽屉就会带着原句打开。';
+  rightInput.value = wrongText || '';
+  drawer.classList.add('is-open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => rightInput.focus(), 80);
 }
 
 function closeCorrectionPopover() {
-  document.getElementById('correctionPopover').style.display = 'none';
+  document.getElementById('correctionPopover').classList.remove('is-open');
+  document.body.style.overflow = '';
 }
 
 async function submitInlineCorrection() {
   const wrong = document.getElementById('cpWrongText').textContent.trim();
   const right = document.getElementById('cpRightInput').value.trim();
+  const context = document.getElementById('cpContextText').textContent.trim();
+  if (!wrong || wrong.includes('先在日报里选中')) { showToast('先选中一段日报文字，再来纠错。'); return; }
   if (!right) { showToast('请输入正确的文本'); return; }
   if (wrong === right) { showToast('纠正前后相同'); return; }
   try {
     await postJson('/api/correct/typo', {
-      wrong, right, context: '', date: state.currentDate, sync_vocab: true,
+      wrong, right, context, date: state.currentDate, sync_vocab: true,
     });
     closeCorrectionPopover();
     showToast(`已纠正：${wrong} → ${right}`);
@@ -2079,8 +2182,8 @@ document.getElementById('cpRightInput').addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('mousedown', (e) => {
-  const popover = document.getElementById('correctionPopover');
-  if (popover.style.display !== 'none' && !popover.contains(e.target)) {
+  const drawer = document.getElementById('correctionPopover');
+  if (drawer.classList.contains('is-open') && !drawer.contains(e.target)) {
     closeCorrectionPopover();
   }
 });
