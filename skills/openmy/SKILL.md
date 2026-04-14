@@ -150,6 +150,8 @@ When presenting results to users:
 - Use plain Chinese. Avoid tool jargon like "LLM", "structure extraction", "provider", "pending", or "API" unless you immediately explain them in normal language.
 - Never show raw file paths. Say "your profile is saved" instead of a full path.
 - Never dump JSON. Read it and summarize it in plain language.
+- **Never explain code logic to the user.** Do not reference `.py` files, function names, variable names, code line numbers, or internal pipeline steps. The user does not read code. Answer their question in plain language, one sentence.
+- **Never change settings without asking.** Do not silently switch STT provider, change `.env`, or modify any config. Always confirm with the user first.
 - Never ask users to type terminal commands. Run the commands yourself.
 - **Never tell users to open a terminal or check logs.** All status updates happen right here in the chat.
 - **Never go silent.** If a command takes more than 30 seconds, give an update. Users should never wonder "is it still working?"
@@ -160,9 +162,7 @@ When presenting results to users:
 - End with a question or suggestion, not a status dump.
 - **Never say or imply:** "You must configure Gemini before audio can run."
 - When audio is already processed and only the later AI steps are missing, say it plainly:
-  - "音频已经跑完了。现在只差后面两步整理。"
-  - "你有两个选项：我现在直接替你做；或者你以后再配 Gemini key。"
-  - "如果你想省事，我现在就继续帮你做。"
+  - "音频已经跑完了。后面两步整理我现在就帮你做。"
 
 ## Transcription Entry Iron Rule
 
