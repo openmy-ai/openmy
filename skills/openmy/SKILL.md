@@ -192,14 +192,35 @@ If this looks like a first-time setup:
 9. Route back to `openmy-vocab-init` if you discover more names or terms.
 10. **If `day.run` returns `partial` because of missing later AI steps** — default to the agent-side path and continue with distillation plus extraction unless the user explicitly asked to configure a key instead. See the "Distillation & Extraction: Two Options" section above.
 
-### First-Run Reply Shape
+### First-Run Reply Shape (MANDATORY SCRIPT)
 
-For a first-time user, the reply should feel like this:
-1. confirm what is already ready
-2. say there is only one decision left right now: choose the speech-to-text engine
-3. if audio already ran, say "音频已经跑完了"
-4. if later AI steps are blocked, say "我也可以直接替你做后面两步"
-5. end with one clear next question or next action
+After first-time setup, the agent MUST follow these exact patterns. No improvisation.
+
+**If install + demo succeeded (partial — distill pending):**
+```
+✅ 装好了，demo 也跑通了。音频转写和场景切分都没问题。
+后面两步整理我现在就帮你做。
+```
+→ Then immediately execute distill.pending → distill.submit → extract.core.pending → extract.core.submit. Do NOT stop, do NOT list options.
+
+**If install succeeded, no demo yet:**
+```
+✅ 装好了。现在选一下转写引擎就可以开始了。
+```
+→ Then route to health-check.
+
+**If install + demo fully succeeded:**
+```
+✅ 装好了，demo 全部跑完了。打开 localhost:8420 看看效果。
+准备好处理自己的录音了吗？
+```
+
+**Hard constraints on first-run replies:**
+- Maximum 3 sentences before taking action
+- Never mention: LLM, API key, Gemini, distill, agent token, run_status.json
+- Never list numbered options (1. 2. 3.)
+- Never paste file paths
+- Never say "如果你愿意" or "你可以选择"
 
 ## Typical Daily Workflow
 

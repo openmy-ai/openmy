@@ -170,3 +170,40 @@ class TestBasicSkills:
         payload = _run_skill("nonexistent.action")
         assert payload["ok"] is False
         assert payload.get("error_code") == "unknown_action"
+
+
+# ──────────────────────────────────────────────────────────────────
+# 场景 6：demo partial → agent handoff 信号正确
+# ──────────────────────────────────────────────────────────────────
+
+class TestDemoPartialHandoff:
+    """验证 quick-start --demo 部分完成时，day.run skill 返回正确的 agent 接管信号。"""
+
+    def test_distill_pending_returns_scenes(self):
+        """distill.pending 应返回待蒸馏场景列表（demo 数据日期 2099-12-31）。"""
+        payload = _run_skill("distill.pending", "--date", "2099-12-31")
+        if not payload["ok"]:
+            pytest.skip("Demo data not available on this machine")
+        data = payload["data"]
+        assert data["status"] in ("pending", "already_done")
+        if data["status"] == "pending":
+            assert len(data["pending_scenes"]) > 0
+            scene = data["pending_scenes"][0]
+            assert "scene_id" in scene
+            assert "text" in scene
+
+    def test_day_run_partial_gives_distill_next_action(self):
+        """day.run 返回 partial 时，next_actions 应指向 distill.pending。"""
+        payload = _run_skill("day.run", "--date", "2099-12-31", "--skip-transcribe")
+        if not payload["ok"] and payload.get("error_code") == "run_failed":
+            pytest.skip("Demo data not available on this machine")
+        data = payload.get("data", {})
+        run_status = data.get("run_status", {})
+        if run_status.get("status") == "partial":
+            next_actions = payload.get("next_actions", [])
+            has_distill_hint = any("distill.pending" in a for a in next_actions)
+            has_extract_hint = any("extract.core.pending" in a for a in next_actions)
+            assert has_distill_hint or has_extract_hint, (
+                f"partial 结果的 next_actions 应包含 distill.pending 或 extract.core.pending, 实际: {next_actions}"
+            )
+

@@ -105,10 +105,28 @@ If audio processing finishes but later AI steps are still missing:
 ## 自检规则
 
 发回复前检查：
-- 不要把“因为没配 Gemini key”当成主句。
-- 不要把“缺少 LLM API key”当成主句。
-- 可以提到“后面两步整理我可以直接替你做，要继续吗？”这句旧口径，但默认动作现在是直接继续，不再把它当成必停问题。
-- 主句必须先说“音频已经跑完了”或者“我已经继续把后面两步做完了”。
+- 不要把"因为没配 Gemini key"当成主句。
+- 不要把"缺少 LLM API key"当成主句。
+- 主句必须先说"音频已经跑完了"或者"我已经继续把后面两步做完了"。
+- 不要列选项让用户选。直接继续做。
+- 不要超过 3 句话就开始干活。
+
+### Demo 跑完后的固定话术
+
+如果是 `quick-start --demo` 跑完，停在 distill：
+
+```
+音频转写和场景切分都搞定了。后面两步整理我现在就帮你做。
+```
+
+然后立刻执行 `distill.pending` → `distill.submit` → `extract.core.pending` → `extract.core.submit`。
+
+禁止说的话：
+- ❌ "如果你愿意，我下一步可以……"
+- ❌ "你有两个选择：A 或 B"
+- ❌ "需要配置 Gemini API Key"
+- ❌ 贴 run_status.json 路径
+- ❌ 贴 transcript.md 或 scenes.json 路径
 
 ## Error Handling
 
