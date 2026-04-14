@@ -365,12 +365,33 @@ def handle_correction_apply(args: argparse.Namespace, *, cli_getter, run_existin
 
     exit_code = run_existing_command("correction.apply", args)
     if exit_code != 0:
+        op_name = tokens[0]
+        op_hints = {
+            "close-loop": (
+                "The --arg value must match a title in the open_loops list of active_context. "
+                "Run: openmy skill context.query --kind open --json to see current open loops. "
+                "Example: openmy skill correction.apply --op close-loop --arg \"Finalize README\" --json"
+            ),
+            "typo": (
+                "Pass two --arg values: the wrong word and the right word. "
+                "Example: openmy skill correction.apply --op typo --arg \"Cload\" --arg \"Claude\" --date 2026-04-08 --json"
+            ),
+            "reject-decision": (
+                "The --arg value must match a decision text in active_context. "
+                "Run: openmy skill context.get --json to see current decisions."
+            ),
+            "merge-project": (
+                "Pass two --arg values: the source project name to remove and the target to keep. "
+                "Example: openmy skill correction.apply --op merge-project --arg \"openmy\" --arg \"OpenMy\" --json"
+            ),
+        }
+        hint = op_hints.get(op_name, "Make sure active_context exists and the arguments match titles in the current context.")
         error_payload = build_error_payload(
             action="correction.apply",
             error_code="correction_failed",
-            message=f"Correction operation failed: {tokens[0]}",
-            hint="Make sure active_context exists and the arguments match titles in the current context.",
-            data={"op": tokens[0], "args": tokens[1:], "status": args.status},
+            message=f"Correction operation failed: {op_name}",
+            hint=hint,
+            data={"op": op_name, "args": tokens[1:], "status": args.status},
         )
         return (error_payload, exit_code)
 

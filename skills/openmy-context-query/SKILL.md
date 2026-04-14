@@ -22,9 +22,9 @@ Use it when the user asks things like:
 ## Action
 
 - `openmy skill context.query --kind project --query OpenMy --json`
-- `openmy skill context.query --kind open --query README --json`
-- `openmy skill context.query --kind decision --query 发布 --json`
-- `openmy skill context.query --kind evidence --query Figma --include-evidence --json`
+- `openmy skill context.query --kind open --json`
+- `openmy skill context.query --kind evidence --query "发布" --include-evidence --json`
+- `openmy skill context.query --kind closed --json`
 
 ## Restrictions
 
@@ -47,8 +47,9 @@ Use it when the user asks things like:
 | person | person | check activity around one person |
 | open | open item | find unfinished loops |
 | closed | closed item | find finished loops |
-| evidence | evidence | collect supporting records |
-| decision | decision | review committed choices |
+| evidence | evidence | collect supporting records (also covers decisions) |
+
+> **Note**: To search for decisions, use `--kind evidence --query "决策关键词"`. Decisions are returned as evidence hits with `type: decision`.
 
 ## Error Handling
 

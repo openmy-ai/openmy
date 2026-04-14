@@ -87,8 +87,10 @@ def handle_context_get(args: argparse.Namespace, *, cli_getter, build_success_pa
 
 
 def handle_context_query(args: argparse.Namespace, *, cli_getter, build_success_payload, build_error_payload):
+    from openmy.services.query.context_query import query_context
+
     cli = cli_getter()
-    result = cli.query_context(
+    result = query_context(
         cli.DATA_ROOT,
         kind=str(getattr(args, "kind", "") or ""),
         query=str(getattr(args, "query", "") or ""),
