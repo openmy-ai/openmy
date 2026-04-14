@@ -77,7 +77,11 @@ Your reply to the user MUST follow this order. No filler, no long warning block.
 
 ### After the User Chooses
 
+**这一步是转写入口的铁规则：先把模型定下来，再开始转写。**
+
 1. Run `openmy skill profile.set --stt-provider <chosen> --json` immediately.
+2. 只要用户这次选的是云端模型，就在这里把密钥要齐。**没拿到密钥前，不要开始 `day.run`。**
+3. 不要用“先跑一次，报错了再回来补密钥”这种绕路做法。
 2. If the engine needs an API key:
    - Tell the user where to get it (one link, one line):
      - dashscope → https://bailian.console.aliyun.com/

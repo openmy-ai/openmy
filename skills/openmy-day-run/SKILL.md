@@ -31,10 +31,14 @@ Use it when:
 
 ## Pre-Run Check
 
-Before the first `day.run` in a session:
-1. If `profile` has no `stt_provider` set, or the active provider is not ready, **route to `openmy-health-check`** and let the user choose an engine. Do NOT pick one silently.
-2. This is defined in the router SKILL (First-Time Setup Flow, step 3): "Ask only one choice question."
-3. Once the user has chosen and `profile.set --stt-provider` has been run, proceed with `day.run`.
+Before any `day.run` in a session:
+1. **先确认这次到底要用哪个模型。** 不要默认沿用旧设置就直接开跑。
+2. If the user did not specify a model, and `profile` has no `stt_provider` set, or the active provider is not ready, **route to `openmy-health-check`** and let the user choose an engine. Do NOT pick one silently.
+3. If the user explicitly switches to another model for this run, treat that as a fresh model choice. Re-check whether that exact route is ready **before** calling `day.run`.
+4. If the chosen model is cloud-based and the key is missing, stop there and ask for the key first. **Do NOT start transcription and wait for a missing-key error.**
+5. Once the user has chosen and `profile.set --stt-provider` has been run, proceed with `day.run`.
+
+一句话：**先选模型，再转写；云端没密钥，就别开跑。**
 
 ## Batch Processing
 

@@ -164,6 +164,19 @@ When presenting results to users:
   - "你有两个选项：我现在直接替你做；或者你以后再配 Gemini key。"
   - "如果你想省事，我现在就继续帮你做。"
 
+## Transcription Entry Iron Rule
+
+When the user is about to start transcription, always do this first:
+
+1. **先过模型选择这一步** — 不要先跑起来再补问。
+2. 如果用户没有明确指定模型，就按 `health.check` 的推荐路线问一次。
+3. 如果用户明确指定了模型，也要立刻检查那条路线现在能不能用。
+4. 如果用户选的是本地模型，而且依赖齐全，就直接继续。
+5. 如果用户选的是云端模型，就先要密钥；**没拿到密钥前，不准开跑。**
+6. 不要等 `day.run` 报错以后，才回头补“你还没配这个模型”。
+
+一句话：**先选模型，再转写。选云端，就先拿密钥。**
+
 ## First-Time Setup Flow
 
 If this looks like a first-time setup:

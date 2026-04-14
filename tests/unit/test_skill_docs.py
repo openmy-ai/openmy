@@ -87,6 +87,14 @@ class TestSkillDocs(unittest.TestCase):
         self.assertIn("⏭️ 跳过步骤", content)
         self.assertIn("❌ 失败步骤", content)
 
+    def test_skills_document_choose_model_before_transcribe_rule(self):
+        total = TOTAL_SKILL.read_text(encoding="utf-8")
+        day_run = (SKILLS_ROOT / "openmy-day-run" / "SKILL.md").read_text(encoding="utf-8")
+        health = (SKILLS_ROOT / "openmy-health-check" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("先选模型，再转写", total)
+        self.assertIn("云端没密钥，就别开跑", day_run)
+        self.assertIn("没拿到密钥前，不要开始 `day.run`", health)
+
 
 if __name__ == "__main__":
     unittest.main()
