@@ -188,13 +188,63 @@ openmy skill day.run --date 2026-04-08 --audio path/to/audio.wav --json
 
 ### 安装给你的 Agent 用的技能说明
 
-#### 一键安装
+#### 一键安装（所有平台）
 
 ```bash
 bash scripts/install-skills.sh
 ```
 
-这个脚本会自动识别常见 Agent 工具，把对应技能说明链接过去。
+自动检测你安装了哪些 AI 工具，把 OpenMy 的技能说明链接过去。
+
+#### 分平台安装
+
+<details>
+<summary><b>Claude Code</b></summary>
+
+克隆仓库后 `CLAUDE.md` 自动生效。如果还需要手动链接技能：
+
+```bash
+bash scripts/install-skills.sh
+```
+
+Claude Code 会自动读取项目根目录的 `CLAUDE.md`，里面包含所有行为规则和 Skill 路由。
+
+</details>
+
+<details>
+<summary><b>Codex</b></summary>
+
+告诉 Codex：
+
+> Fetch and follow instructions from https://raw.githubusercontent.com/openmy-ai/openmy/refs/heads/main/.codex/INSTALL.md
+
+或者克隆仓库后运行 `bash scripts/install-skills.sh`，会自动链接到 `~/.agents/skills/`。
+
+</details>
+
+<details>
+<summary><b>Gemini CLI</b></summary>
+
+```bash
+gemini skills link /path/to/openmy/skills
+```
+
+或者克隆仓库后运行 `bash scripts/install-skills.sh`，会自动链接到 `~/.gemini/skills/`。
+
+</details>
+
+<details>
+<summary><b>Antigravity（反重力）</b></summary>
+
+和 Gemini CLI 共用同一套 Skills 目录（`~/.gemini/skills/`）。
+
+```bash
+bash scripts/install-skills.sh
+```
+
+`GEMINI.md` 已配置好 `@import`，会自动加载路由 Skill。
+
+</details>
 
 ### 升级
 
