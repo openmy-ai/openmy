@@ -207,6 +207,10 @@ class TestWebSmoke(unittest.TestCase):
 
             runner = JobRunner()
             server, patches, base_url = self.start_server(data_root, project_root, runner)
+            patches.extend([
+                patch("app.payloads._local_provider_ready", side_effect=lambda name: name == "funasr"),
+            ])
+            patches[-1].start()
             try:
                 payload = self.fetch_json(base_url, "/api/onboarding")
             finally:
@@ -215,6 +219,28 @@ class TestWebSmoke(unittest.TestCase):
             self.assertEqual(payload["headline"], "先别自己挑，先按推荐路线走：本地中文优先")
             self.assertIn("profile.set", payload["primary_action"])
             self.assertNotIn("state_path", payload)
+
+    def test_server_onboarding_skips_missing_local_dependency(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+
+            runner = JobRunner()
+            server, patches, base_url = self.start_server(data_root, project_root, runner)
+            patches.extend([
+                patch("app.payloads._local_provider_ready", side_effect=lambda name: name == "faster-whisper"),
+            ])
+            patches[-1].start()
+            try:
+                payload = self.fetch_json(base_url, "/api/onboarding")
+            finally:
+                self.stop_server(server, patches)
+
+            self.assertEqual(payload["stage"], "choose_provider")
+            self.assertEqual(payload["recommended_provider"], "faster-whisper")
+            self.assertFalse(payload["choices"]["local"][0]["ready"])
+            self.assertTrue(payload["choices"]["local"][1]["ready"])
 
     def test_server_updates_onboarding_provider(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

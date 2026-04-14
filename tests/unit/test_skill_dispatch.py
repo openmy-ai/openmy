@@ -463,6 +463,8 @@ class TestSkillDispatch(unittest.TestCase):
                 patch("openmy.config.has_llm_credentials", return_value=False),
                 patch("openmy.config.get_stt_provider_name", return_value=""),
                 patch("openmy.config.has_stt_credentials", return_value=False),
+                patch("openmy.providers.stt.funasr.AutoModel", object()),
+                patch("openmy.providers.stt.faster_whisper.WhisperModel", object()),
                 patch("openmy.services.screen_recognition.settings.load_screen_context_settings", return_value=fake_screen_settings),
                 patch("shutil.which", return_value="/usr/bin/fake"),
             ):
@@ -476,6 +478,52 @@ class TestSkillDispatch(unittest.TestCase):
         self.assertEqual(payload["data"]["onboarding"]["stage"], "choose_provider")
         self.assertEqual(payload["data"]["onboarding"]["recommended_provider"], "funasr")
         self.assertIn("当前还没选转写引擎", payload["human_summary"])
+
+    def test_health_check_marks_local_provider_unready_when_dependency_missing(self):
+        from openmy import skill_dispatch
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            data_root = Path(tmp_dir) / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            profile_file = data_root / "profile.json"
+            profile_file.write_text("{}", encoding="utf-8")
+            corrections = data_root / "corrections.json"
+            corrections.write_text("{}", encoding="utf-8")
+            vocab = data_root / "vocab.txt"
+            vocab.write_text("词汇", encoding="utf-8")
+            fake_cli = SimpleNamespace(DATA_ROOT=data_root, find_all_dates=lambda: [])
+            fake_screen_settings = SimpleNamespace(
+                enabled=False,
+                participation_mode="off",
+                capture_interval_seconds=5,
+                screenshot_retention_hours=24,
+            )
+
+            with (
+                patch("openmy.skill_dispatch._cli", return_value=fake_cli),
+                patch("openmy.config.get_export_provider_name", return_value=""),
+                patch("openmy.config.get_export_config", return_value={}),
+                patch("openmy.config.get_llm_provider_name", return_value="gemini"),
+                patch("openmy.config.has_llm_credentials", return_value=True),
+                patch("openmy.config.get_stt_provider_name", return_value="funasr"),
+                patch("openmy.config.has_stt_credentials", return_value=True),
+                patch("openmy.providers.stt.funasr.AutoModel", None),
+                patch("openmy.providers.stt.faster_whisper.WhisperModel", object()),
+                patch("openmy.services.cleaning.cleaner.CORRECTIONS_FILE", corrections),
+                patch("openmy.services.cleaning.cleaner.VOCAB_FILE", vocab),
+                patch("openmy.services.context.consolidation.profile_path", return_value=profile_file),
+                patch("openmy.services.screen_recognition.settings.load_screen_context_settings", return_value=fake_screen_settings),
+                patch("shutil.which", return_value="/usr/bin/fake"),
+            ):
+                payload, exit_code = skill_dispatch.handle_health_check(self.make_args(action="health.check"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertFalse(payload["data"]["stt_configured"])
+        provider = next(item for item in payload["data"]["stt_providers"] if item["name"] == "funasr")
+        self.assertFalse(provider["ready"])
+        self.assertIn("missing its local dependency", payload["data"]["issues"][0])
+        self.assertEqual(payload["data"]["onboarding"]["stage"], "choose_provider")
+        self.assertEqual(payload["data"]["onboarding"]["recommended_provider"], "faster-whisper")
 
     def test_distill_pending_and_submit_round_trip(self):
         from openmy import skill_dispatch

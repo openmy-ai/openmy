@@ -5,6 +5,22 @@ import shutil
 import sys
 from pathlib import Path
 
+
+def _local_provider_dependency_status(name: str) -> tuple[bool, str]:
+    try:
+        if name == "funasr":
+            from openmy.providers.stt.funasr import AutoModel
+
+            return (AutoModel is not None, "先运行 `pip install \"openmy[transcription-zh]\"`，或者执行 `uv pip install 'funasr>=1.2.6' modelscope`。")
+        if name == "faster-whisper":
+            from openmy.providers.stt.faster_whisper import WhisperModel
+
+            return (WhisperModel is not None, "先运行 `pip install \"openmy[local]\"`，或者执行 `uv pip install faster-whisper`。")
+    except Exception:
+        pass
+    return True, ""
+
+
 from openmy.skill_handlers.common import SkillDispatchError
 
 
@@ -105,9 +121,17 @@ def handle_health_check(args: argparse.Namespace, *, cli_getter, build_success_p
 
     current_stt = get_stt_provider_name()
     stt_providers: list[dict[str, object]] = []
+    provider_ready: dict[str, bool] = {}
+    provider_fix_hint: dict[str, str] = {}
     for name, default_model in DEFAULT_STT_MODELS.items():
         needs_key = stt_provider_requires_api_key(name)
         has_key = bool(get_stt_api_key(name)) if needs_key else True
+        ready = has_key
+        fix_hint = ""
+        if not needs_key:
+            ready, fix_hint = _local_provider_dependency_status(name)
+        provider_ready[name] = ready
+        provider_fix_hint[name] = fix_hint
         stt_providers.append(
             {
                 "name": name,
@@ -116,7 +140,7 @@ def handle_health_check(args: argparse.Namespace, *, cli_getter, build_success_p
                 "needs_api_key": needs_key,
                 "api_key_configured": has_key,
                 "is_active": name == current_stt,
-                "ready": has_key if needs_key else True,
+                "ready": ready,
             }
         )
 
@@ -165,6 +189,8 @@ def handle_health_check(args: argparse.Namespace, *, cli_getter, build_success_p
         issues.append("ffprobe not found. Usually installed together with ffmpeg.")
     if not current_stt:
         issues.append("No STT provider selected yet. Ask the user to choose one local or cloud engine first.")
+    elif current_stt in LOCAL_STT_PROVIDERS and not provider_ready.get(current_stt, False):
+        issues.append(f"Active STT provider '{current_stt}' is missing its local dependency.")
     elif not has_stt_credentials():
         issues.append(f"Active STT provider '{current_stt}' needs an API key but none is configured.")
     if not llm_key_ok:
@@ -188,6 +214,10 @@ def handle_health_check(args: argparse.Namespace, *, cli_getter, build_success_p
         next_actions.append("If you want agent-native processing, run day.run first, then use distill.pending / distill.submit and extract.core.pending / extract.core.submit.")
     if not current_stt:
         next_actions.insert(0, "Ask the user to choose an STT engine first. Local choices are faster-whisper and funasr; cloud choices need an API key.")
+    elif current_stt in LOCAL_STT_PROVIDERS and not provider_ready.get(current_stt, False):
+        fix_hint = provider_fix_hint.get(current_stt, "")
+        if fix_hint:
+            next_actions.append(fix_hint)
     elif not has_stt_credentials() and current_stt not in LOCAL_STT_PROVIDERS:
         next_actions.append(f"Add API key for '{current_stt}' to .env, or switch to a local provider: OPENMY_STT_PROVIDER=faster-whisper")
     if export_provider and not export_ready:
@@ -208,8 +238,10 @@ def handle_health_check(args: argparse.Namespace, *, cli_getter, build_success_p
     save_onboarding_state(cli.DATA_ROOT, onboarding)
 
     summary_parts = [onboarding["headline"]]
-    if current_stt:
+    if current_stt and provider_ready.get(current_stt, False):
         summary_parts.append(f"当前在用 {current_stt}。")
+    elif current_stt:
+        summary_parts.append(f"当前配的是 {current_stt}，但这条路现在还不能用。")
     else:
         summary_parts.append("当前还没选转写引擎。")
     summary_parts.append(f"已经有 {data_days} 天数据。")
@@ -226,7 +258,7 @@ def handle_health_check(args: argparse.Namespace, *, cli_getter, build_success_p
             "ffmpeg": {"available": ffmpeg_ok, "ffprobe_available": ffprobe_ok},
             "stt_providers": stt_providers,
             "stt_active": current_stt,
-            "stt_configured": bool(current_stt) and (current_stt in LOCAL_STT_PROVIDERS or has_stt_credentials()),
+            "stt_configured": bool(current_stt) and provider_ready.get(current_stt, False),
             "llm_available": llm_key_ok,
             "llm": {"provider": llm_provider, "api_key_configured": llm_key_ok},
             "profile_exists": profile_exists,

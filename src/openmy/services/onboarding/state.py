@@ -91,8 +91,10 @@ def build_onboarding_state(
     profile_exists: bool,
     vocab_exists: bool,
 ) -> dict[str, Any]:
+    ready_map = {item.get("name", ""): bool(item.get("ready")) for item in stt_providers}
+    effective_current_stt = current_stt if ready_map.get(current_stt) else ""
     recommended = _pick_recommended_provider(stt_providers, current_stt)
-    if not current_stt:
+    if not effective_current_stt:
         stage = "choose_provider"
         next_step = "先选转写引擎，再开始第一次转写。"
     elif not profile_exists:

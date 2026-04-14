@@ -14,7 +14,6 @@ from contextlib import redirect_stderr, redirect_stdout
 from typing import Any
 
 from rich.console import Console as _RichConsole
-from rich.markdown import Markdown as _RichMarkdown
 from rich.panel import Panel as _RichPanel
 
 from openmy.commands import common as common_cmd
@@ -23,14 +22,19 @@ from openmy.commands import correct as correct_cmd
 from openmy.commands import menu as menu_cmd
 from openmy.commands import run as run_cmd
 from openmy.commands import screen as screen_cmd
-from openmy.commands import show as show_cmd
 from openmy.commands import self_update as self_update_cmd
 from openmy.utils.errors import FriendlyCliError
 from openmy.utils.paths import DATA_ROOT, LEGACY_ROOT as _LEGACY_ROOT, PROJECT_ENV_PATH as _PROJECT_ENV_PATH, PROJECT_ROOT as _ROOT_DIR
 from openmy.services.feedback import ensure_install_time
 
 console = common_cmd.console
-Console, Markdown, Panel = _RichConsole, _RichMarkdown, _RichPanel
+Console, Panel = _RichConsole, _RichPanel
+
+
+def Markdown(*args, **kwargs):
+    from rich.markdown import Markdown as _RichMarkdown
+
+    return _RichMarkdown(*args, **kwargs)
 PROJECT_ENV_PATH, ROOT_DIR, LEGACY_ROOT = _PROJECT_ENV_PATH, _ROOT_DIR, _LEGACY_ROOT
 DATE_RE, DATE_MD_RE, AUDIO_TIME_RE, DATE_IN_FILENAME_RE, ROLE_COLORS = (
     common_cmd.DATE_RE,
@@ -94,7 +98,6 @@ HELP_IN_ENGLISH = common_cmd.HELP_IN_ENGLISH
 )
 (
     _show_main_menu,
-    _render_review,
     _cmd_correct_typo,
     _load_context_snapshot,
     _normalize_match_text,
@@ -108,7 +111,6 @@ HELP_IN_ENGLISH = common_cmd.HELP_IN_ENGLISH
     cmd_quick_start,
 ) = (
     menu_cmd._show_main_menu,
-    show_cmd._render_review,
     correct_cmd._cmd_correct_typo,
     correct_cmd._load_context_snapshot,
     correct_cmd._normalize_match_text,
@@ -121,6 +123,72 @@ HELP_IN_ENGLISH = common_cmd.HELP_IN_ENGLISH
     run_cmd.cmd_run,
     run_cmd.cmd_quick_start,
 )
+_SHOW_CMD = None
+
+
+def _get_show_cmd():
+    global _SHOW_CMD
+    if _SHOW_CMD is None:
+        from openmy.commands import show as show_module
+
+        _SHOW_CMD = show_module
+        _sync_show_runtime_overrides(show_module)
+    return _SHOW_CMD
+
+
+def _sync_show_runtime_overrides(show_module=None) -> None:
+    show_module = show_module or _SHOW_CMD
+    if show_module is None:
+        return
+    show_module.console = console
+    show_module.DATA_ROOT = DATA_ROOT
+    show_module.LEGACY_ROOT = LEGACY_ROOT
+
+
+def _show_call(name: str, *args, **kwargs):
+    _sync_runtime_overrides()
+    return getattr(_get_show_cmd(), name)(*args, **kwargs)
+
+
+def _show_func(name: str):
+    def wrapper(*args, **kwargs):
+        return _show_call(name, *args, **kwargs)
+
+    wrapper.__name__ = name
+    return wrapper
+
+
+_render_review = _show_func("_render_review")
+find_all_dates = _show_func("find_all_dates")
+ensure_day_dir = _show_func("ensure_day_dir")
+get_date_status = _show_func("get_date_status")
+resolve_day_paths = _show_func("resolve_day_paths")
+read_scenes_payload = _show_func("read_scenes_payload")
+build_segmented_scenes_payload = _show_func("build_segmented_scenes_payload")
+cmd_status = _show_func("cmd_status")
+cmd_view = _show_func("cmd_view")
+cmd_clean = _show_func("cmd_clean")
+cmd_roles = _show_func("cmd_roles")
+cmd_distill = _show_func("cmd_distill")
+cmd_briefing = _show_func("cmd_briefing")
+cmd_extract = _show_func("cmd_extract")
+cmd_query = _show_func("cmd_query")
+cmd_weekly = _show_func("cmd_weekly")
+cmd_monthly = _show_func("cmd_monthly")
+cmd_watch = _show_func("cmd_watch")
+cmd_feedback = _show_func("cmd_feedback")
+read_json = _show_func("read_json")
+strip_document_header = _show_func("strip_document_header")
+stage_label = _show_func("stage_label")
+role_bar = _show_func("role_bar")
+parse_audio_time = _show_func("parse_audio_time")
+infer_date_from_path = _show_func("infer_date_from_path")
+infer_scene_role_profile = _show_func("infer_scene_role_profile")
+rebuild_scene_stats = _show_func("rebuild_scene_stats")
+build_frozen_scene_stats = _show_func("build_frozen_scene_stats")
+freeze_scene_roles = _show_func("freeze_scene_roles")
+
+
 def _upsert_project_env(key: str, value: str):
     common_cmd.PROJECT_ENV_PATH = PROJECT_ENV_PATH
     return common_cmd._upsert_project_env(key, value)
@@ -131,8 +199,7 @@ def _sync_runtime_overrides() -> None:
     common_cmd.DATA_ROOT = DATA_ROOT
     common_cmd.PROJECT_ENV_PATH = PROJECT_ENV_PATH
     common_cmd.ROOT_DIR = ROOT_DIR
-    show_cmd.DATA_ROOT = DATA_ROOT
-    show_cmd.LEGACY_ROOT = LEGACY_ROOT
+    _sync_show_runtime_overrides()
     common_cmd.get_stt_provider_name = get_stt_provider_name
     common_cmd.get_stt_api_key = get_stt_api_key
     common_cmd.get_llm_api_key = get_llm_api_key
@@ -158,71 +225,6 @@ def _sync_wrapper(func):
     return lambda *args, **kwargs: (_sync_runtime_overrides(), func(*args, **kwargs))[1]
 
 
-(
-    find_all_dates,
-    ensure_day_dir,
-    get_date_status,
-    resolve_day_paths,
-    read_scenes_payload,
-    build_segmented_scenes_payload,
-    cmd_status,
-    cmd_view,
-    cmd_clean,
-    cmd_roles,
-    cmd_distill,
-    cmd_briefing,
-    cmd_extract,
-    cmd_query,
-    cmd_weekly,
-    cmd_monthly,
-    cmd_watch,
-    cmd_feedback,
-) = tuple(
-    _sync_wrapper(getattr(show_cmd, name))
-    for name in (
-        "find_all_dates",
-        "ensure_day_dir",
-        "get_date_status",
-        "resolve_day_paths",
-        "read_scenes_payload",
-        "build_segmented_scenes_payload",
-        "cmd_status",
-        "cmd_view",
-        "cmd_clean",
-        "cmd_roles",
-        "cmd_distill",
-        "cmd_briefing",
-        "cmd_extract",
-        "cmd_query",
-        "cmd_weekly",
-        "cmd_monthly",
-        "cmd_watch",
-        "cmd_feedback",
-    )
-)
-(
-    read_json,
-    strip_document_header,
-    stage_label,
-    role_bar,
-    parse_audio_time,
-    infer_date_from_path,
-    infer_scene_role_profile,
-    rebuild_scene_stats,
-    build_frozen_scene_stats,
-    freeze_scene_roles,
-) = (
-    show_cmd.read_json,
-    show_cmd.strip_document_header,
-    show_cmd.stage_label,
-    show_cmd.role_bar,
-    show_cmd.parse_audio_time,
-    show_cmd.infer_date_from_path,
-    show_cmd.infer_scene_role_profile,
-    show_cmd.rebuild_scene_stats,
-    show_cmd.build_frozen_scene_stats,
-    show_cmd.freeze_scene_roles,
-)
 cmd_screen, cmd_correct, cmd_context = (
     _sync_wrapper(screen_cmd.cmd_screen),
     _sync_wrapper(correct_cmd.cmd_correct),
@@ -237,7 +239,7 @@ def _set_console_for_modules(new_console) -> None:
     global console
     console = new_console
     common_cmd.console = new_console
-    show_cmd.console = new_console
+    _sync_show_runtime_overrides()
     menu_cmd.console = new_console
     screen_cmd.console = new_console
     screen_cmd._upsert_project_env = _upsert_project_env

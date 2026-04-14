@@ -125,18 +125,21 @@ class TestCorrectionApply:
 # ──────────────────────────────────────────────────────────────────
 
 class TestProfileStt:
-    def test_set_local_stt_makes_configured_true(self):
-        """设置本地 STT provider 后，stt_configured 应为 True。"""
-        set_payload = _run_skill("profile.set", "--stt-provider", "funasr")
+    def test_set_ready_local_stt_makes_configured_true(self):
+        """设置一个真的可用的本地转写路线后，stt_configured 应为 True。"""
+        before = _run_skill("health.check")
+        providers = before["data"]["stt_providers"]
+        ready_local = next(p["name"] for p in providers if p["type"] == "local" and p["ready"])
+        set_payload = _run_skill("profile.set", "--stt-provider", ready_local)
         assert set_payload["ok"] is True
-        # 验证 health.check
         health = _run_skill("health.check")
         assert health["data"]["stt_configured"] is True
 
     def test_restore_stt_provider(self):
         """测试后恢复原来的 provider（清理）。"""
-        # 恢复为 gemini（原来的值）
-        _run_skill("profile.set", "--stt-provider", "gemini")
+        before = _run_skill("health.check")
+        original = before["data"].get("stt_active") or "gemini"
+        _run_skill("profile.set", "--stt-provider", original)
 
 
 # ──────────────────────────────────────────────────────────────────

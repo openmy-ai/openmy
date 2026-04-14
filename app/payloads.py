@@ -35,6 +35,21 @@ CHOICE_GROUPS = {
 }
 
 
+def _local_provider_ready(name: str) -> bool:
+    try:
+        if name == 'funasr':
+            from openmy.providers.stt.funasr import AutoModel
+
+            return AutoModel is not None
+        if name == 'faster-whisper':
+            from openmy.providers.stt.faster_whisper import WhisperModel
+
+            return WhisperModel is not None
+    except Exception:
+        return False
+    return True
+
+
 def _server():
     import app.server as server_module
 
@@ -102,6 +117,7 @@ def _build_current_onboarding_payload(provider_override: str | None = None) -> d
     stt_providers: list[dict[str, object]] = []
     for name, default_model in DEFAULT_STT_MODELS.items():
         needs_key = stt_provider_requires_api_key(name)
+        ready = bool(get_stt_api_key(name)) if needs_key else _local_provider_ready(name)
         stt_providers.append({
             'name': name,
             'type': 'local' if name in LOCAL_STT_PROVIDERS else 'api',
@@ -109,14 +125,16 @@ def _build_current_onboarding_payload(provider_override: str | None = None) -> d
             'needs_api_key': needs_key,
             'api_key_configured': bool(get_stt_api_key(name)) if needs_key else True,
             'is_active': name == current_stt,
-            'ready': bool(get_stt_api_key(name)) if needs_key else True,
+            'ready': ready,
         })
 
-    recommended = current_stt or next((name for name in CHOICE_GROUPS['local'] if any(item['name']==name and item['ready'] for item in stt_providers)), 'funasr')
+    ready_map = {item['name']: bool(item['ready']) for item in stt_providers}
+    effective_current_stt = current_stt if ready_map.get(current_stt) else ''
+    recommended = effective_current_stt or next((name for name in CHOICE_GROUPS['local'] if any(item['name']==name and item['ready'] for item in stt_providers)), 'funasr')
     profile_exists = (server.DATA_ROOT / 'profile.json').exists()
     vocab_exists = (server.ROOT_DIR / 'src' / 'openmy' / 'resources' / 'corrections.json').exists() and (server.ROOT_DIR / 'src' / 'openmy' / 'resources' / 'vocab.txt').exists()
 
-    if not current_stt:
+    if not effective_current_stt:
         stage = 'choose_provider'
         headline = f'先别自己挑，先按推荐路线走：{LABELS.get(recommended, recommended)}'
         next_step = '先选转写引擎，再开始第一次转写。'
