@@ -41,7 +41,8 @@ Use it when:
 2. If export is already configured and ready, say so and stop.
 3. If the user wants Obsidian:
    - auto-detect likely vault folders first
-   - if a vault is found, run `profile.set --export-provider obsidian --export-path ... --json` immediately
+   - if **exactly one** vault is found, run `profile.set --export-provider obsidian --export-path ... --json` immediately
+   - if **multiple** vaults are found, list them and ask the user which one to use. Do NOT auto-pick.
    - then rerun `health.check` and confirm export is ready
 4. If no Obsidian vault is found, ask one question about the note app or vault path.
 5. If the user wants Notion:

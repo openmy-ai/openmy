@@ -59,5 +59,10 @@ Pick the operation that matches the user's correction intent.
 
 If `correction.apply` fails:
 1. Read `error_code` and `message`.
-2. If the target item cannot be found, ask the user for the exact wording once.
-3. Unknown errors should be surfaced plainly, then route to `openmy-health-check`.
+2. **Never pretend the correction succeeded.** If `ok: false`, tell the user plainly.
+3. If the target item cannot be found, ask the user for the exact wording once.
+4. If `close-loop` fails because there are no open loops at all, tell the user:
+   > "目前没有可关闭的待办记录。这条可能还没被系统识别为待办，不影响使用。"
+   Do NOT say "已经记下了" or imply the task was closed.
+5. If the user insists, suggest running `context.query --kind open --json` to check what loops currently exist.
+6. Unknown errors should be surfaced plainly, then route to `openmy-health-check`.

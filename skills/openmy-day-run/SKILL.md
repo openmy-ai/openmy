@@ -29,6 +29,23 @@ Use it when:
 - Do not change raw evidence files by hand.
 - Do not go silent for more than 30 seconds during long work.
 
+## Pre-Run Check
+
+Before the first `day.run` in a session:
+1. If `profile` has no `stt_provider` set, or the active provider is not ready, **route to `openmy-health-check`** and let the user choose an engine. Do NOT pick one silently.
+2. This is defined in the router SKILL (First-Time Setup Flow, step 3): "Ask only one choice question."
+3. Once the user has chosen and `profile.set --stt-provider` has been run, proceed with `day.run`.
+
+## Batch Processing
+
+When the user asks to process multiple days at once:
+1. List the unprocessed dates and confirm how many days will be processed.
+2. Process in **chronological order** (oldest first) so aggregation builds correctly.
+3. After each day completes, give a **one-line summary** (e.g., "4/1 ✅ 3 场景，2 个决策").
+4. If one day fails, **skip it and continue** with the next. Record the failure.
+5. After all days finish, give a **summary table** showing pass/fail per day.
+6. If the batch is large (>3 days), warn the user about estimated time before starting.
+
 ## Output
 
 - start with `human_summary`

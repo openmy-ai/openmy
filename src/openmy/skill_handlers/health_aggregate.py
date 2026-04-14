@@ -226,6 +226,7 @@ def handle_health_check(args: argparse.Namespace, *, cli_getter, build_success_p
             "ffmpeg": {"available": ffmpeg_ok, "ffprobe_available": ffprobe_ok},
             "stt_providers": stt_providers,
             "stt_active": current_stt,
+            "stt_configured": bool(current_stt) and (current_stt in LOCAL_STT_PROVIDERS or has_stt_credentials()),
             "llm_available": llm_key_ok,
             "llm": {"provider": llm_provider, "api_key_configured": llm_key_ok},
             "profile_exists": profile_exists,
