@@ -4,7 +4,7 @@ import tempfile
 import time
 import unittest
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from pathlib import Path
 from unittest.mock import patch
 
@@ -261,6 +261,31 @@ class TestAppServer(unittest.TestCase):
         )
         return day_dir
 
+    def seed_audio_workspace(self, project_root: Path, date_str: str) -> tuple[Path, bytes]:
+        day_dir = self.seed_day_workspace(project_root, date_str)
+        chunk_dir = day_dir / "stt_chunks"
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+        audio_path = chunk_dir / "audio_001_sub_0000.mp3"
+        audio_bytes = b"0123456789abcdef"
+        audio_path.write_bytes(audio_bytes)
+        (day_dir / "transcript.transcription.json").write_text(
+            json.dumps(
+                {
+                    "chunks": [
+                        {
+                            "chunk_id": "chunk_0001",
+                            "chunk_path": str(audio_path),
+                            "time_label": "10:00",
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return day_dir, audio_bytes
+
     def test_date_detail_includes_meta_payload(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_root = Path(tmp_dir)
@@ -343,6 +368,124 @@ class TestAppServer(unittest.TestCase):
 
             self.assertNotIn("audio_ref", payload["scenes"]["scenes"][0])
             self.assertEqual(payload["segments"][0]["summary"], "上午补前端。")
+
+    def test_audio_endpoint_serves_chunk_for_date_and_chunk_id(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            _, audio_bytes = self.seed_audio_workspace(project_root, "2026-04-08")
+
+            with patch.object(app_server, "DATA_ROOT", data_root), patch.object(app_server, "LEGACY_ROOT", project_root):
+                server = app_server.build_server(port=0)
+                try:
+                    import threading
+
+                    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                    thread = threading.Thread(target=server.serve_forever, daemon=True)
+                    thread.start()
+                    with urlopen(f"{base_url}/api/audio/2026-04-08/chunk_0001", timeout=2) as response:
+                        self.assertEqual(response.status, 200)
+                        self.assertEqual(response.headers.get("Accept-Ranges"), "bytes")
+                        self.assertEqual(response.headers.get("Content-Type"), "audio/mpeg")
+                        self.assertEqual(response.read(), audio_bytes)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+
+    def test_audio_endpoint_supports_http_range_requests(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            _, audio_bytes = self.seed_audio_workspace(project_root, "2026-04-08")
+
+            with patch.object(app_server, "DATA_ROOT", data_root), patch.object(app_server, "LEGACY_ROOT", project_root):
+                server = app_server.build_server(port=0)
+                try:
+                    import threading
+
+                    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                    thread = threading.Thread(target=server.serve_forever, daemon=True)
+                    thread.start()
+                    request = Request(
+                        f"{base_url}/api/audio/2026-04-08/chunk_0001",
+                        headers={"Range": "bytes=2-5"},
+                    )
+                    with urlopen(request, timeout=2) as response:
+                        self.assertEqual(response.status, 206)
+                        self.assertEqual(response.headers.get("Content-Range"), f"bytes 2-5/{len(audio_bytes)}")
+                        self.assertEqual(response.read(), audio_bytes[2:6])
+                finally:
+                    server.shutdown()
+                    server.server_close()
+
+    def test_audio_endpoint_returns_404_for_stale_or_outside_chunk_path(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            day_dir = self.seed_day_workspace(project_root, "2026-04-08")
+            bad_audio_path = project_root / "outside.mp3"
+            bad_audio_path.write_bytes(b"outside")
+            (day_dir / "transcript.transcription.json").write_text(
+                json.dumps(
+                    {
+                        "chunks": [
+                            {
+                                "chunk_id": "chunk_0001",
+                                "chunk_path": str(bad_audio_path),
+                                "time_label": "10:00",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(app_server, "DATA_ROOT", data_root), patch.object(app_server, "LEGACY_ROOT", project_root):
+                server = app_server.build_server(port=0)
+                try:
+                    import threading
+
+                    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                    thread = threading.Thread(target=server.serve_forever, daemon=True)
+                    thread.start()
+                    with self.assertRaises(HTTPError) as ctx:
+                        urlopen(f"{base_url}/api/audio/2026-04-08/chunk_0001", timeout=2)
+                    self.assertEqual(ctx.exception.code, 404)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+
+    def test_audio_endpoint_returns_416_for_invalid_range(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            _, audio_bytes = self.seed_audio_workspace(project_root, "2026-04-08")
+
+            with patch.object(app_server, "DATA_ROOT", data_root), patch.object(app_server, "LEGACY_ROOT", project_root):
+                server = app_server.build_server(port=0)
+                try:
+                    import threading
+
+                    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                    thread = threading.Thread(target=server.serve_forever, daemon=True)
+                    thread.start()
+                    request = Request(
+                        f"{base_url}/api/audio/2026-04-08/chunk_0001",
+                        headers={"Range": f"bytes={len(audio_bytes)}-"},
+                    )
+                    with self.assertRaises(HTTPError) as ctx:
+                        urlopen(request, timeout=2)
+                    self.assertEqual(ctx.exception.code, 416)
+                    self.assertEqual(ctx.exception.headers.get("Content-Range"), f"bytes */{len(audio_bytes)}")
+                finally:
+                    server.shutdown()
+                    server.server_close()
 
     def test_date_meta_endpoint_returns_intents_and_facts(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

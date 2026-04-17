@@ -7,6 +7,7 @@ from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from app.audio_api import serve_chunk_audio
 from app.context_api import (
     handle_close_loop,
     handle_merge_project,
@@ -110,6 +111,15 @@ class BrainHandler(SimpleHTTPRequestHandler):
                 send_json(self, briefing)
             else:
                 send_json(self, {"error": "no briefing", "date": date}, status=404)
+        elif path.startswith("/api/audio/"):
+            suffix = path.removeprefix("/api/audio/")
+            date, _, chunk_id = suffix.partition("/")
+            if not date or not chunk_id or "/" in chunk_id:
+                send_json(self, {"error": "invalid audio route"}, status=400)
+                return
+            if not _valid_date_or_400(self, date):
+                return
+            serve_chunk_audio(self, date, chunk_id)
         elif path.startswith("/api/date/") and path.endswith("/meta"):
             date = path.removeprefix("/api/date/").removesuffix("/meta")
             if not _valid_date_or_400(self, date):
