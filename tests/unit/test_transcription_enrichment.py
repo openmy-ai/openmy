@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from openmy.services.ingest.transcription_enrichment import plan_transcription_enrichment
+from openmy.services.ingest.transcription_enrichment import (
+    apply_transcription_enrichment_to_scenes,
+    plan_transcription_enrichment,
+)
 
 
 class TestTranscriptionEnrichmentPlanning(unittest.TestCase):
@@ -42,3 +48,132 @@ class TestTranscriptionEnrichmentPlanning(unittest.TestCase):
         self.assertFalse(plan["enabled"])
         self.assertEqual(plan["status"], "failed")
         self.assertIn("whisperx", plan["message"].lower())
+
+
+class TestApplyTranscriptionEnrichmentToScenes(unittest.TestCase):
+    def write_json(self, path: Path, payload: dict) -> None:
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def read_scene(self, day_dir: Path) -> dict:
+        payload = json.loads((day_dir / "scenes.json").read_text(encoding="utf-8"))
+        return payload["scenes"][0]
+
+    def test_apply_transcription_enrichment_to_scenes_adds_audio_ref_from_single_chunk_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            day_dir = Path(tmp_dir)
+            self.write_json(
+                day_dir / "scenes.json",
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "scene_001",
+                            "time_start": "10:00",
+                            "time_end": "10:05",
+                            "text": "alpha",
+                        }
+                    ]
+                },
+            )
+            self.write_json(
+                day_dir / "transcript.transcription.json",
+                {
+                    "chunks": [
+                        {
+                            "chunk_id": "chunk_0001",
+                            "time_label": "10:00",
+                            "aligned_segments": [
+                                {"id": "seg_0001", "start": 1.2, "end": 2.4, "text": "alpha"},
+                                {"id": "seg_0002", "start": 4.0, "end": 5.5, "text": "beta"},
+                            ],
+                        }
+                    ]
+                },
+            )
+
+            apply_transcription_enrichment_to_scenes(day_dir)
+            scene = self.read_scene(day_dir)
+
+            self.assertEqual(scene["transcription_evidence"][0]["chunk_id"], "chunk_0001")
+            self.assertEqual(scene["audio_ref"]["chunk_id"], "chunk_0001")
+            self.assertEqual(scene["audio_ref"]["offset_start"], 1.2)
+            self.assertEqual(scene["audio_ref"]["offset_end"], 5.5)
+            self.assertEqual(scene["audio_ref"]["segment_ids"], ["seg_0001", "seg_0002"])
+            self.assertNotIn("chunk_path", scene["audio_ref"])
+
+    def test_apply_transcription_enrichment_to_scenes_skips_audio_ref_when_evidence_spans_multiple_chunks(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            day_dir = Path(tmp_dir)
+            self.write_json(
+                day_dir / "scenes.json",
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "scene_001",
+                            "time_start": "10:00",
+                            "time_end": "10:05",
+                            "text": "alpha",
+                            "audio_ref": {"chunk_id": "stale"},
+                        }
+                    ]
+                },
+            )
+            self.write_json(
+                day_dir / "transcript.transcription.json",
+                {
+                    "chunks": [
+                        {
+                            "chunk_id": "chunk_0001",
+                            "time_label": "10:00",
+                            "aligned_segments": [
+                                {"id": "seg_0001", "chunk_id": "chunk_0001", "start": 0.2, "end": 1.0, "text": "alpha"},
+                                {"id": "seg_0002", "chunk_id": "chunk_0002", "start": 1.5, "end": 2.0, "text": "beta"},
+                            ],
+                        }
+                    ]
+                },
+            )
+
+            apply_transcription_enrichment_to_scenes(day_dir)
+            scene = self.read_scene(day_dir)
+
+            self.assertEqual(
+                {item["chunk_id"] for item in scene["transcription_evidence"]},
+                {"chunk_0001", "chunk_0002"},
+            )
+            self.assertNotIn("audio_ref", scene)
+
+    def test_apply_transcription_enrichment_to_scenes_skips_audio_ref_when_evidence_missing(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            day_dir = Path(tmp_dir)
+            self.write_json(
+                day_dir / "scenes.json",
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "scene_001",
+                            "time_start": "10:00",
+                            "time_end": "10:05",
+                            "text": "alpha",
+                        }
+                    ]
+                },
+            )
+            self.write_json(
+                day_dir / "transcript.transcription.json",
+                {
+                    "chunks": [
+                        {
+                            "chunk_id": "chunk_0001",
+                            "time_label": "10:00",
+                            "aligned_segments": [],
+                            "segments": [],
+                        }
+                    ]
+                },
+            )
+
+            apply_transcription_enrichment_to_scenes(day_dir)
+            scene = self.read_scene(day_dir)
+
+            self.assertEqual(scene["transcription_evidence"], [])
+            self.assertNotIn("audio_ref", scene)
