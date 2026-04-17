@@ -38,7 +38,7 @@ def _garbled_ratio(text: str) -> float:
     return garbled / len(lines)
 
 
-def _has_repeated_ngram(text: str, n: int = 4, threshold: int = 4) -> bool:
+def _has_repeated_ngram(text: str, n: int = 4, min_count: int = 4, density_threshold: float = 0.04) -> bool:
     """检测同一 n 字短语密度是否过高（歌词/口水话重复模式）。
 
     触发条件：最高频 n-gram 的总覆盖字符占比 > density_threshold（默认 4%），
@@ -103,7 +103,7 @@ def inspect_scene_text(text: str) -> dict[str, Any]:
         reasons.append(f"[无法识别] 占比 {garbled:.0%}，转写质量过低")
 
     # 歌词重复模式检测
-    if _has_repeated_ngram(content, n=4, threshold=4):
+    if _has_repeated_ngram(content, n=4, min_count=4, density_threshold=0.04):
         flags.append("music_lyrics")
         reasons.append("检测到高频重复短语，疑似背景音乐歌词")
 
