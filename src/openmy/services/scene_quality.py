@@ -39,17 +39,27 @@ def _garbled_ratio(text: str) -> float:
 
 
 def _has_repeated_ngram(text: str, n: int = 4, threshold: int = 4) -> bool:
-    """检测同一 n 字短语是否出现 ≥ threshold 次（歌词重复模式）。"""
+    """检测同一 n 字短语密度是否过高（歌词/口水话重复模式）。
+
+    触发条件：最高频 n-gram 的总覆盖字符占比 > density_threshold（默认 4%），
+    且该 n-gram 至少出现 min_count 次。
+    """
     chars = re.sub(r"\s+", "", text)
-    if len(chars) < n * threshold:
+    total = len(chars)
+    if total < n * min_count:
         return False
     counts: dict[str, int] = {}
-    for i in range(len(chars) - n + 1):
+    for i in range(total - n + 1):
         gram = chars[i : i + n]
         counts[gram] = counts.get(gram, 0) + 1
-        if counts[gram] >= threshold:
-            return True
-    return False
+    if not counts:
+        return False
+    max_count = max(counts.values())
+    if max_count < min_count:
+        return False
+    # 密度 = 最高频 n-gram 覆盖字符 / 总字符
+    density = (max_count * n) / total
+    return density > density_threshold
 
 
 def inspect_scene_text(text: str) -> dict[str, Any]:
