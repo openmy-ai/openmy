@@ -412,9 +412,8 @@ def cmd_distill(args: argparse.Namespace) -> int:
         return 1
 
     from openmy.services.distillation.distiller import summarize_scene
-    from openmy.services.scene_quality import scene_is_usable_for_downstream
 
-    pending = [scene for scene in data.get("scenes", []) if not scene.get("summary") and scene_is_usable_for_downstream(scene)]
+    pending = [scene for scene in data.get("scenes", []) if not scene.get("summary")]
     if not pending:
         console.print(f"[green]✅ {date_str} 所有场景已有摘要，跳过[/green]")
         return 0
@@ -431,8 +430,6 @@ def cmd_distill(args: argparse.Namespace) -> int:
         task = progress.add_task("蒸馏中...", total=len(pending))
         for scene in data.get("scenes", []):
             if scene.get("summary"):
-                continue
-            if not scene_is_usable_for_downstream(scene):
                 continue
             text = scene.get("text", "").strip()
             scene["summary"] = summarize_scene(text, api_key, GEMINI_MODEL) if text else ""

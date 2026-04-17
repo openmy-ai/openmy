@@ -1236,6 +1236,211 @@ class TestOpenMyCli(unittest.TestCase):
         finally:
             self.cleanup_day_dir(date_str)
 
+    def test_cmd_run_applies_audio_ref_after_enrichment(self):
+        from openmy.commands import run as run_command
+
+        date_str = "2099-01-27"
+        day_dir = self.make_day_dir(date_str)
+        transcript_path = day_dir / "transcript.md"
+        scenes_path = day_dir / "scenes.json"
+        transcription_path = day_dir / "transcript.transcription.json"
+
+        transcription_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "openmy.transcription.v1",
+                    "date": date_str,
+                    "provider": "faster-whisper",
+                    "model": "small",
+                    "chunks": [
+                        {
+                            "chunk_id": "chunk_0001",
+                            "chunk_path": str(day_dir / "stt_chunks" / "chunk_0001.mp3"),
+                            "time_label": "10:00",
+                            "text": "今天上午我在修 OpenMy。",
+                            "segments": [
+                                {
+                                    "id": "seg_001",
+                                    "chunk_id": "chunk_0001",
+                                    "start": 1.0,
+                                    "end": 4.0,
+                                    "text": "今天上午我在修 OpenMy。",
+                                }
+                            ],
+                            "provider_metadata": {},
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        def fake_transcribe(*args, **kwargs):
+            (day_dir / "transcript.raw.md").write_text(
+                "# 2099-01-27 上下文（原始）\n\n---\n\n## 10:00\n\n今天上午我在修 OpenMy。\n",
+                encoding="utf-8",
+            )
+            return 0
+
+        def fake_clean(args):
+            transcript_path.write_text(
+                "# 2099-01-27\n\n---\n\n## 10:00\n\n今天上午我在修 OpenMy。\n",
+                encoding="utf-8",
+            )
+            return 0
+
+        segmented_payload = {
+            "scenes": [
+                {
+                    "scene_id": "s01",
+                    "time_start": "10:00",
+                    "time_end": "10:05",
+                    "text": "今天上午我在修 OpenMy。",
+                    "summary": "上午在推进 OpenMy。",
+                    "preview": "今天上午我在修 OpenMy。",
+                    "role": {"addressed_to": "", "scene_type_label": "自言自语", "needs_review": False},
+                }
+            ],
+            "stats": {"total_scenes": 1, "role_distribution": {}, "needs_review_count": 0},
+        }
+
+        try:
+            with (
+                patch.object(run_command, "transcribe_audio_files", side_effect=fake_transcribe),
+                patch("openmy.cli.cmd_clean", side_effect=fake_clean),
+                patch("openmy.cli.build_segmented_scenes_payload", return_value=segmented_payload),
+                patch("openmy.commands.run.has_llm_credentials", return_value=False),
+            ):
+                result = run_command.cmd_run(
+                    argparse.Namespace(
+                        date=date_str,
+                        audio=["/tmp/fake.wav"],
+                        skip_transcribe=False,
+                        stt_provider="faster-whisper",
+                        stt_model="small",
+                        stt_vad=False,
+                        stt_word_timestamps=False,
+                        stt_enrich_mode="off",
+                        stt_align=False,
+                        stt_diarize=False,
+                    )
+                )
+
+            self.assertEqual(result, 2)
+            scenes_payload = json.loads(scenes_path.read_text(encoding="utf-8"))
+            audio_ref = scenes_payload["scenes"][0]["audio_ref"]
+            self.assertEqual(audio_ref["chunk_id"], "chunk_0001")
+            self.assertEqual(audio_ref["offset_start"], 1.0)
+            self.assertEqual(audio_ref["offset_end"], 4.0)
+            self.assertEqual(audio_ref["segment_ids"], ["seg_001"])
+            self.assertNotIn("chunk_path", audio_ref)
+
+            status_payload = json.loads((day_dir / "run_status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status_payload["status"], "partial")
+            self.assertEqual(status_payload["steps"]["segment"]["status"], "completed")
+        finally:
+            self.cleanup_day_dir(date_str)
+
+    def test_cmd_run_reused_scenes_preserve_or_skip_audio_ref_safely(self):
+        from openmy.commands import run as run_command
+
+        date_str = "2099-01-28"
+        day_dir = self.make_day_dir(date_str)
+        transcript_path = day_dir / "transcript.md"
+        scenes_path = day_dir / "scenes.json"
+        transcription_path = day_dir / "transcript.transcription.json"
+
+        transcript_path.write_text(
+            "# 2099-01-28\n\n---\n\n## 10:00\n\n今天上午我在修 OpenMy。\n",
+            encoding="utf-8",
+        )
+        scenes_path.write_text(
+            json.dumps(
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "s01",
+                            "time_start": "10:00",
+                            "time_end": "10:05",
+                            "text": "今天上午我在修 OpenMy。",
+                            "summary": "上午在推进 OpenMy。",
+                            "preview": "今天上午我在修 OpenMy。",
+                            "role": {"addressed_to": "", "scene_type_label": "自言自语", "needs_review": False},
+                        }
+                    ],
+                    "stats": {"total_scenes": 1, "role_distribution": {}, "needs_review_count": 0},
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        transcription_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "openmy.transcription.v1",
+                    "date": date_str,
+                    "provider": "faster-whisper",
+                    "model": "small",
+                    "chunks": [
+                        {
+                            "chunk_id": "chunk_0001",
+                            "chunk_path": str(day_dir / "stt_chunks" / "chunk_0001.mp3"),
+                            "time_label": "10:00",
+                            "text": "今天上午我在修 OpenMy。",
+                            "segments": [
+                                {
+                                    "segment_id": "seg_001",
+                                    "chunk_id": "chunk_0001",
+                                    "start": 0.0,
+                                    "end": 2.0,
+                                    "text": "今天上午我在修",
+                                },
+                                {
+                                    "segment_id": "seg_002",
+                                    "chunk_id": "chunk_0002",
+                                    "start": 2.0,
+                                    "end": 5.0,
+                                    "text": "OpenMy。",
+                                },
+                            ],
+                            "provider_metadata": {},
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        try:
+            with patch("openmy.commands.run.has_llm_credentials", return_value=False):
+                result = run_command.cmd_run(
+                    argparse.Namespace(
+                        date=date_str,
+                        audio=None,
+                        skip_transcribe=True,
+                        stt_provider="faster-whisper",
+                        stt_model="small",
+                        stt_vad=False,
+                        stt_word_timestamps=False,
+                        stt_enrich_mode="off",
+                        stt_align=False,
+                        stt_diarize=False,
+                    )
+                )
+
+            self.assertEqual(result, 2)
+            scenes_payload = json.loads(scenes_path.read_text(encoding="utf-8"))
+            self.assertNotIn("audio_ref", scenes_payload["scenes"][0])
+
+            status_payload = json.loads((day_dir / "run_status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status_payload["status"], "partial")
+            self.assertEqual(status_payload["steps"]["segment"]["status"], "skipped")
+            self.assertEqual(scenes_payload["scenes"][0]["scene_id"], "s01")
+        finally:
+            self.cleanup_day_dir(date_str)
+
     def test_cmd_run_keeps_backup_artifacts_when_rerun_extract_fails(self):
         from openmy.commands import run as run_command
 
@@ -1641,13 +1846,9 @@ class TestOpenMyCli(unittest.TestCase):
             self.assertEqual(status_payload["status"], "completed")
             self.assertEqual(status_payload["steps"]["transcribe"]["status"], "completed")
             self.assertEqual(status_payload["steps"]["transcribe_enrich"]["status"], "failed")
+            self.assertIn("缺少依赖", status_payload["steps"]["transcribe_enrich"]["message"])
             self.assertEqual(status_payload["steps"]["consolidate"]["status"], "completed")
             self.assertEqual(status_payload["steps"]["roles"]["skip_reason"], "role_step_frozen")
-
-            meta_payload = json.loads((day_dir / f"{date_str}.meta.json").read_text(encoding="utf-8"))
-            self.assertEqual(meta_payload["transcription_enrich_status"], "failed")
-            self.assertIn("缺少依赖", meta_payload["transcription_enrich_message"])
-            self.assertEqual(meta_payload["transcription_diarization_status"], "degraded_missing_token")
         finally:
             self.cleanup_day_dir(date_str)
 

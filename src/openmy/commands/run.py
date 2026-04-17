@@ -726,6 +726,28 @@ def apply_transcription_enrichment_to_scenes(day_dir: Path) -> None:
     _apply(day_dir)
 
 
+def _has_scene_audio_ref_source(day_dir: Path) -> bool:
+    cli = _cli()
+    transcription_path = day_dir / "transcript.transcription.json"
+    if not transcription_path.exists():
+        return False
+    payload = cli.read_json(transcription_path, {})
+    if not isinstance(payload, dict):
+        return False
+    chunks = payload.get("chunks", [])
+    if not isinstance(chunks, list):
+        return False
+    return any(
+        isinstance(chunk, dict)
+        and (
+            str(chunk.get("chunk_id", "") or "").strip()
+            or str(chunk.get("time_label", "") or "").strip()
+            or isinstance(chunk.get("segments"), list)
+        )
+        for chunk in chunks
+    )
+
+
 def transcribe_audio_files(
     date_str: str,
     audio_files: list[str],
@@ -941,6 +963,8 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     if timeout_result is not None:
         return timeout_result
 
+    day_dir = cli.ensure_day_dir(date_str)
+    scene_audio_ref_source_available = _has_scene_audio_ref_source(day_dir)
     scenes_data = cli.read_json(paths["scenes"], {}) if paths["scenes"].exists() else {}
     if not paths["scenes"].exists():
         _mark_step(date_str, run_status, "segment", "running", message="正在切分场景")
@@ -963,9 +987,9 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         cli.console.print(f"[dim]ℹ️ 自动角色识别已冻结；如需重建场景可运行 openmy roles {date_str}[/dim]")
         paths = cli.resolve_day_paths(date_str)
         scenes_data = cli.read_json(paths["scenes"], {})
-        if bool(getattr(args, "stt_align", False)):
+        if scene_audio_ref_source_available:
             try:
-                apply_transcription_enrichment_to_scenes(cli.ensure_day_dir(date_str))
+                apply_transcription_enrichment_to_scenes(day_dir)
                 scenes_data = cli.read_json(paths["scenes"], {})
             except Exception as exc:
                 cli.console.print(f"[yellow]⚠️ 场景未附加精标证据[/yellow]: {exc}")
@@ -974,9 +998,9 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         cli.console.print("\n[dim]⏭️ 跳过场景切分：已存在 scenes.json[/dim]")
         scenes_data = cli.freeze_scene_roles(scenes_data)
         cli.write_json(paths["scenes"], scenes_data)
-        if bool(getattr(args, "stt_align", False)):
+        if scene_audio_ref_source_available:
             try:
-                apply_transcription_enrichment_to_scenes(cli.ensure_day_dir(date_str))
+                apply_transcription_enrichment_to_scenes(day_dir)
                 scenes_data = cli.read_json(paths["scenes"], {})
             except Exception as exc:
                 cli.console.print(f"[yellow]⚠️ 场景未附加精标证据[/yellow]: {exc}")

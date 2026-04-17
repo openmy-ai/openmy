@@ -169,14 +169,13 @@ def _get_screen_context_app_usage(client, date_str: str, *, data_root: Path | No
                     result[name] = round(minutes, 1)
             # 按时长排序，取前 10
             return dict(sorted(result.items(), key=lambda x: x[1], reverse=True)[:10])
-        # 降级：用 search_ocr 粗估（返回帧计数，非精确时长）
+        # 降级：用 search_ocr 粗估
         events = client.search_ocr(start_time=start_iso, end_time=end_iso, limit=500)
         app_counts: Counter[str] = Counter()
         for event in events:
             if event.app_name and event.app_name not in ("loginwindow", "screencaptureui"):
                 app_counts[event.app_name] += 1
-        # 标记为帧计数而非分钟，使用负值区分
-        return {app: -count for app, count in app_counts.most_common(10)}
+        return dict(app_counts.most_common(10))
     except Exception:
         return {}
 
@@ -324,10 +323,10 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
             "topics": interaction.topics[:5],
         }
 
-    # 从 scene summaries 里提取关键事件和待办
-    # decisions 不再从 summary 关键词分桶，改由 enrich_briefing_from_meta() 从 meta.json 回灌
+    # 从 scene summaries 里提取关键事件、决策和待办
+    # 规则：每个 summary 只进一个桶，优先级：决策 > 待办 > 关键事件
+    # 避免和 time_blocks 里的 summary 重复
     time_block_texts = {block.summary for block in briefing.time_blocks}
-    time_block_prefixes = {block.summary[:20] for block in briefing.time_blocks if len(block.summary) >= 20}
     seen_events: set[str] = set()
     for scene in usable_scenes:
         summary = _sanitize_briefing_text(scene.get("summary", ""))
@@ -337,10 +336,9 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
         # 跳过已经在 time_blocks 里完整出现的
         if summary in time_block_texts:
             continue
-        # 跳过前 20 字和 time_block summary 重叠的
-        if len(summary) >= 20 and summary[:20] in time_block_prefixes:
-            continue
-        if any(keyword in summary for keyword in ["需要", "要去", "要做", "要买", "要找", "记得", "别忘", "待处理", "待确认", "还没"]):
+        if any(keyword in summary for keyword in ["决定", "确定", "选择", "定了"]):
+            briefing.decisions.append(summary)
+        elif any(keyword in summary for keyword in ["需要", "要去", "要做", "要买", "要找", "记得", "别忘", "待处理", "待确认", "还没"]):
             briefing.todos_open.append(summary)
         else:
             briefing.key_events.append(summary)
@@ -353,9 +351,6 @@ def generate_briefing(scenes_path: Path, date_str: str, screen_client=None) -> D
                     briefing.work_sessions[app] = f"约{int(minutes // 60)}小时{int(minutes % 60)}分钟"
                 else:
                     briefing.work_sessions[app] = f"约{int(minutes)}分钟"
-            elif isinstance(minutes, (int, float)) and minutes < 0:
-                # Negative = frame count from search_ocr fallback
-                briefing.work_sessions[app] = f"{abs(int(minutes))}段截屏"
             else:
                 briefing.work_sessions[app] = "<1分钟"
 
@@ -420,100 +415,3 @@ def save_briefing(briefing: DailyBriefing, output_path: Path) -> None:
         json.dumps(asdict(briefing), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-
-
-def enrich_briefing_from_meta(briefing_path: Path, meta_path: Path) -> bool:
-    """从 meta.json 回灌 intents/facts/role_hints 到已生成的 briefing（方案 B 后置回灌）。
-
-    Returns True if briefing was updated, False if skipped.
-    """
-    if not briefing_path.exists() or not meta_path.exists():
-        return False
-
-    try:
-        briefing = json.loads(briefing_path.read_text(encoding="utf-8"))
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    except Exception:
-        return False
-
-    changed = False
-
-    # 1. intents[kind=decision] → briefing.decisions
-    existing_decisions = set(briefing.get("decisions", []))
-    for intent in meta.get("intents", []):
-        if intent.get("kind") != "decision":
-            continue
-        what = str(intent.get("what", "")).strip()
-        if what and what not in existing_decisions:
-            briefing.setdefault("decisions", []).append(what)
-            existing_decisions.add(what)
-            changed = True
-
-    # 2. intents[kind=action_item|commitment, status!=done] → briefing.todos_open
-    existing_todos = set(briefing.get("todos_open", []))
-    for intent in meta.get("intents", []):
-        if intent.get("kind") not in ("action_item", "commitment"):
-            continue
-        if intent.get("status") in ("done", "closed", "cancelled", "abandoned", "rejected"):
-            continue
-        what = str(intent.get("what", "")).strip()
-        if what and what not in existing_todos:
-            briefing.setdefault("todos_open", []).append(what)
-            existing_todos.add(what)
-            changed = True
-
-    # 3. facts → briefing.insights
-    existing_insights = {
-        str(i.get("content", "")).strip() if isinstance(i, dict) else str(i).strip()
-        for i in briefing.get("insights", [])
-    }
-    for fact in meta.get("facts", []):
-        content = str(fact.get("content", "")).strip()
-        if content and content not in existing_insights:
-            briefing.setdefault("insights", []).append({
-                "topic": str(fact.get("topic", "")).strip(),
-                "content": content,
-            })
-            existing_insights.add(content)
-            changed = True
-
-    # 4. role_hints (confidence ≥ 0.7) → briefing.people_interaction_map + time_blocks
-    existing_people = set(briefing.get("people_interaction_map", {}).keys())
-    for hint in meta.get("role_hints", []):
-        confidence = hint.get("confidence", 0)
-        if not isinstance(confidence, (int, float)) or confidence < 0.7:
-            continue
-        role = str(hint.get("role", "")).strip()
-        if not role or role in ("自己", "未确定", "") or role in existing_people:
-            continue
-        briefing.setdefault("people_interaction_map", {})[role] = {
-            "scene_count": 1,
-            "topics": [str(hint.get("evidence", "")).strip()],
-        }
-        existing_people.add(role)
-        changed = True
-
-        # 回灌到对应 time_block 的 people_talked_to
-        hint_time = str(hint.get("time", "")).strip()
-        if hint_time:
-            hint_period = _time_to_period(hint_time)
-            for block in briefing.get("time_blocks", []):
-                block_period = str(block.get("period", "")).split(" ")[0] if isinstance(block, dict) else ""
-                if block_period == hint_period:
-                    people_list = block.get("people_talked_to", [])
-                    if role not in people_list:
-                        people_list.append(role)
-                        block["people_talked_to"] = people_list
-
-    # 截断
-    briefing["decisions"] = briefing.get("decisions", [])[:10]
-    briefing["todos_open"] = briefing.get("todos_open", [])[:10]
-    briefing["insights"] = briefing.get("insights", [])[:10]
-
-    if changed:
-        briefing_path.write_text(
-            json.dumps(briefing, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
-    return changed

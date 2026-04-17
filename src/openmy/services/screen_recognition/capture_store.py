@@ -141,18 +141,12 @@ def activity_summary(
         window_groups[(event.app_name or "未知应用", event.window_name, event.browser_url)].append(event)
 
     def _minutes(group: list[ScreenEventRecord]) -> float:
-        stamps = sorted(ts for item in group if (ts := _parse_time(item.timestamp)) is not None)
+        stamps = [_parse_time(item.timestamp) for item in group]
+        stamps = [item for item in stamps if item is not None]
         if len(stamps) < 2:
             return round(capture_interval_seconds / 60, 2)
-        gap_threshold = capture_interval_seconds * 3
-        total_seconds = 0
-        for i in range(1, len(stamps)):
-            delta = int((stamps[i] - stamps[i - 1]).total_seconds())
-            if delta <= gap_threshold:
-                total_seconds += delta
-            # else: gap too large, user was away — don't count
-        total_seconds += capture_interval_seconds  # account for last frame
-        return round(total_seconds / 60, 2)
+        seconds = max(capture_interval_seconds, int((max(stamps) - min(stamps)).total_seconds()) + capture_interval_seconds)
+        return round(seconds / 60, 2)
 
     apps = []
     for name, group in sorted(app_groups.items(), key=lambda item: item[0]):

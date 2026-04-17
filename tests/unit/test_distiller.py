@@ -96,22 +96,19 @@ class TestDistillerScreenContext(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             scenes_path = Path(tmp_dir) / "scenes.json"
             scenes_path.write_text(
-                json.dumps({"scenes": [
-                    {"scene_id": "scene_1", "text": "今天上午我去了超市买了一些水果和蔬菜，包括苹果、香蕉、西红柿和黄瓜，准备晚上做一顿丰盛的晚餐给家人"},
-                    {"scene_id": "scene_2", "text": "下午我跟同事开了两个小时的会议，讨论了新项目的技术方案，最终决定用微服务架构来做整体设计，分三个阶段推进"},
-                ]}, ensure_ascii=False),
+                '{"scenes":[{"scene_id":"scene_1","text":"第一段"},{"scene_id":"scene_2","text":"第二段"}]}',
                 encoding="utf-8",
             )
 
             with patch(
                 "openmy.services.distillation.distiller.summarize_scene",
-                side_effect=[RuntimeError("boom"), "讨论新项目方案，决定用微服务架构"],
+                side_effect=[RuntimeError("boom"), "第二段摘要"],
             ):
                 payload = distiller.distill_scenes(scenes_path, "test-key", "gemini-test")
 
         executor_cls.assert_called_once_with(max_workers=5)
         self.assertEqual(payload["scenes"][0]["summary"], "")
-        self.assertEqual(payload["scenes"][1]["summary"], "讨论新项目方案，决定用微服务架构")
+        self.assertEqual(payload["scenes"][1]["summary"], "第二段摘要")
 
     @patch("openmy.services.distillation.distiller.ThreadPoolExecutor")
     def test_distill_scenes_skips_suspicious_scenes_from_regression_fixture(self, executor_cls):

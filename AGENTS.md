@@ -38,19 +38,13 @@ When presenting results to users:
 
 ## First-Time Setup Flow
 
-If `openmy` is not available, install from repo (**never `pip install openmy`**):
-1. `git clone https://github.com/openmy-ai/openmy.git && cd openmy`
-2. `bash scripts/install-skills.sh`
-
-Then proceed with setup:
-3. `openmy skill health.check --json`
-4. Auto-detect profile (timezone, language) — do NOT ask the user, just set it
-5. Ask which STT engine to use — this is the ONE question you must ask. **Present the choices, then STOP and WAIT for the user to reply before proceeding. Do NOT auto-select.**
-6. Initialize vocab with `openmy skill vocab.init --json`
-7. Open frontend: `openmy view` (user needs to see onboarding UI at localhost:8420)
-8. Help locate the first audio file
-9. Process it with `openmy skill day.run`
-10. Present results in plain language
+1. Start with `openmy skill health.check --json`
+2. Auto-detect profile (timezone, language) — do NOT ask the user, just set it
+3. Ask which STT engine to use — this is the ONE question you must ask. **Present the choices, then STOP and WAIT for the user to reply before proceeding. Do NOT auto-select.**
+4. Initialize vocab with `openmy skill vocab.init --json`
+5. Help locate the first audio file
+6. Process it with `openmy skill day.run`
+7. Present results in plain language
 
 ## API Keys Are Optional
 

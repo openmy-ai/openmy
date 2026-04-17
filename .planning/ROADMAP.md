@@ -12,7 +12,7 @@ This roadmap adds reliable audio replay to OpenMy's existing daily brief and cor
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Evidence-Based Audio Mapping** - Replace brittle text matching with stable scene audio references
+- [x] **Phase 1: Evidence-Based Audio Mapping** - Replace brittle text matching with stable scene audio references
 - [ ] **Phase 2: Local Audio Delivery** - Expose chunk audio to the browser with safe seek support
 - [ ] **Phase 3: Scene Playback UI** - Add scene-level replay controls to the existing day detail interface
 - [ ] **Phase 4: Anchored Correction Replay** - Add accurate correction-time replay with word-to-segment-to-scene fallback
@@ -31,8 +31,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01: Define and serialize the scene audio reference contract
-- [ ] 01-02: Populate scene audio references from existing evidence during artifact generation
-- [ ] 01-03: Verify repeated-text, corrected-text, and historical-data regression cases
+- [x] 01-02: Populate scene audio references from existing evidence during artifact generation
+- [x] 01-03: Verify repeated-text, corrected-text, and historical-data regression cases
 
 ### Phase 2: Local Audio Delivery
 **Goal**: The browser can request local chunk audio safely and seek within it using HTTP Range.
@@ -86,7 +86,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Evidence-Based Audio Mapping | 1/3 | In Progress|  |
+| 1. Evidence-Based Audio Mapping | 3/3 | Completed | 2026-04-17 |
 | 2. Local Audio Delivery | 0/3 | Not started | - |
 | 3. Scene Playback UI | 0/3 | Not started | - |
 | 4. Anchored Correction Replay | 0/3 | Not started | - |

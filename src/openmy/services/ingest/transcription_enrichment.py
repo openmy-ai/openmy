@@ -89,41 +89,6 @@ def _normalize_aligned_segments(payload: dict[str, Any]) -> list[dict[str, Any]]
     return normalized
 
 
-def _derive_scene_audio_ref(evidence: list[dict[str, Any]]) -> dict[str, Any] | None:
-    valid_items = [item for item in evidence if isinstance(item, dict)]
-    chunk_ids = {
-        str(item.get("chunk_id", "") or "").strip()
-        for item in valid_items
-        if str(item.get("chunk_id", "") or "").strip()
-    }
-    if len(chunk_ids) != 1:
-        return None
-
-    offsets_start = []
-    offsets_end = []
-    segment_ids: list[str] = []
-    for item in valid_items:
-        try:
-            offsets_start.append(float(item.get("start", 0.0) or 0.0))
-            offsets_end.append(float(item.get("end", 0.0) or 0.0))
-        except (TypeError, ValueError):
-            return None
-        segment_id = str(item.get("segment_id", "") or "").strip()
-        if segment_id:
-            segment_ids.append(segment_id)
-
-    if not offsets_start or not offsets_end:
-        return None
-
-    return {
-        "chunk_id": next(iter(chunk_ids)),
-        "offset_start": min(offsets_start),
-        "offset_end": max(offsets_end),
-        "segment_ids": segment_ids,
-        "source": "transcription_evidence",
-    }
-
-
 def plan_transcription_enrichment(
     *,
     provider_name: str,
@@ -301,29 +266,20 @@ def apply_transcription_enrichment_to_scenes(day_dir: Path) -> None:
             continue
         chunk = chunk_by_time.get(str(scene.get("time_start", "")).strip())
         if not chunk:
-            scene.pop("audio_ref", None)
             continue
         aligned_segments = chunk.get("aligned_segments") or chunk.get("segments") or []
-        evidence = []
-        for segment in aligned_segments:
-            if not isinstance(segment, dict):
-                continue
-            evidence.append(
-                {
-                    "chunk_id": str(segment.get("chunk_id", chunk.get("chunk_id", "")) or ""),
-                    "segment_id": str(segment.get("id", "") or ""),
-                    "start": float(segment.get("start", 0.0) or 0.0),
-                    "end": float(segment.get("end", 0.0) or 0.0),
-                    "text": str(segment.get("text", "") or ""),
-                    "speaker": str(segment.get("speaker", "") or ""),
-                }
-            )
-        scene["transcription_evidence"] = evidence
-        audio_ref = _derive_scene_audio_ref(evidence)
-        if audio_ref:
-            scene["audio_ref"] = audio_ref
-        else:
-            scene.pop("audio_ref", None)
+        scene["transcription_evidence"] = [
+            {
+                "chunk_id": str(chunk.get("chunk_id", "") or ""),
+                "segment_id": str(segment.get("id", "") or ""),
+                "start": float(segment.get("start", 0.0) or 0.0),
+                "end": float(segment.get("end", 0.0) or 0.0),
+                "text": str(segment.get("text", "") or ""),
+                "speaker": str(segment.get("speaker", "") or ""),
+            }
+            for segment in aligned_segments
+            if isinstance(segment, dict)
+        ]
         scene["speaker_hints"] = sorted(
             {
                 str(segment.get("speaker", "") or "").strip()

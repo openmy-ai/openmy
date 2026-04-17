@@ -274,6 +274,76 @@ class TestAppServer(unittest.TestCase):
             self.assertEqual(payload["meta"]["intents"][0]["what"], "补前端")
             self.assertEqual(payload["meta"]["facts"][0]["content"], "active_context 已接上")
 
+    def test_get_date_detail_preserves_audio_ref_in_scenes(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            day_dir = self.seed_day_workspace(project_root, "2026-04-08")
+            (day_dir / "scenes.json").write_text(
+                json.dumps(
+                    {
+                        "scenes": [
+                            {
+                                "scene_id": "scene_001",
+                                "time_start": "10:00",
+                                "time_end": "10:05",
+                                "text": "今天先补前端。",
+                                "summary": "上午补前端。",
+                                "role": {"scene_type_label": "自言自语"},
+                                "audio_ref": {
+                                    "chunk_id": "chunk_0001",
+                                    "offset_start": 1.2,
+                                    "offset_end": 3.6,
+                                    "segment_ids": ["seg_0001"],
+                                },
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(app_server, "DATA_ROOT", data_root), patch.object(app_server, "LEGACY_ROOT", project_root):
+                payload = app_server.get_date_detail("2026-04-08")
+
+            self.assertEqual(payload["scenes"]["scenes"][0]["audio_ref"]["chunk_id"], "chunk_0001")
+            self.assertEqual(payload["segments"][0]["summary"], "上午补前端。")
+
+    def test_get_date_detail_allows_missing_audio_ref(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            day_dir = self.seed_day_workspace(project_root, "2026-04-08")
+            (day_dir / "scenes.json").write_text(
+                json.dumps(
+                    {
+                        "scenes": [
+                            {
+                                "scene_id": "scene_001",
+                                "time_start": "10:00",
+                                "time_end": "10:05",
+                                "text": "今天先补前端。",
+                                "summary": "上午补前端。",
+                                "role": {"scene_type_label": "自言自语"},
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(app_server, "DATA_ROOT", data_root), patch.object(app_server, "LEGACY_ROOT", project_root):
+                payload = app_server.get_date_detail("2026-04-08")
+
+            self.assertNotIn("audio_ref", payload["scenes"]["scenes"][0])
+            self.assertEqual(payload["segments"][0]["summary"], "上午补前端。")
+
     def test_date_meta_endpoint_returns_intents_and_facts(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_root = Path(tmp_dir)
@@ -374,6 +444,99 @@ class TestAppServer(unittest.TestCase):
             self.assertIn("示例正名", scenes["scenes"][0]["summary"])
             self.assertIn("示例正名", briefing["summary"])
             self.assertIn("示例正名", briefing["key_events"][0])
+
+    def test_handle_correction_preserves_audio_ref(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            data_root = project_root / "data"
+            data_root.mkdir(parents=True, exist_ok=True)
+            date_str = "2026-04-08"
+            day_dir = data_root / date_str
+            day_dir.mkdir(parents=True, exist_ok=True)
+
+            (day_dir / "transcript.md").write_text(
+                "# sample\n\n---\n\n## 10:00\n\n示例错名今天把 OpenMy 写完了。",
+                encoding="utf-8",
+            )
+            (day_dir / "scenes.json").write_text(
+                json.dumps(
+                    {
+                        "scenes": [
+                            {
+                                "scene_id": "scene_001",
+                                "time_start": "10:00",
+                                "time_end": "10:05",
+                                "text": "示例错名今天把 OpenMy 写完了。",
+                                "summary": "示例错名正在收尾。",
+                                "audio_ref": {
+                                    "chunk_id": "chunk_0001",
+                                    "offset_start": 1.0,
+                                    "offset_end": 3.0,
+                                    "segment_ids": ["seg_0001"],
+                                },
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            corrections_file = project_root / "src" / "openmy" / "resources" / "corrections.json"
+            corrections_file.parent.mkdir(parents=True, exist_ok=True)
+
+            with (
+                patch.object(app_server, "DATA_ROOT", data_root),
+                patch.object(app_server, "LEGACY_ROOT", project_root),
+                patch.object(app_server, "CORRECTIONS_FILE", corrections_file),
+                patch.object(app_server, "sync_correction_to_vocab"),
+            ):
+                payload = app_server.handle_correction(
+                    {
+                        "wrong": "示例错名",
+                        "right": "示例正名",
+                        "date": date_str,
+                        "context": "示例昵称",
+                        "sync_vocab": True,
+                    }
+                )
+
+            scenes = json.loads((day_dir / "scenes.json").read_text(encoding="utf-8"))
+
+            self.assertTrue(payload["success"])
+            self.assertIn("示例正名", scenes["scenes"][0]["text"])
+            self.assertIn("示例正名", scenes["scenes"][0]["summary"])
+            self.assertEqual(scenes["scenes"][0]["audio_ref"]["chunk_id"], "chunk_0001")
+            self.assertEqual(scenes["scenes"][0]["audio_ref"]["segment_ids"], ["seg_0001"])
+
+    def test_freeze_scene_roles_preserves_audio_ref(self):
+        from openmy.commands.show import freeze_scene_roles
+
+        payload = {
+            "scenes": [
+                {
+                    "scene_id": "scene_001",
+                    "time_start": "10:00",
+                    "time_end": "10:05",
+                    "text": "今天先补前端。",
+                    "role": {"scene_type_label": "自言自语", "needs_review": False},
+                    "audio_ref": {
+                        "chunk_id": "chunk_0001",
+                        "offset_start": 1.2,
+                        "offset_end": 3.6,
+                        "segment_ids": ["seg_0001"],
+                    },
+                }
+            ],
+            "stats": {},
+        }
+
+        frozen = freeze_scene_roles(payload)
+
+        self.assertEqual(frozen["scenes"][0]["audio_ref"]["chunk_id"], "chunk_0001")
+        self.assertEqual(frozen["scenes"][0]["audio_ref"]["segment_ids"], ["seg_0001"])
+        self.assertEqual(frozen["scenes"][0]["role"]["source"], "frozen")
 
     def test_close_loop_endpoint_appends_correction_and_refreshes_context(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

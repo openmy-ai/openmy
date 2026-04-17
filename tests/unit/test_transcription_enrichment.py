@@ -58,6 +58,10 @@ class TestApplyTranscriptionEnrichmentToScenes(unittest.TestCase):
         payload = json.loads((day_dir / "scenes.json").read_text(encoding="utf-8"))
         return payload["scenes"][0]
 
+    def read_scenes(self, day_dir: Path) -> list[dict]:
+        payload = json.loads((day_dir / "scenes.json").read_text(encoding="utf-8"))
+        return payload["scenes"]
+
     def test_apply_transcription_enrichment_to_scenes_adds_audio_ref_from_single_chunk_evidence(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             day_dir = Path(tmp_dir)
@@ -177,3 +181,56 @@ class TestApplyTranscriptionEnrichmentToScenes(unittest.TestCase):
 
             self.assertEqual(scene["transcription_evidence"], [])
             self.assertNotIn("audio_ref", scene)
+
+    def test_apply_transcription_enrichment_to_scenes_maps_repeated_text_by_time_not_text(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            day_dir = Path(tmp_dir)
+            self.write_json(
+                day_dir / "scenes.json",
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "scene_001",
+                            "time_start": "10:00",
+                            "time_end": "10:05",
+                            "text": "重复文本",
+                        },
+                        {
+                            "scene_id": "scene_002",
+                            "time_start": "10:10",
+                            "time_end": "10:15",
+                            "text": "重复文本",
+                        },
+                    ]
+                },
+            )
+            self.write_json(
+                day_dir / "transcript.transcription.json",
+                {
+                    "chunks": [
+                        {
+                            "chunk_id": "chunk_0001",
+                            "time_label": "10:00",
+                            "aligned_segments": [
+                                {"id": "seg_0001", "start": 0.1, "end": 1.5, "text": "重复文本"},
+                            ],
+                        },
+                        {
+                            "chunk_id": "chunk_0002",
+                            "time_label": "10:10",
+                            "aligned_segments": [
+                                {"id": "seg_0002", "start": 0.2, "end": 1.8, "text": "重复文本"},
+                            ],
+                        },
+                    ]
+                },
+            )
+
+            apply_transcription_enrichment_to_scenes(day_dir)
+            scenes = self.read_scenes(day_dir)
+
+            self.assertEqual(scenes[0]["text"], scenes[1]["text"])
+            self.assertEqual(scenes[0]["audio_ref"]["chunk_id"], "chunk_0001")
+            self.assertEqual(scenes[1]["audio_ref"]["chunk_id"], "chunk_0002")
+            self.assertEqual(scenes[0]["audio_ref"]["segment_ids"], ["seg_0001"])
+            self.assertEqual(scenes[1]["audio_ref"]["segment_ids"], ["seg_0002"])
