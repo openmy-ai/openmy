@@ -1450,3 +1450,287 @@ body {
     width: 100%;
   }
 }
+
+/* ============================================
+   VISUAL UPGRADE V3 — User Profile & Onboarding
+   ============================================ */
+
+/* --- User Profile Greeting --- */
+.profile-greeting {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 6px;
+}
+.profile-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent) 0%, #60a5fa 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
+  transition: transform 0.3s ease;
+}
+.profile-avatar:hover {
+  transform: scale(1.08);
+}
+.profile-edit-trigger {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+}
+.profile-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.profile-edit-hint {
+  font-size: 11px;
+  color: var(--text-light);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.profile-greeting:hover .profile-edit-hint {
+  opacity: 1;
+}
+
+/* --- Profile Edit Modal --- */
+.profile-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.profile-modal.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.profile-modal-card {
+  background: var(--bg);
+  border-radius: 16px;
+  padding: 28px 32px;
+  width: min(400px, 90vw);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  transform: translateY(-10px) scale(0.97);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.profile-modal.is-open .profile-modal-card {
+  transform: translateY(0) scale(1);
+}
+.profile-modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+.profile-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+/* --- Onboarding Progress Tracker --- */
+.onboarding-tracker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.onboarding-step {
+  position: relative;
+  padding: 16px 18px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: all var(--transition);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+}
+.onboarding-step:hover {
+  border-color: rgba(37, 99, 235, 0.25);
+  box-shadow: var(--shadow-sm);
+}
+.onboarding-step.is-done {
+  border-color: rgba(5, 150, 105, 0.25);
+  background: color-mix(in srgb, var(--success-bg) 30%, var(--bg) 70%);
+}
+.onboarding-step.is-current {
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+.onboarding-step-num {
+  position: absolute;
+  top: -8px;
+  left: 14px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  color: var(--text-secondary);
+}
+.onboarding-step.is-done .onboarding-step-num {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+.onboarding-step.is-current .onboarding-step-num {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  animation: pulse-ring 2s ease infinite;
+}
+@keyframes pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0); }
+}
+.onboarding-step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.onboarding-step.is-done .onboarding-step-title {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+}
+.onboarding-step-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+@media (max-width: 700px) {
+  .onboarding-tracker { grid-template-columns: 1fr; }
+}
+
+/* --- Search Audio Hint --- */
+.search-audio-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--accent-light);
+  color: var(--accent);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.search-audio-badge::before {
+  content: '♪';
+  font-size: 11px;
+}
+
+/* --- Action Button Danger --- */
+.action-btn.danger {
+  background: var(--error-bg);
+  border-color: rgba(220, 38, 38, 0.25);
+  color: var(--error);
+}
+.action-btn.danger:hover {
+  background: var(--error);
+  color: #fff;
+  border-color: var(--error);
+}
+
+/* --- Enhanced Card Interactions --- */
+.home-card-grid--dense .home-card {
+  display: flex;
+  flex-direction: column;
+}
+.home-card-grid--dense .home-card-body {
+  flex: 1;
+}
+
+/* --- Smooth Page Transitions --- */
+.home-page,
+.report-page,
+.daily-article {
+  animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* --- Sidebar Active Indicator Glow --- */
+.sidebar-model-btn.active {
+  position: relative;
+}
+.sidebar-model-btn.active::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+
+/* --- Welcome Hero Enhancement --- */
+.welcome-hero {
+  position: relative;
+}
+.welcome-hero::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.15;
+}
+
+/* --- Onboarding Completion Celebration --- */
+.onboarding-tracker.all-done {
+  position: relative;
+  overflow: hidden;
+}
+.onboarding-tracker.all-done::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(5,150,105,0.04), rgba(52,211,153,0.06));
+  border-radius: var(--radius);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* --- Toast Enhancement --- */
+.toast {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* --- Stat Card Pulse for Zero State --- */
+.stat-card-value.is-zero {
+  color: var(--text-light);
+}
+
+/* --- Home Card Grid Full Width First Child --- */
+.home-card-grid--dense > .home-card:first-child {
+  grid-column: 1 / -1;
+}

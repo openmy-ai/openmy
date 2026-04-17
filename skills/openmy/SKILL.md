@@ -33,6 +33,7 @@ Reference files:
 - `skills/openmy/references/architecture.md`
 - `skills/openmy/references/action-contracts.md`
 - `skills/openmy/references/routing-rules.md`
+- `skills/openmy/references/quality-audit.md`
 
 ## When to use this skill
 
@@ -84,6 +85,20 @@ you have failed the task.
 - `skills/openmy-extract/SKILL.md`
 
 不读完不准执行。这是硬约束，不是建议。
+
+## Post-Run Quality Audit (HARD CONSTRAINT)
+
+After ANY `day.run` or `quick-start` completes (including agent-side distill/extract),
+the agent MUST run the quality audit defined in `skills/openmy/references/quality-audit.md`.
+
+**Rules:**
+1. Read `quality-audit.md` before auditing — do not guess the criteria.
+2. Check ALL 7 audit items. Do not skip any.
+3. If any **red-line** item fails → fix it before reporting success.
+4. If there are warnings → report them to the user, do not hide them.
+5. **Pipeline complete without audit = task NOT done.**
+
+This applies to all agents: CC, 小克, Codex, 小g.
 
 ## Global rules
 

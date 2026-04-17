@@ -58,9 +58,87 @@ const state = {
     exclude_domains: [],
     exclude_window_keywords: [],
   },
+  profile: {
+    name: localStorage.getItem('openmy-profile-name') || '',
+    emoji: localStorage.getItem('openmy-profile-emoji') || '',
+  },
 };
 
 let searchTimer = null;
+
+// === User Profile Helpers ===
+function getProfileName() {
+  return state.profile.name || '';
+}
+
+function getProfileEmoji() {
+  return state.profile.emoji || '👋';
+}
+
+function getProfileInitial() {
+  const name = getProfileName();
+  if (!name) return '?';
+  return name.charAt(0).toUpperCase();
+}
+
+function saveProfile(name, emoji) {
+  state.profile.name = name || '';
+  state.profile.emoji = emoji || '';
+  localStorage.setItem('openmy-profile-name', state.profile.name);
+  localStorage.setItem('openmy-profile-emoji', state.profile.emoji);
+  if (state.route === 'home') renderHomePage();
+}
+
+function openProfileModal() {
+  let modal = document.getElementById('profileModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'profileModal';
+    modal.className = 'profile-modal';
+    modal.onclick = (e) => { if (e.target === modal) closeProfileModal(); };
+    modal.innerHTML = `
+      <div class="profile-modal-card" onclick="event.stopPropagation()">
+        <div class="profile-modal-title">设置你的名字</div>
+        <div style="margin-bottom:12px">
+          <label class="form-label">昵称</label>
+          <input id="profileNameInput" class="field-input" type="text" placeholder="你叫什么？" maxlength="20" autocomplete="off">
+        </div>
+        <div style="margin-bottom:12px">
+          <label class="form-label">头像 Emoji</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap" id="profileEmojiPicker">
+            ${['👋','😊','🚀','💡','🎧','🎯','🔥','✨','🐱','🌟','💻','🎵'].map((e) => `<button type="button" class="setting-opt" data-emoji="${e}" onclick="document.querySelectorAll('#profileEmojiPicker .setting-opt').forEach(b=>b.classList.remove('active'));this.classList.add('active')" style="font-size:18px;padding:6px 10px">${e}</button>`).join('')}
+          </div>
+        </div>
+        <div class="profile-modal-footer">
+          <button class="action-btn" type="button" onclick="closeProfileModal()">取消</button>
+          <button class="action-btn primary" type="button" onclick="confirmProfileModal()">保存</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+  const nameInput = document.getElementById('profileNameInput');
+  if (nameInput) nameInput.value = getProfileName();
+  const currentEmoji = getProfileEmoji();
+  document.querySelectorAll('#profileEmojiPicker .setting-opt').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.emoji === currentEmoji);
+  });
+  modal.classList.add('is-open');
+  setTimeout(() => nameInput?.focus(), 100);
+}
+
+function closeProfileModal() {
+  document.getElementById('profileModal')?.classList.remove('is-open');
+}
+
+function confirmProfileModal() {
+  const name = document.getElementById('profileNameInput')?.value.trim() || '';
+  const emojiBtn = document.querySelector('#profileEmojiPicker .setting-opt.active');
+  const emoji = emojiBtn?.dataset.emoji || getProfileEmoji();
+  saveProfile(name, emoji);
+  closeProfileModal();
+  showToast(name ? `欢迎，${name}！` : '名字已清除');
+}
 
 function showToast(message) {
   const toast = document.getElementById('toast');
@@ -897,6 +975,47 @@ function renderWikiHome() {
   `;
 }
 
+function getOnboardingSteps() {
+  const onboarding = state.onboarding || {};
+  const hasProvider = Boolean(onboarding.current_provider);
+  const hasRecordings = (state.allDates || []).length > 0;
+  const hasCorrections = (state.corrections || []).length > 0;
+  return [
+    { id: 'engine', title: '选转写引擎', desc: '6种引擎可选，本地或云端', done: hasProvider, action: "openSettings('transcription')" },
+    { id: 'record', title: '第一段录音', desc: '拖入音频或 CLI 运行 quick-start', done: hasRecordings, action: hasProvider ? "document.getElementById('homeFileInput')?.click()" : "openSettings('transcription')" },
+    { id: 'correct', title: '体验纠错', desc: '在日报里选中文字，试试纠错', done: hasCorrections, action: "openCorrectionPopover('', 0, 0, '先从日报里选中一句话，抽屉就会带着原句打开。')" },
+  ];
+}
+
+function renderOnboardingTracker() {
+  const steps = getOnboardingSteps();
+  const allDone = steps.every((s) => s.done);
+  const firstUndone = steps.findIndex((s) => !s.done);
+  return `
+    <div class="onboarding-tracker ${allDone ? 'all-done' : ''}">
+      ${steps.map((step, i) => {
+        const cls = step.done ? 'is-done' : (i === firstUndone ? 'is-current' : '');
+        return `
+          <button class="onboarding-step ${cls}" type="button" onclick="${step.action}">
+            <span class="onboarding-step-num">${step.done ? '✓' : i + 1}</span>
+            <div class="onboarding-step-title">${escapeHtml(step.title)}</div>
+            <div class="onboarding-step-desc">${escapeHtml(step.desc)}</div>
+          </button>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function getGreetingByHour() {
+  const hour = new Date().getHours();
+  if (hour < 6) return '夜深了';
+  if (hour < 11) return '早上好';
+  if (hour < 14) return '中午好';
+  if (hour < 18) return '下午好';
+  return '晚上好';
+}
+
 function renderRecentSummaryHome(visibleDates) {
   const main = document.getElementById('main');
   const recentDates = visibleDates.slice(0, 7);
@@ -918,30 +1037,50 @@ function renderRecentSummaryHome(visibleDates) {
   const loopItems = deriveLoopItemsFromDates(recentDates, 4);
   const correctionCount = (state.corrections || []).length;
 
+  const greeting = getGreetingByHour();
+  const profileName = getProfileName();
+  const profileEmoji = getProfileEmoji();
+  const welcomeText = profileName ? `${greeting}，${escapeHtml(profileName)}` : `${greeting}！今天是 ${escapeHtml(monthDay)}`;
+
+  const onboardingSteps = getOnboardingSteps();
+  const allOnboardingDone = onboardingSteps.every((s) => s.done);
+
   main.innerHTML = `
     <div class="home-page">
       <div class="welcome-hero">
-        <div class="welcome-title">你好！今天是 ${escapeHtml(monthDay)}</div>
-        <div class="welcome-subtitle">这是你最近 7 天的上下文概览</div>
+        <div class="profile-greeting">
+          <button class="profile-edit-trigger" type="button" onclick="openProfileModal()" title="编辑个人信息">
+            <div class="profile-avatar">${profileName ? escapeHtml(getProfileInitial()) : profileEmoji}</div>
+          </button>
+          <div>
+            <div class="profile-name-row">
+              <div class="welcome-title">${welcomeText}</div>
+              <span class="profile-edit-hint">点头像改名字</span>
+            </div>
+            <div class="welcome-subtitle">这是你最近 7 天的上下文概览</div>
+          </div>
+        </div>
       </div>
+
+      ${!allOnboardingDone ? renderOnboardingTracker() : ''}
 
       <div class="stats-row">
         <div class="stat-card">
-          <div class="stat-card-value">${activeDays}</div>
+          <div class="stat-card-value ${activeDays === 0 ? 'is-zero' : ''}">${activeDays}</div>
           <div class="stat-card-label">活跃天数</div>
         </div>
         <div class="stat-card">
-          <div class="stat-card-value">${totalSegments}</div>
+          <div class="stat-card-value ${totalSegments === 0 ? 'is-zero' : ''}">${totalSegments}</div>
           <div class="stat-card-label">录音段数</div>
         </div>
         <div class="stat-card">
-          <div class="stat-card-value">${fmtNum(totalWords)}</div>
+          <div class="stat-card-value ${totalWords === 0 ? 'is-zero' : ''}">${fmtNum(totalWords)}</div>
           <div class="stat-card-label">总字数</div>
         </div>
       </div>
 
       <div class="home-card-grid home-card-grid--dense">
-        <div class="home-card home-card-grid--full" onclick="${todayItem ? `loadDate('${escapeHtml(todayItem.date)}')` : ''}">
+        <div class="home-card" onclick="${todayItem ? `loadDate('${escapeHtml(todayItem.date)}')` : ''}">
           <div class="home-card-header">
             <span class="home-card-title">今日摘要</span>
             ${todayItem ? `<span class="home-card-badge">${todayItem.segments || 0}条记录</span>` : ''}
@@ -1621,9 +1760,10 @@ function renderSpotlightResults(items, query = '') {
     <div class="spotlight-group-label">${escapeHtml(date)}</div>
     ${entries.map((item) => {
       const itemIndex = index++;
+      const hasAudio = item.has_audio || item.source_type === 'audio';
       return `
         <button class="spotlight-result-item ${itemIndex === state.spotlightIndex ? 'active' : ''}" data-spotlight-index="${itemIndex}" onclick="jumpToSearchResult('${escapeHtml(item.date)}', '${escapeHtml(item.time || '')}', '${escapeHtml(query)}')">
-          <strong style="display:block;margin-bottom:4px;color:var(--text);font-size:13px">${escapeHtml(item.date)}${item.time ? ` · ${escapeHtml(item.time)}` : ''}</strong>
+          <strong style="display:block;margin-bottom:4px;color:var(--text);font-size:13px">${escapeHtml(item.date)}${item.time ? ` · ${escapeHtml(item.time)}` : ''}${hasAudio ? '<span class="search-audio-badge">录音</span>' : ''}</strong>
           <div class="muted" style="font-size:12px;line-height:1.5">${highlightQuerySnippet(item.context || item.raw_context || '', query)}</div>
         </button>
       `;
