@@ -234,3 +234,60 @@ class TestApplyTranscriptionEnrichmentToScenes(unittest.TestCase):
             self.assertEqual(scenes[1]["audio_ref"]["chunk_id"], "chunk_0002")
             self.assertEqual(scenes[0]["audio_ref"]["segment_ids"], ["seg_0001"])
             self.assertEqual(scenes[1]["audio_ref"]["segment_ids"], ["seg_0002"])
+
+    def test_apply_transcription_enrichment_to_scenes_preserves_existing_audio_ref_when_replacement_is_unusable(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            day_dir = Path(tmp_dir)
+            self.write_json(
+                day_dir / "scenes.json",
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "scene_001",
+                            "time_start": "10:00",
+                            "time_end": "10:05",
+                            "text": "alpha",
+                            "transcription_evidence": [
+                                {
+                                    "chunk_id": "chunk_existing",
+                                    "segment_id": "seg_existing",
+                                    "start": 0.5,
+                                    "end": 1.5,
+                                    "text": "alpha",
+                                    "speaker": "speaker_1",
+                                }
+                            ],
+                            "audio_ref": {
+                                "chunk_id": "chunk_existing",
+                                "offset_start": 0.5,
+                                "offset_end": 1.5,
+                                "segment_ids": ["seg_existing"],
+                            },
+                            "speaker_hints": ["speaker_1"],
+                        }
+                    ]
+                },
+            )
+            self.write_json(
+                day_dir / "transcript.transcription.json",
+                {
+                    "chunks": [
+                        {
+                            "chunk_id": "chunk_0001",
+                            "time_label": "10:00",
+                            "aligned_segments": [
+                                {"id": "seg_0001", "chunk_id": "chunk_0001", "start": 0.2, "end": 1.0, "text": "alpha"},
+                                {"id": "seg_0002", "chunk_id": "chunk_0002", "start": 1.5, "end": 2.0, "text": "beta"},
+                            ],
+                        }
+                    ]
+                },
+            )
+
+            apply_transcription_enrichment_to_scenes(day_dir, preserve_existing_audio_ref=True)
+            scene = self.read_scene(day_dir)
+
+            self.assertEqual(scene["audio_ref"]["chunk_id"], "chunk_existing")
+            self.assertEqual(scene["audio_ref"]["segment_ids"], ["seg_existing"])
+            self.assertEqual(scene["transcription_evidence"][0]["chunk_id"], "chunk_existing")
+            self.assertEqual(scene["speaker_hints"], ["speaker_1"])

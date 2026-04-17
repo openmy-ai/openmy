@@ -1441,6 +1441,122 @@ class TestOpenMyCli(unittest.TestCase):
         finally:
             self.cleanup_day_dir(date_str)
 
+    def test_cmd_run_reused_scenes_preserves_existing_audio_ref_when_new_evidence_is_ambiguous(self):
+        from openmy.commands import run as run_command
+
+        date_str = "2099-01-29"
+        day_dir = self.make_day_dir(date_str)
+        transcript_path = day_dir / "transcript.md"
+        scenes_path = day_dir / "scenes.json"
+        transcription_path = day_dir / "transcript.transcription.json"
+
+        transcript_path.write_text(
+            "# 2099-01-29\n\n---\n\n## 10:00\n\n今天上午我在修 OpenMy。\n",
+            encoding="utf-8",
+        )
+        scenes_path.write_text(
+            json.dumps(
+                {
+                    "scenes": [
+                        {
+                            "scene_id": "s01",
+                            "time_start": "10:00",
+                            "time_end": "10:05",
+                            "text": "今天上午我在修 OpenMy。",
+                            "summary": "上午在推进 OpenMy。",
+                            "preview": "今天上午我在修 OpenMy。",
+                            "role": {"addressed_to": "", "scene_type_label": "自言自语", "needs_review": False},
+                            "transcription_evidence": [
+                                {
+                                    "chunk_id": "chunk_existing",
+                                    "segment_id": "seg_existing",
+                                    "start": 0.5,
+                                    "end": 1.5,
+                                    "text": "今天上午我在修 OpenMy。",
+                                    "speaker": "",
+                                }
+                            ],
+                            "audio_ref": {
+                                "chunk_id": "chunk_existing",
+                                "offset_start": 0.5,
+                                "offset_end": 1.5,
+                                "segment_ids": ["seg_existing"],
+                            },
+                        }
+                    ],
+                    "stats": {"total_scenes": 1, "role_distribution": {}, "needs_review_count": 0},
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        transcription_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "openmy.transcription.v1",
+                    "date": date_str,
+                    "provider": "faster-whisper",
+                    "model": "small",
+                    "chunks": [
+                        {
+                            "chunk_id": "chunk_0001",
+                            "chunk_path": str(day_dir / "stt_chunks" / "chunk_0001.mp3"),
+                            "time_label": "10:00",
+                            "text": "今天上午我在修 OpenMy。",
+                            "segments": [
+                                {
+                                    "segment_id": "seg_001",
+                                    "chunk_id": "chunk_0001",
+                                    "start": 0.0,
+                                    "end": 2.0,
+                                    "text": "今天上午我在修",
+                                },
+                                {
+                                    "segment_id": "seg_002",
+                                    "chunk_id": "chunk_0002",
+                                    "start": 2.0,
+                                    "end": 5.0,
+                                    "text": "OpenMy。",
+                                },
+                            ],
+                            "provider_metadata": {},
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        try:
+            with patch("openmy.commands.run.has_llm_credentials", return_value=False):
+                result = run_command.cmd_run(
+                    argparse.Namespace(
+                        date=date_str,
+                        audio=None,
+                        skip_transcribe=True,
+                        stt_provider="faster-whisper",
+                        stt_model="small",
+                        stt_vad=False,
+                        stt_word_timestamps=False,
+                        stt_enrich_mode="off",
+                        stt_align=False,
+                        stt_diarize=False,
+                    )
+                )
+
+            self.assertEqual(result, 2)
+            scenes_payload = json.loads(scenes_path.read_text(encoding="utf-8"))
+            audio_ref = scenes_payload["scenes"][0]["audio_ref"]
+            self.assertEqual(audio_ref["chunk_id"], "chunk_existing")
+            self.assertEqual(audio_ref["segment_ids"], ["seg_existing"])
+
+            status_payload = json.loads((day_dir / "run_status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status_payload["status"], "partial")
+            self.assertEqual(status_payload["steps"]["segment"]["status"], "skipped")
+        finally:
+            self.cleanup_day_dir(date_str)
+
     def test_cmd_run_keeps_backup_artifacts_when_rerun_extract_fails(self):
         from openmy.commands import run as run_command
 
@@ -1822,7 +1938,10 @@ class TestOpenMyCli(unittest.TestCase):
                 patch.object(run_command, "run_transcription_enrichment", side_effect=RuntimeError("whisperx 缺少依赖"), create=True),
                 patch("openmy.cli.build_segmented_scenes_payload", return_value=rebuilt_scenes_payload),
                 patch("openmy.cli.cmd_briefing", side_effect=fake_briefing),
+                patch("openmy.commands.run.has_llm_credentials", side_effect=lambda stage=None: stage == "extract"),
                 patch("openmy.commands.run._load_existing_core_payload", return_value={"daily_summary": "已有结构化结果", "intents": [], "facts": []}),
+                patch("openmy.services.extraction.extractor.get_llm_api_key", return_value="fake-key"),
+                patch("openmy.services.extraction.extractor.call_gemini_enrichment", return_value={}),
                 patch("openmy.services.context.consolidation.consolidate") as consolidate_mock,
             ):
                 result = run_command.cmd_run(
@@ -1849,6 +1968,11 @@ class TestOpenMyCli(unittest.TestCase):
             self.assertIn("缺少依赖", status_payload["steps"]["transcribe_enrich"]["message"])
             self.assertEqual(status_payload["steps"]["consolidate"]["status"], "completed")
             self.assertEqual(status_payload["steps"]["roles"]["skip_reason"], "role_step_frozen")
+
+            meta_payload = json.loads((day_dir / f"{date_str}.meta.json").read_text(encoding="utf-8"))
+            self.assertEqual(meta_payload["transcription_enrich_status"], "failed")
+            self.assertIn("缺少依赖", meta_payload["transcription_enrich_message"])
+            self.assertEqual(meta_payload["transcription_diarization_status"], "degraded_missing_token")
         finally:
             self.cleanup_day_dir(date_str)
 

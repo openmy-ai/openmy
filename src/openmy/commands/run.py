@@ -718,12 +718,12 @@ def plan_transcription_enrichment(*, provider_name: str, enrich_mode: str, diari
     )
 
 
-def apply_transcription_enrichment_to_scenes(day_dir: Path) -> None:
+def apply_transcription_enrichment_to_scenes(day_dir: Path, *, preserve_existing_audio_ref: bool = False) -> None:
     from openmy.services.ingest.transcription_enrichment import (
         apply_transcription_enrichment_to_scenes as _apply,
     )
 
-    _apply(day_dir)
+    _apply(day_dir, preserve_existing_audio_ref=preserve_existing_audio_ref)
 
 
 def _has_scene_audio_ref_source(day_dir: Path) -> bool:
@@ -739,10 +739,10 @@ def _has_scene_audio_ref_source(day_dir: Path) -> bool:
         return False
     return any(
         isinstance(chunk, dict)
-        and (
-            str(chunk.get("chunk_id", "") or "").strip()
-            or str(chunk.get("time_label", "") or "").strip()
-            or isinstance(chunk.get("segments"), list)
+        and str(chunk.get("time_label", "") or "").strip()
+        and any(
+            isinstance(segment, dict)
+            for segment in (chunk.get("aligned_segments") or chunk.get("segments") or [])
         )
         for chunk in chunks
     )
@@ -989,7 +989,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         scenes_data = cli.read_json(paths["scenes"], {})
         if scene_audio_ref_source_available:
             try:
-                apply_transcription_enrichment_to_scenes(day_dir)
+                apply_transcription_enrichment_to_scenes(day_dir, preserve_existing_audio_ref=True)
                 scenes_data = cli.read_json(paths["scenes"], {})
             except Exception as exc:
                 cli.console.print(f"[yellow]⚠️ 场景未附加精标证据[/yellow]: {exc}")
@@ -1000,7 +1000,7 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         cli.write_json(paths["scenes"], scenes_data)
         if scene_audio_ref_source_available:
             try:
-                apply_transcription_enrichment_to_scenes(day_dir)
+                apply_transcription_enrichment_to_scenes(day_dir, preserve_existing_audio_ref=True)
                 scenes_data = cli.read_json(paths["scenes"], {})
             except Exception as exc:
                 cli.console.print(f"[yellow]⚠️ 场景未附加精标证据[/yellow]: {exc}")

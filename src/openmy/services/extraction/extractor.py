@@ -1267,6 +1267,15 @@ def save_meta_json(data: dict, date: str, output_dir: str):
     day_dir = Path(output_dir)
     meta_path = day_dir / f"{date}.meta.json"
     compat_payload = build_legacy_compatible_payload(data)
+    if meta_path.exists():
+        try:
+            existing_payload = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            existing_payload = {}
+        if isinstance(existing_payload, dict):
+            for key, value in existing_payload.items():
+                if key.startswith("transcription_") and key not in compat_payload:
+                    compat_payload[key] = value
     safe_write_json(meta_path, compat_payload)
     update_search_index_for_day(day_dir=day_dir, date_str=date, meta=compat_payload)
     print(f"✓ 结构化数据: {meta_path}", file=sys.stderr)

@@ -282,7 +282,11 @@ def run_transcription_enrichment(day_dir: Path, *, diarize: bool = False) -> dic
     return payload["enrichment"]
 
 
-def apply_transcription_enrichment_to_scenes(day_dir: Path) -> None:
+def apply_transcription_enrichment_to_scenes(
+    day_dir: Path,
+    *,
+    preserve_existing_audio_ref: bool = False,
+) -> None:
     scenes_path = day_dir / "scenes.json"
     transcription_path = _transcription_path(day_dir)
     scenes_payload = _load_json(scenes_path)
@@ -301,7 +305,8 @@ def apply_transcription_enrichment_to_scenes(day_dir: Path) -> None:
             continue
         chunk = chunk_by_time.get(str(scene.get("time_start", "")).strip())
         if not chunk:
-            scene.pop("audio_ref", None)
+            if not preserve_existing_audio_ref:
+                scene.pop("audio_ref", None)
             continue
         aligned_segments = chunk.get("aligned_segments") or chunk.get("segments") or []
         evidence = []
@@ -318,18 +323,26 @@ def apply_transcription_enrichment_to_scenes(day_dir: Path) -> None:
                     "speaker": str(segment.get("speaker", "") or ""),
                 }
             )
-        scene["transcription_evidence"] = evidence
         audio_ref = _derive_scene_audio_ref(evidence)
         if audio_ref:
+            scene["transcription_evidence"] = evidence
             scene["audio_ref"] = audio_ref
-        else:
+            scene["speaker_hints"] = sorted(
+                {
+                    str(segment.get("speaker", "") or "").strip()
+                    for segment in aligned_segments
+                    if isinstance(segment, dict) and str(segment.get("speaker", "") or "").strip()
+                }
+            )
+        elif not (preserve_existing_audio_ref and isinstance(scene.get("audio_ref"), dict)):
+            scene["transcription_evidence"] = evidence
             scene.pop("audio_ref", None)
-        scene["speaker_hints"] = sorted(
-            {
-                str(segment.get("speaker", "") or "").strip()
-                for segment in aligned_segments
-                if isinstance(segment, dict) and str(segment.get("speaker", "") or "").strip()
-            }
-        )
+            scene["speaker_hints"] = sorted(
+                {
+                    str(segment.get("speaker", "") or "").strip()
+                    for segment in aligned_segments
+                    if isinstance(segment, dict) and str(segment.get("speaker", "") or "").strip()
+                }
+            )
 
     safe_write_json(scenes_path, scenes_payload)
