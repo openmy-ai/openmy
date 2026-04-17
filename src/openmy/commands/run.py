@@ -992,7 +992,10 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
         return timeout_result
 
     llm_available = has_llm_credentials("distill")
-    missing_summaries = [scene for scene in scenes_data.get("scenes", []) if not scene.get("summary")]
+    missing_summaries = [
+        scene for scene in scenes_data.get("scenes", [])
+        if not scene.get("summary") and scene.get("usable_for_downstream", True)
+    ]
     if missing_summaries:
         if llm_available:
             _mark_step(date_str, run_status, "distill", "running", message=f"正在蒸馏 {len(missing_summaries)} 个场景")
@@ -1220,6 +1223,15 @@ def cmd_run(args: argparse.Namespace, *, entrypoint: str = "run") -> int:
     timeout_result = _return_timeout_if_needed(date_str, run_status, "extract_enrich", started_monotonic)
     if timeout_result is not None:
         return timeout_result
+
+    # 方案 B 后置回灌：从 meta.json 补充 briefing 的 decisions/todos/insights/people
+    meta_path = cli.ensure_day_dir(date_str) / f"{date_str}.meta.json"
+    if paths["briefing"].exists() and meta_path.exists():
+        from openmy.services.briefing.generator import enrich_briefing_from_meta
+
+        enriched = enrich_briefing_from_meta(paths["briefing"], meta_path)
+        if enriched:
+            cli.console.print("[green]✅ 日报已从结构化数据补充[/green]")
 
     _export_outputs(
         date_str,

@@ -58,7 +58,8 @@ def summarize_scene(
         f'3. 用"我"做主语，不要用第三人称\n'
         f'4. 如果有金句或决定，用引号保留原话\n'
         f'5. 不要写"今天""首先""接着"这种过渡词\n'
-        f'6. 总字数控制在 30-80 字\n\n'
+        f'6. 总字数控制在 30-80 字\n'
+        f'7. 如果原文无实质内容或只是背景噪音描述，直接输出空字符串，不要编造\n\n'
         f'录音原文：\n<raw_transcript>{text}</raw_transcript>'
     )
     response_text = ""
@@ -89,6 +90,8 @@ def _distill_scene_job(job: tuple[int, dict, str, str | None]) -> tuple[int, str
     index, scene, api_key, model = job
     text = scene.get("text", "").strip()
     if not text:
+        return index, ""
+    if len(text) < 10:
         return index, ""
 
     role = scene.get("role", {})
@@ -126,6 +129,10 @@ def distill_scenes(scenes_path: Path, api_key: str, model: str | None) -> dict:
     if jobs:
         with ThreadPoolExecutor(max_workers=5) as executor:
             for index, summary in executor.map(_distill_scene_job, jobs):
+                # Sanity check: prevent over-embellishment of very short inputs
+                scene_text = data['scenes'][index].get('text', '').strip()
+                if summary and len(scene_text) < 50 and len(summary) > len(scene_text) * 0.5:
+                    summary = ""
                 data['scenes'][index]['summary'] = summary
     safe_write_json(scenes_path, data)
     return data

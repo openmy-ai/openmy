@@ -26,6 +26,31 @@ TECH_TALK_MARKERS = (
 
 LOW_SIGNAL_LATIN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9 ._\-]{0,24}$")
 
+NO_SPEECH_MARKERS = {"[无人声]", "[无声]", "[静音]", "[silence]"}
+
+
+def _garbled_ratio(text: str) -> float:
+    """计算 [无法识别] 占总行数的比例。"""
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    if not lines:
+        return 0.0
+    garbled = sum(1 for line in lines if "[无法识别]" in line)
+    return garbled / len(lines)
+
+
+def _has_repeated_ngram(text: str, n: int = 4, threshold: int = 4) -> bool:
+    """检测同一 n 字短语是否出现 ≥ threshold 次（歌词重复模式）。"""
+    chars = re.sub(r"\s+", "", text)
+    if len(chars) < n * threshold:
+        return False
+    counts: dict[str, int] = {}
+    for i in range(len(chars) - n + 1):
+        gram = chars[i : i + n]
+        counts[gram] = counts.get(gram, 0) + 1
+        if counts[gram] >= threshold:
+            return True
+    return False
+
 
 def inspect_scene_text(text: str) -> dict[str, Any]:
     content = str(text or "").strip()
@@ -36,6 +61,11 @@ def inspect_scene_text(text: str) -> dict[str, Any]:
     if not content:
         flags.append("empty")
         reasons.append("空内容")
+
+    # [无人声] 检测
+    if content in NO_SPEECH_MARKERS:
+        flags.append("no_speech")
+        reasons.append("整段只有无人声标记")
 
     if "[助手回复]" in content or "[疑似串台]" in content:
         flags.append("assistant_reply")
@@ -56,8 +86,20 @@ def inspect_scene_text(text: str) -> dict[str, Any]:
         flags.append("low_signal_fragment")
         reasons.append("只有很短的拉丁字母碎片，信息量太低")
 
+    # [无法识别] 密度检测
+    garbled = _garbled_ratio(content)
+    if garbled >= 0.4 and len(content) >= 40:
+        flags.append("low_quality_garbled")
+        reasons.append(f"[无法识别] 占比 {garbled:.0%}，转写质量过低")
+
+    # 歌词重复模式检测
+    if _has_repeated_ngram(content, n=4, threshold=4):
+        flags.append("music_lyrics")
+        reasons.append("检测到高频重复短语，疑似背景音乐歌词")
+
     suspicious = any(flag in {"assistant_reply", "technical_crosstalk"} for flag in flags)
-    usable = not suspicious and "low_signal_fragment" not in flags and "empty" not in flags
+    unusable_flags = {"no_speech", "low_signal_fragment", "empty", "low_quality_garbled", "music_lyrics"}
+    usable = not suspicious and not (set(flags) & unusable_flags)
 
     return {
         "quality_flags": flags,
