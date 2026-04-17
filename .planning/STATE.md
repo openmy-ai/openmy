@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-04-17)
 ## Current Position
 
 Phase: 1 of 4 (Evidence-Based Audio Mapping)
-Plan: 0 of 3 in current phase
-Status: Ready to plan
-Last activity: 2026-04-17 — Initialized GSD project artifacts for the revised audio playback feature
+Plan: 1 of 3 in current phase
+Status: Ready to execute
+Last activity: 2026-04-17 — Planned Phase 1 with context, research, pattern map, and three execution plans
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -43,6 +43,8 @@ Recent decisions affecting current work:
 - Initialization: Reuse the existing evidence chain instead of text reverse-matching
 - Initialization: Serve local chunk audio directly with HTTP Range
 - Initialization: Use explicit anchors plus word-to-segment-to-scene fallback for correction replay
+- Phase 1 Planning: Derive `audio_ref` inside transcription enrichment, not segmentation
+- Phase 1 Planning: Missing or multi-chunk evidence must omit `audio_ref` instead of guessing
 
 ### Pending Todos
 
@@ -64,6 +66,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-17 23:17
-Stopped at: Project initialized and ready for Phase 1 planning
+Last session: 2026-04-17 23:35
+Stopped at: Phase 1 planning completed; next step is executing 01-01
 Resume file: None
