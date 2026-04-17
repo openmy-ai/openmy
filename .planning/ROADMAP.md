@@ -30,7 +30,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: Define and serialize the scene audio reference contract
+- [x] 01-01: Define and serialize the scene audio reference contract
 - [ ] 01-02: Populate scene audio references from existing evidence during artifact generation
 - [ ] 01-03: Verify repeated-text, corrected-text, and historical-data regression cases
 
@@ -86,7 +86,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Evidence-Based Audio Mapping | 0/3 | Not started | - |
+| 1. Evidence-Based Audio Mapping | 1/3 | In Progress|  |
 | 2. Local Audio Delivery | 0/3 | Not started | - |
 | 3. Scene Playback UI | 0/3 | Not started | - |
 | 4. Anchored Correction Replay | 0/3 | Not started | - |
