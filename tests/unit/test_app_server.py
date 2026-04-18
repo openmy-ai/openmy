@@ -320,6 +320,8 @@ class TestAppServer(unittest.TestCase):
                                     "chunk_id": "chunk_0001",
                                     "offset_start": 1.2,
                                     "offset_end": 3.6,
+                                    "duration_seconds": 9.8,
+                                    "speech_segments": [{"start": 0.2, "end": 1.5}],
                                     "segment_ids": ["seg_0001"],
                                 },
                             }
@@ -335,6 +337,8 @@ class TestAppServer(unittest.TestCase):
                 payload = app_server.get_date_detail("2026-04-08")
 
             self.assertEqual(payload["scenes"]["scenes"][0]["audio_ref"]["chunk_id"], "chunk_0001")
+            self.assertEqual(payload["scenes"]["scenes"][0]["audio_ref"]["duration_seconds"], 9.8)
+            self.assertEqual(payload["scenes"]["scenes"][0]["audio_ref"]["speech_segments"][0]["start"], 0.2)
             self.assertEqual(payload["segments"][0]["summary"], "上午补前端。")
 
     def test_get_date_detail_allows_missing_audio_ref(self):

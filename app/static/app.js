@@ -6,12 +6,14 @@ import { loadDate, toggleSection, toggleRawText, scrollToSegment, optionMarkup }
 import { renderWeeklyReport, renderMonthlyReport } from './modules/reports.js';
 import { openSpotlight, closeSpotlight, handleSpotlightKeydown, runSearchSpotlight, jumpToSearchResult } from './modules/search.js';
 import { openSettings, closeSettingsOverlay, loadOnboarding, loadScreenContextSettings, applySettings, applySettingsUI, saveSetting, selectTranscriptionOption, setTranscriptionLane, confirmTranscriptionProvider, selectOnboardingProvider, renderOnboardingCard, renderHomeOnboardingCard, updateScreenContextMode, saveScreenContextExclusions, rerenderSettingsOverlay } from './modules/settings.js';
-import { openCorrectionPopover, closeCorrectionPopover, submitInlineCorrection, renderSidebarDict, toggleSidebarDict, submitContextAction, toggleAccordion, submitTypoCorrection, refreshCorrectionsFeed } from './modules/corrections.js';
+import { openCorrectionPopover, closeCorrectionPopover, submitInlineCorrection, renderSidebarDict, toggleSidebarDict, submitContextAction, toggleAccordion, submitTypoCorrection, refreshCorrectionsFeed, openSelectionPopover, closeSelectionPopover, openSubtitleReviewFromSelection, openCorrectionFromSelection } from './modules/corrections.js';
 import { refreshPipelineJobs, loadPipelineJobDetail, runPipelineAction, clearHomeJobFocus, createPipelineJob, onHomeFileInputChange, onHomeDropzoneDragOver, onHomeDropzoneDragLeave, onHomeDropzoneDrop, setPipelineHooks, renderHomeDropZone } from './modules/pipeline.js';
 import { runContextQuery, jumpToEvidence, loadContext, setContextHooks, renderWikiHome, wizardNext, wizardBack, wizardSelectEngine, wizardConfirmEngine, wizardGoHome } from './modules/context.js';
 import { getCurrentHashRoute } from './modules/router.js';
 import { toggleScenePlayback, seekScenePlayback, setScenePlaybackRate } from './modules/playback.js';
 import { openProfileModal, closeProfileModal, confirmProfileModal, setProfileHooks } from './modules/profile.js';
+import { fetchWaveformData, renderWaveform, bindWaveformSeek } from './modules/waveform.js';
+import { openSubtitleReview, closeSubtitleReview, renderSubtitleReview, toggleSubtitleReviewPlayback, seekSubtitleReview, focusSubtitleSentence, setSubtitleReviewRate, jumpToCorrectionFromReview, updateSentenceHighlight, updateWaveformProgress } from './modules/subtitle-overlay.js';
 import { showToast } from './modules/utils.js';
 
 setContextHooks({ rerenderSettingsOverlay, renderHomePage, renderWeeklyReport, renderMonthlyReport });
@@ -23,6 +25,7 @@ Object.assign(window, {
   state, showToast, renderSidebar, renderHomePage, renderWeeklyReport, renderMonthlyReport, loadDate,
   openSpotlight, closeSpotlight, openSettings, closeSettingsOverlay, toggleSidebar, closeSidebar,
   openCorrectionPopover, closeCorrectionPopover, submitInlineCorrection, renderSidebarDict, toggleSidebarDict,
+  openSelectionPopover, closeSelectionPopover, openSubtitleReviewFromSelection, openCorrectionFromSelection,
   refreshPipelineJobs, loadPipelineJobDetail, runPipelineAction, clearHomeJobFocus, createPipelineJob,
   runContextQuery, jumpToEvidence, toggleSection, toggleRawText, toggleScenePlayback, seekScenePlayback,
   setScenePlaybackRate, openProfileModal, closeProfileModal, confirmProfileModal, selectTranscriptionOption, setTranscriptionLane,
@@ -31,6 +34,9 @@ Object.assign(window, {
   onHomeDropzoneDrop, jumpToSearchResult, renderOnboardingCard, renderHomeOnboardingCard,
   updateScreenContextMode, saveScreenContextExclusions, optionMarkup, scrollToSegment, renderWikiHome,
   renderHomeDropZone, wizardNext, wizardBack, wizardSelectEngine, wizardConfirmEngine, wizardGoHome,
+  fetchWaveformData, renderWaveform, bindWaveformSeek,
+  openSubtitleReview, closeSubtitleReview, renderSubtitleReview, toggleSubtitleReviewPlayback, seekSubtitleReview,
+  focusSubtitleSentence, setSubtitleReviewRate, jumpToCorrectionFromReview, updateSentenceHighlight, updateWaveformProgress,
 });
 
 async function init() {

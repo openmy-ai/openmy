@@ -20,6 +20,7 @@ classifiers = [
 urls = { Homepage = "https://github.com/openmy-ai/openmy", Repository = "https://github.com/openmy-ai/openmy", Issues = "https://github.com/openmy-ai/openmy/issues" }
 dependencies = [
     "rich>=13.0",
+    "silero-vad>=6.0",
     "watchdog>=4.0.0",
 ]
 

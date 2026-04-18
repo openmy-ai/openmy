@@ -6,6 +6,9 @@ import { loadDate } from './daily.js';
 import { loadContext } from './context.js';
 import { rerenderSettingsOverlay } from './settings.js';
 
+const SELECTION_TARGET_SELECTOR = '.seg-raw, .seg-distilled, .record-card, .briefing-card, .spotlight-result-item, .event-item, .prop-item, .time-block';
+const SELECTION_CONTEXT_SELECTOR = '.record-card, .briefing-card, .spotlight-result-item, .event-item, .prop-item, .time-block';
+
 export async function refreshCorrectionsFeed() {
   const payload = await fetchJson('/api/corrections', { corrections: [] });
   state.corrections = payload.corrections || [];
@@ -93,19 +96,117 @@ export function toggleSidebarDict() {
   list.classList.toggle('open');
 }
 
-// === Correction Drawer ===
-document.addEventListener('mouseup', (e) => {
+function getSelectionElement(node) {
+  if (!node) return null;
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    return node;
+  }
+  return node.parentElement || null;
+}
+
+function extractMatchedSentence(targetEl, selectedText = '') {
+  if (!targetEl || !selectedText) return '';
+  const block = targetEl.closest(SELECTION_TARGET_SELECTOR);
+  if (!block) return '';
+  const fullText = plainText(block.textContent || '');
+  if (!fullText) return '';
+  const sentences = fullText.match(/[^。！？；\n]+[。！？；]?/g) || [fullText];
+  const needle = plainText(selectedText);
+  const hit = sentences.find((item) => item.includes(needle));
+  if (hit) return hit.trim();
+  const compact = needle.replace(/\s+/g, '');
+  const fuzzy = sentences.find((item) => item.replace(/\s+/g, '').includes(compact));
+  return fuzzy ? fuzzy.trim() : '';
+}
+
+function buildCorrectionAnchor(selectedText, targetEl) {
+  const contextBlock = targetEl?.closest(SELECTION_CONTEXT_SELECTOR) || targetEl;
+  const segmentTime = targetEl?.closest('[data-segment-time]')?.dataset.segmentTime || '';
+  const contextText = plainText(contextBlock?.textContent || selectedText);
+  return {
+    selectedText,
+    contextText,
+    segmentTime,
+    matchedSentence: extractMatchedSentence(targetEl, selectedText),
+  };
+}
+
+function positionSelectionPopover(popover, mouseX, mouseY) {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const width = Math.min(320, viewportWidth - 24);
+  const left = Math.max(12, Math.min(mouseX - width / 2, viewportWidth - width - 12));
+  const top = Math.max(12, Math.min(mouseY + 12, viewportHeight - 160));
+  popover.style.left = `${left}px`;
+  popover.style.top = `${top}px`;
+}
+
+function shouldIgnoreSelectionTarget(targetEl) {
+  return Boolean(targetEl?.closest('input, textarea, button, select, .correction-drawer, .subtitle-review-panel, .selection-popover, .spotlight-modal'));
+}
+
+function getSelectionTarget(selection, eventTarget) {
+  const anchorEl = getSelectionElement(selection?.anchorNode);
+  const focusEl = getSelectionElement(selection?.focusNode);
+  const eventEl = getSelectionElement(eventTarget);
+  const anchorBlock = anchorEl?.closest(SELECTION_TARGET_SELECTOR) || null;
+  const focusBlock = focusEl?.closest(SELECTION_TARGET_SELECTOR) || null;
+  const eventBlock = eventEl?.closest(SELECTION_TARGET_SELECTOR) || null;
+  if (!anchorBlock || !focusBlock || !eventBlock) return null;
+  if (anchorBlock !== focusBlock || anchorBlock !== eventBlock) return null;
+  return anchorBlock;
+}
+
+export function openSelectionPopover(anchor = state.correctionAnchor, mouseX = 0, mouseY = 0) {
+  const popover = document.getElementById('selectionPopover');
+  const textEl = document.getElementById('selectionPopoverText');
+  const sourceBtn = document.getElementById('selectionPopoverSourceBtn');
+  if (!popover || !textEl) return;
+  state.correctionAnchor = anchor;
+  textEl.textContent = anchor?.selectedText || '先在日报里选一段字。';
+  if (sourceBtn) {
+    sourceBtn.disabled = !anchor?.segmentTime;
+  }
+  positionSelectionPopover(popover, mouseX, mouseY);
+  popover.classList.add('is-open');
+}
+
+export function closeSelectionPopover() {
+  document.getElementById('selectionPopover')?.classList.remove('is-open');
+}
+
+export function openSubtitleReviewFromSelection() {
+  if (!state.correctionAnchor) {
+    showToast('先在日报里选一段字。');
+    return;
+  }
+  closeSelectionPopover();
+  window.openSubtitleReview?.(state.correctionAnchor);
+}
+
+export function openCorrectionFromSelection() {
+  if (!state.correctionAnchor) {
+    showToast('先在日报里选一段字。');
+    return;
+  }
+  const anchor = state.correctionAnchor;
+  closeSelectionPopover();
+  openCorrectionPopover(anchor.selectedText, 0, 0, anchor.matchedSentence || anchor.contextText);
+}
+
+// === Selection + Correction ===
+document.addEventListener('mouseup', (event) => {
   const selection = window.getSelection();
   const selectedText = selection?.toString().trim();
   if (!selectedText || selectedText.length < 2 || selectedText.length > 50) return;
-  const targetEl = e.target;
-  if (targetEl.closest('input, textarea, button, select, .correction-drawer, .spotlight-modal')) return;
-  if (!targetEl.closest('.seg-raw, .seg-distilled, .record-card, .briefing-card, .spotlight-result-item, .event-item, .prop-item, .time-block')) return;
-  const contextText = plainText(targetEl.closest('.record-card, .briefing-card, .event-item, .prop-item, .time-block')?.textContent || selectedText);
-  openCorrectionPopover(selectedText, e.clientX, e.clientY, contextText);
+  const targetEl = getSelectionTarget(selection, event.target);
+  if (!targetEl || shouldIgnoreSelectionTarget(targetEl)) return;
+  const anchor = buildCorrectionAnchor(selectedText, targetEl);
+  openSelectionPopover(anchor, event.clientX, event.clientY);
 });
 
 export function openCorrectionPopover(wrongText = '', mouseX = 0, mouseY = 0, contextText = '') {
+  closeSelectionPopover();
   const drawer = document.getElementById('correctionPopover');
   const wrongEl = document.getElementById('cpWrongText');
   const contextEl = document.getElementById('cpContextText');
@@ -148,6 +249,10 @@ document.getElementById('cpRightInput').addEventListener('keydown', (e) => {
 
 document.addEventListener('mousedown', (e) => {
   const drawer = document.getElementById('correctionPopover');
+  const popover = document.getElementById('selectionPopover');
+  if (popover?.classList.contains('is-open') && !popover.contains(e.target)) {
+    closeSelectionPopover();
+  }
   if (drawer.classList.contains('is-open') && !drawer.contains(e.target)) {
     closeCorrectionPopover();
   }

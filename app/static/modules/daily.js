@@ -130,7 +130,7 @@ export function renderDayLayout() {
                 <div class="record-card">
                   <div class="record-summary seg-distilled">${getSegmentDistillation(segment, meta)}</div>
                   ${renderScenePlaybackControl(segment)}
-                  <div class="record-toggle"><button class="raw-btn" type="button" onclick="toggleRawText(this)">显示原文</button></div>
+                  <div class="record-toggle"><button class="raw-btn" type="button" onclick="toggleRawText(this)">显示原文和播放原声</button></div>
                   <div class="record-raw seg-raw">${fmtText(segment.text || '')}</div>
                 </div>
               </div>
@@ -300,7 +300,7 @@ export function toggleRawText(button) {
   const rawNode = button.parentElement.nextElementSibling;
   const visible = !rawNode.classList.contains('visible');
   rawNode.classList.toggle('visible', visible);
-  button.innerHTML = visible ? '隐藏原文' : '显示原文';
+  button.innerHTML = visible ? '隐藏原文' : '显示原文和播放原声';
   button.style.color = visible ? '#fff' : 'var(--text-secondary)';
   button.style.background = visible ? 'var(--text)' : 'var(--bg-sidebar)';
 }
