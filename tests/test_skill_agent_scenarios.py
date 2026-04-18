@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-OPENMY_BIN = str(Path(__file__).resolve().parents[1] / ".venv" / "bin" / "openmy")
 PROJECT_ROOT = str(Path(__file__).resolve().parents[1])
+OPENMY_CMD = [sys.executable, "-m", "openmy"]
 
 
 def _run_skill(action: str, *extra_args: str, data_root: str | None = None) -> dict:
@@ -24,7 +24,7 @@ def _run_skill(action: str, *extra_args: str, data_root: str | None = None) -> d
     env = os.environ.copy()
     if data_root:
         env["OPENMY_DATA_ROOT"] = data_root
-    cmd = [OPENMY_BIN, "skill", action, "--json", *extra_args]
+    cmd = [*OPENMY_CMD, "skill", action, "--json", *extra_args]
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT, env=env)
     # Parse JSON from stdout, ignoring stderr
     stdout = result.stdout.strip()
@@ -88,7 +88,7 @@ class TestContextQuery:
     def test_decision_kind_rejected_by_argparse(self):
         """decision 不是合法的 --kind 值，argparse 应直接拒绝（exit code 2）。"""
         result = subprocess.run(
-            [OPENMY_BIN, "skill", "context.query", "--kind", "decision", "--json"],
+            [*OPENMY_CMD, "skill", "context.query", "--kind", "decision", "--json"],
             capture_output=True, text=True, cwd=PROJECT_ROOT,
         )
         assert result.returncode == 2, "decision kind 应被 argparse 拒绝"
@@ -217,4 +217,3 @@ class TestDemoPartialHandoff:
             assert has_distill_hint or has_extract_hint, (
                 f"partial 结果的 next_actions 应包含 distill.pending 或 extract.core.pending, 实际: {next_actions}"
             )
-

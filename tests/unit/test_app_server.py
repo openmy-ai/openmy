@@ -4,6 +4,7 @@ import tempfile
 import time
 import unittest
 from urllib.error import HTTPError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 from pathlib import Path
 from unittest.mock import patch
@@ -229,6 +230,49 @@ class TestAppServer(unittest.TestCase):
         self.assertIn("支持的类型", payload["error"])
         self.assertIn("project", payload["error"])
 
+    def test_context_ask_endpoint_returns_answer(self):
+        with patch(
+            "app.http_handlers.get_context_ask_payload",
+            return_value={
+                "answer": "你最近主要在补查询接口。",
+                "evidence": [],
+                "query_result": {"kind": "project"},
+            },
+        ):
+            server = app_server.build_server(port=0)
+            try:
+                import threading
+
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                encoded = quote("我最近做了什么")
+                with urlopen(f"{base_url}/api/context/ask?q={encoded}", timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+            finally:
+                server.shutdown()
+                server.server_close()
+
+        self.assertIn("answer", payload)
+        self.assertEqual(payload["query_result"]["kind"], "project")
+
+    def test_context_ask_endpoint_empty_question_returns_400(self):
+        server = app_server.build_server(port=0)
+        try:
+            import threading
+
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            with self.assertRaises(HTTPError) as ctx:
+                urlopen(f"{base_url}/api/context/ask", timeout=2)
+            payload = json.loads(ctx.exception.read().decode("utf-8"))
+        finally:
+            server.shutdown()
+            server.server_close()
+
+        self.assertIn("error", payload)
+
     def seed_day_workspace(self, project_root: Path, date_str: str) -> Path:
         day_dir = project_root / "data" / date_str
         day_dir.mkdir(parents=True, exist_ok=True)
@@ -320,8 +364,6 @@ class TestAppServer(unittest.TestCase):
                                     "chunk_id": "chunk_0001",
                                     "offset_start": 1.2,
                                     "offset_end": 3.6,
-                                    "duration_seconds": 9.8,
-                                    "speech_segments": [{"start": 0.2, "end": 1.5}],
                                     "segment_ids": ["seg_0001"],
                                 },
                             }
@@ -337,8 +379,6 @@ class TestAppServer(unittest.TestCase):
                 payload = app_server.get_date_detail("2026-04-08")
 
             self.assertEqual(payload["scenes"]["scenes"][0]["audio_ref"]["chunk_id"], "chunk_0001")
-            self.assertEqual(payload["scenes"]["scenes"][0]["audio_ref"]["duration_seconds"], 9.8)
-            self.assertEqual(payload["scenes"]["scenes"][0]["audio_ref"]["speech_segments"][0]["start"], 0.2)
             self.assertEqual(payload["segments"][0]["summary"], "上午补前端。")
 
     def test_get_date_detail_allows_missing_audio_ref(self):

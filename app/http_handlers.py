@@ -20,6 +20,7 @@ from app.payloads import (
     get_all_dates,
     get_briefing,
     get_context_decisions_payload,
+    get_context_ask_payload,
     get_context_loops_payload,
     get_context_payload,
     get_context_projects_payload,
@@ -94,6 +95,15 @@ class BrainHandler(SimpleHTTPRequestHandler):
                 limit=limit,
                 include_evidence=include_evidence,
             )
+            send_json(self, payload, status=200 if not payload.get("error") else 400)
+        elif path == "/api/context/ask":
+            question = params.get("q", [""])[0]
+            limit_raw = params.get("limit", ["6"])[0]
+            try:
+                limit = int(limit_raw)
+            except ValueError:
+                limit = 6
+            payload = get_context_ask_payload(question=question, limit=limit)
             send_json(self, payload, status=200 if not payload.get("error") else 400)
         elif path == "/api/dates":
             send_json(self, get_all_dates())

@@ -270,6 +270,21 @@ def get_context_query_payload(
     )
 
 
+def get_context_ask_payload(question: str = "", limit: int = 6) -> dict:
+    final_question = str(question or "").strip()
+    if not final_question:
+        return {"error": "请提供问题（q 参数）"}
+
+    server = _server()
+    from openmy.services.query.context_query import answer_with_synthesis
+
+    return answer_with_synthesis(
+        data_root=server.DATA_ROOT,
+        question=final_question,
+        limit=limit,
+    )
+
+
 def parse_segments(content: str) -> list[dict]:
     server = _server()
     if server.TIME_HEADER_RE.search(content):

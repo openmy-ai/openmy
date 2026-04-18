@@ -92,7 +92,8 @@ export function renderRecentSummaryHome(visibleDates) {
 
   const projectItems = (state.context.active_projects || []).slice(0, 4).map((item) => ({
     label: item.title || item.project_id || '',
-    meta: item.status || item.summary || '活跃中',
+    meta: item.current_goal || item.status || '活跃中',
+    nextActions: (item.next_actions || []).slice(0, 2),
   }));
   const fallbackProjectItems = deriveProjectItemsFromDates(recentDates, 4);
   const loopItems = deriveLoopItemsFromDates(recentDates, 4);
@@ -195,6 +196,7 @@ export function renderRecentSummaryHome(visibleDates) {
               <div class="project-copy">
                 <div class="home-card-list-title">${escapeHtml(label)}</div>
                 <div class="home-card-list-meta">${escapeHtml(item.meta || '')}</div>
+                ${item.nextActions?.length ? `<div class="home-card-list-actions">${item.nextActions.map((action) => `<span class="action-chip">${escapeHtml(action)}</span>`).join('')}</div>` : ''}
               </div>
             </div>
           `;

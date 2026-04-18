@@ -977,3 +977,105 @@ def render_query_result(result: dict[str, Any]) -> str:
             lines.append(f"- {prefix}: {summary}")
 
     return "\n".join(lines).strip()
+
+
+def _infer_question_kind(question: str) -> str:
+    normalized = str(question or "").strip().lower()
+    if any(token in normalized for token in ("待办", "没做完", "还没", "pending", "open loop", "open")):
+        return "open"
+    if any(token in normalized for token in ("做完", "已完成", "关闭", "closed", "done")):
+        return "closed"
+    if any(token in normalized for token in ("谁", "联系人", "person")):
+        return "person"
+    if any(token in normalized for token in ("证据", "出处", "来源", "原话", "evidence")):
+        return "evidence"
+    return "project"
+
+
+def _extract_query_text(question: str, *, kind: str) -> str:
+    if kind in {"open", "closed"}:
+        return ""
+
+    cleaned = re.sub(
+        r"(我|最近|做过|什么|哪些|有没有|关于|对于|请问|帮我|查一下|查|看下|看一下|一下|吗|呢|呀|啊|的|了|过)",
+        " ",
+        str(question or ""),
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"[？?！!。，“”\"'、,:：;；]", " ", cleaned)
+    cleaned = " ".join(cleaned.split()).strip()
+    return cleaned or str(question or "").strip()
+
+
+def _call_llm_for_answer(question: str, context_text: str) -> str:
+    from openmy.providers.registry import ProviderRegistry
+
+    provider = ProviderRegistry.from_env().get_llm_provider()
+    prompt = (
+        "你是 OpenMy 的个人上下文助手。请只根据给定证据回答，不要编造。\n"
+        "如果证据不足，就直接说明证据不足。\n\n"
+        f"用户问题：{question}\n\n"
+        f"结构化证据：\n{context_text}\n\n"
+        "回答要求：\n"
+        "- 用中文简洁回答\n"
+        "- 优先引用具体日期\n"
+        "- 控制在 3 到 5 句话\n"
+    )
+    return provider.generate_text(
+        task="grounded context answer",
+        prompt=prompt,
+        temperature=0.2,
+    )
+
+
+def answer_with_synthesis(
+    *,
+    data_root: Path,
+    question: str,
+    limit: int = 6,
+) -> dict[str, Any]:
+    final_question = str(question or "").strip()
+    if not final_question:
+        return {
+            "answer": "请先提供一个问题。",
+            "evidence": [],
+            "query_result": {"error": "missing_question"},
+        }
+
+    kind = _infer_question_kind(final_question)
+    query_text = _extract_query_text(final_question, kind=kind)
+    query_result = query_context(
+        data_root,
+        kind=kind,
+        query=query_text,
+        limit=limit,
+        include_evidence=True,
+    )
+    if query_result.get("error"):
+        return {
+            "answer": str(query_result.get("error") or "没有找到相关记录。"),
+            "evidence": [],
+            "query_result": query_result,
+        }
+
+    current_hits = query_result.get("current_hits", []) or []
+    history_hits = query_result.get("history_hits", []) or []
+    evidence = query_result.get("evidence", []) or []
+    if not current_hits and not history_hits and not evidence:
+        return {
+            "answer": "最近没有找到相关的结构化记录。",
+            "evidence": [],
+            "query_result": query_result,
+        }
+
+    rendered = render_query_result(query_result)
+    try:
+        answer = _call_llm_for_answer(final_question, rendered).strip()
+    except Exception:
+        answer = rendered
+
+    return {
+        "answer": answer or rendered,
+        "evidence": evidence,
+        "query_result": query_result,
+    }
