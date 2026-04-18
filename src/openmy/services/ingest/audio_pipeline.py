@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -58,6 +58,8 @@ AUDIO_SOURCE_EXTENSIONS = {
 class PreparedChunk:
     path: Path
     time_label: str
+    duration_seconds: float = 0.0
+    speech_segments: list[dict[str, float]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,8 @@ class ChunkJob:
     source_audio_path: Path
     persistent_chunk_path: Path
     time_label: str
+    duration_seconds: float = 0.0
+    speech_segments: list[dict[str, float]] = field(default_factory=list)
 
 
 def run_ffmpeg(args: list[str]) -> None:
@@ -77,7 +81,7 @@ def run_ffmpeg(args: list[str]) -> None:
         raise RuntimeError(proc.stderr.strip()[:2000] or "ffmpeg 执行失败")
 
 
-def probe_duration_seconds(path: Path) -> int:
+def probe_duration_seconds(path: Path) -> float:
     proc = subprocess.run(
         [
             "ffprobe",
@@ -96,12 +100,80 @@ def probe_duration_seconds(path: Path) -> int:
         raise RuntimeError(proc.stderr.strip()[:2000] or f"ffprobe 读取时长失败: {path}")
     raw_duration = proc.stdout.strip() or "0"
     try:
-        return int(float(raw_duration))
+        return float(raw_duration)
     except ValueError:
         match = re.search(r"-?\d+(?:\.\d+)?", raw_duration)
         if match:
-            return int(float(match.group(0)))
-        return 0
+            return float(match.group(0))
+        return 0.0
+
+
+def run_silero_vad(audio_path: Path) -> list[dict[str, float]]:
+    """用 Silero VAD 检测音频中的人声段，返回秒级片段。"""
+    try:
+        import torch
+        from silero_vad import get_speech_timestamps, load_silero_vad
+    except ImportError:
+        return []
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+        tmp_wav = Path(handle.name)
+
+    try:
+        run_ffmpeg(
+            [
+                "-i",
+                str(audio_path),
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-f",
+                "wav",
+                "-acodec",
+                "pcm_s16le",
+                str(tmp_wav),
+                "-y",
+                "-loglevel",
+                "error",
+            ]
+        )
+
+        import struct
+        import wave
+
+        with wave.open(str(tmp_wav), "rb") as wav_file:
+            frame_count = wav_file.getnframes()
+            if frame_count <= 0:
+                return []
+            raw_data = wav_file.readframes(frame_count)
+            sample_rate = wav_file.getframerate()
+
+        samples = struct.unpack(f"<{frame_count}h", raw_data)
+        wav_tensor = torch.tensor(samples, dtype=torch.float32) / 32768.0
+        model = load_silero_vad()
+        speech_timestamps = get_speech_timestamps(
+            wav_tensor,
+            model,
+            sampling_rate=sample_rate,
+            return_seconds=True,
+        )
+        segments: list[dict[str, float]] = []
+        for item in speech_timestamps:
+            try:
+                start = round(float(item.get("start", 0.0) or 0.0), 2)
+                end = round(float(item.get("end", 0.0) or 0.0), 2)
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if end < start:
+                end = start
+            segments.append({"start": start, "end": end})
+        return segments
+    except Exception:
+        return []
+    finally:
+        if tmp_wav.exists():
+            tmp_wav.unlink()
 
 
 def parse_audio_time(audio_path: Path) -> str:
@@ -184,18 +256,34 @@ def load_sidecar_transcript(audio_path: Path) -> str:
     return ""
 
 
+def build_prepared_chunk(
+    chunk_path: Path,
+    time_label: str,
+    *,
+    vad_enabled: bool = True,
+) -> PreparedChunk:
+    duration_seconds = float(probe_duration_seconds(chunk_path) or 0.0)
+    speech_segments = run_silero_vad(chunk_path) if vad_enabled else []
+    return PreparedChunk(
+        path=chunk_path,
+        time_label=time_label,
+        duration_seconds=duration_seconds,
+        speech_segments=speech_segments,
+    )
+
+
 def prepare_audio_chunks(
     audio_path: Path,
     work_dir: Path,
     chunk_minutes: int = 10,
     provider_name: str | None = None,
+    vad_enabled: bool = True,
 ) -> list[PreparedChunk]:
     work_dir.mkdir(parents=True, exist_ok=True)
     final_provider_name = (provider_name or "").lower()
     prefer_wav_chunks = final_provider_name == "funasr"
-    stripped_path = work_dir / f"{audio_path.stem}_stripped.wav"
     compressed_path = work_dir / f"{audio_path.stem}.mp3"
-    fallback_wav_path = work_dir / f"{audio_path.stem}_fallback.wav"
+    normalized_wav_path = work_dir / f"{audio_path.stem}.wav"
 
     def normalize_source(source_path: Path, output_path: Path) -> Path:
         command = [
@@ -212,62 +300,18 @@ def prepare_audio_chunks(
         run_ffmpeg(command)
         return output_path
 
-    run_ffmpeg(
-        [
-            "-i",
-            str(audio_path),
-            "-af",
-            SILENCE_FILTER,
-            "-ar",
-            "16000",
-            "-ac",
-            "1",
-            str(stripped_path),
-            "-y",
-            "-loglevel",
-            "error",
-        ]
-    )
-
-    stripped_duration = probe_duration_seconds(stripped_path)
-    if stripped_duration < 3:
-        fallback_path = normalize_source(audio_path, fallback_wav_path if prefer_wav_chunks else compressed_path)
-        fallback_duration = probe_duration_seconds(fallback_path)
-        base_time = parse_audio_time(audio_path)
-        split_threshold = chunk_minutes * 60
-        if fallback_duration <= split_threshold:
-            return [PreparedChunk(path=fallback_path, time_label=offset_time_label(base_time, 0))]
-
-        chunk_dir = work_dir / f"{audio_path.stem}_chunks"
-        chunk_dir.mkdir(parents=True, exist_ok=True)
-        chunk_suffix = "wav" if prefer_wav_chunks else "mp3"
-        chunk_pattern = chunk_dir / f"sub_%04d.{chunk_suffix}"
-        segment_args = [
-            "-i",
-            str(fallback_path),
-            "-f",
-            "segment",
-            "-segment_time",
-            str(split_threshold),
-        ]
-        if prefer_wav_chunks:
-            segment_args.extend(["-ar", "16000", "-ac", "1"])
-        else:
-            segment_args.extend(["-c", "copy", "-reset_timestamps", "1"])
-        segment_args.extend([str(chunk_pattern), "-y", "-loglevel", "warning"])
-        run_ffmpeg(segment_args)
-        chunks = sorted(chunk_dir.glob(f"sub_*.{chunk_suffix}"))
-        return [
-            PreparedChunk(path=chunk_path, time_label=offset_time_label(base_time, index * chunk_minutes))
-            for index, chunk_path in enumerate(chunks)
-        ]
-
-    processed_path = stripped_path if prefer_wav_chunks else normalize_source(stripped_path, compressed_path)
+    processed_path = normalize_source(audio_path, normalized_wav_path if prefer_wav_chunks else compressed_path)
     processed_duration = probe_duration_seconds(processed_path)
     base_time = parse_audio_time(audio_path)
     split_threshold = chunk_minutes * 60
     if processed_duration <= split_threshold:
-        return [PreparedChunk(path=processed_path, time_label=offset_time_label(base_time, 0))]
+        return [
+            build_prepared_chunk(
+                processed_path,
+                offset_time_label(base_time, 0),
+                vad_enabled=vad_enabled,
+            )
+        ]
 
     chunk_dir = work_dir / f"{audio_path.stem}_chunks"
     chunk_dir.mkdir(parents=True, exist_ok=True)
@@ -290,7 +334,11 @@ def prepare_audio_chunks(
 
     chunks = sorted(chunk_dir.glob(f"sub_*.{chunk_suffix}"))
     return [
-        PreparedChunk(path=chunk_path, time_label=offset_time_label(base_time, index * chunk_minutes))
+        build_prepared_chunk(
+            chunk_path,
+            offset_time_label(base_time, index * chunk_minutes),
+            vad_enabled=vad_enabled,
+        )
         for index, chunk_path in enumerate(chunks)
     ]
 
@@ -457,6 +505,7 @@ def transcribe_audio_files(
                 work_dir=tmp_root / f"audio_{index:03d}",
                 chunk_minutes=chunk_minutes,
                 provider_name=final_provider_name,
+                vad_enabled=final_vad_filter,
             )
             chunk_jobs: list[ChunkJob] = []
             for chunk in chunks:
@@ -467,6 +516,8 @@ def transcribe_audio_files(
                         source_audio_path=audio_path,
                         persistent_chunk_path=persistent_chunk_path,
                         time_label=chunk.time_label,
+                        duration_seconds=chunk.duration_seconds,
+                        speech_segments=chunk.speech_segments,
                     )
                 )
 
@@ -497,7 +548,8 @@ def transcribe_audio_files(
                         "time_label": chunk_job.time_label,
                         "text": transcript_result.text,
                         "language": transcript_result.language,
-                        "duration_seconds": transcript_result.duration_seconds,
+                        "duration_seconds": chunk_job.duration_seconds or transcript_result.duration_seconds,
+                        "speech_segments": chunk_job.speech_segments,
                         "segments": [segment.to_dict() for segment in transcript_result.segments],
                         "provider_metadata": transcript_result.provider_metadata,
                     }

@@ -52,6 +52,10 @@ export const state = {
     sceneEnd: 0,
   },
   correctionAnchor: null,
+  subtitleReview: {
+    open: false,
+    selectedSentenceIndex: 0,
+  },
   profile: {
     name: localStorage.getItem('openmy-profile-name') || '',
     emoji: localStorage.getItem('openmy-profile-emoji') || '',

@@ -12,6 +12,7 @@ from openmy.services.ingest.audio_pipeline import (
     discover_audio_files_for_date,
     offset_time_label,
     prepare_audio_chunks,
+    run_silero_vad,
     transcribe_audio_files,
 )
 
@@ -28,7 +29,7 @@ class OffsetTimeLabelTest(unittest.TestCase):
 
 
 class PrepareAudioChunksTest(unittest.TestCase):
-    def test_falls_back_to_original_audio_when_stripped_audio_too_short(self):
+    def test_single_chunk_includes_vad_fields(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             audio_path = Path(tmp_dir) / "TX01_MIC005_20260408_131552_orig.wav"
             audio_path.write_bytes(b"wav")
@@ -36,18 +37,24 @@ class PrepareAudioChunksTest(unittest.TestCase):
             with (
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.run_ffmpeg",
-                    side_effect=[None, None],
+                    return_value=None,
                 ) as ffmpeg_mock,
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.probe_duration_seconds",
-                    side_effect=[2, 12],
+                    side_effect=[12.0, 12.0],
+                ),
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.run_silero_vad",
+                    return_value=[{"start": 0.5, "end": 1.5}],
                 ),
             ):
                 chunks = prepare_audio_chunks(audio_path, Path(tmp_dir), chunk_minutes=10)
 
             self.assertEqual(len(chunks), 1)
             self.assertEqual(chunks[0].time_label, "13:15")
-            self.assertEqual(ffmpeg_mock.call_count, 2)
+            self.assertEqual(chunks[0].duration_seconds, 12.0)
+            self.assertEqual(chunks[0].speech_segments, [{"start": 0.5, "end": 1.5}])
+            self.assertEqual(ffmpeg_mock.call_count, 1)
 
     def test_funasr_prefers_wav_chunks_instead_of_mp3(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -56,7 +63,8 @@ class PrepareAudioChunksTest(unittest.TestCase):
 
             with (
                 mock.patch("openmy.services.ingest.audio_pipeline.run_ffmpeg", side_effect=[None]) as ffmpeg_mock,
-                mock.patch("openmy.services.ingest.audio_pipeline.probe_duration_seconds", side_effect=[12, 12]),
+                mock.patch("openmy.services.ingest.audio_pipeline.probe_duration_seconds", side_effect=[12.0, 12.0]),
+                mock.patch("openmy.services.ingest.audio_pipeline.run_silero_vad", return_value=[]),
             ):
                 chunks = prepare_audio_chunks(
                     audio_path,
@@ -68,6 +76,34 @@ class PrepareAudioChunksTest(unittest.TestCase):
             self.assertEqual(len(chunks), 1)
             self.assertEqual(chunks[0].path.suffix, ".wav")
             self.assertEqual(ffmpeg_mock.call_count, 1)
+            self.assertEqual(chunks[0].duration_seconds, 12.0)
+            self.assertEqual(chunks[0].speech_segments, [])
+
+    def test_prepared_chunk_has_vad_fields(self):
+        chunk = PreparedChunk(path=Path("/tmp/test.mp3"), time_label="10:55")
+        self.assertTrue(hasattr(chunk, "duration_seconds"))
+        self.assertTrue(hasattr(chunk, "speech_segments"))
+        self.assertEqual(chunk.duration_seconds, 0.0)
+        self.assertEqual(chunk.speech_segments, [])
+
+    def test_run_silero_vad_returns_list(self):
+        result = run_silero_vad(Path("/nonexistent/audio.wav"))
+        self.assertIsInstance(result, list)
+
+    def test_run_silero_vad_graceful_on_missing_dep(self):
+        import builtins
+
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name in {"silero_vad", "torch"}:
+                raise ImportError(f"mock: {name} not installed")
+            return original_import(name, *args, **kwargs)
+
+        with mock.patch.object(builtins, "__import__", side_effect=mock_import):
+            result = run_silero_vad(Path("/nonexistent/audio.wav"))
+
+        self.assertEqual(result, [])
 
 
 class TranscribeAudioFilesTest(unittest.TestCase):
@@ -200,7 +236,14 @@ class TranscribeAudioFilesTest(unittest.TestCase):
                 ),
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.prepare_audio_chunks",
-                    return_value=[PreparedChunk(path=chunk_one, time_label="13:15")],
+                    return_value=[
+                        PreparedChunk(
+                            path=chunk_one,
+                            time_label="13:15",
+                            duration_seconds=12.3,
+                            speech_segments=[{"start": 0.4, "end": 2.1}],
+                        )
+                    ],
                 ),
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.load_vocab_terms",
@@ -226,6 +269,8 @@ class TranscribeAudioFilesTest(unittest.TestCase):
             self.assertEqual(payload["provider"], "faster-whisper")
             self.assertEqual(payload["chunks"][0]["time_label"], "13:15")
             self.assertTrue(Path(payload["chunks"][0]["chunk_path"]).exists())
+            self.assertEqual(payload["chunks"][0]["duration_seconds"], 12.3)
+            self.assertEqual(payload["chunks"][0]["speech_segments"], [{"start": 0.4, "end": 2.1}])
 
     def test_writes_structured_transcription_artifact_for_funasr_provider(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -272,7 +317,14 @@ class TranscribeAudioFilesTest(unittest.TestCase):
                 ),
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.prepare_audio_chunks",
-                    return_value=[PreparedChunk(path=chunk_one, time_label="13:15")],
+                    return_value=[
+                        PreparedChunk(
+                            path=chunk_one,
+                            time_label="13:15",
+                            duration_seconds=1.1,
+                            speech_segments=[{"start": 0.0, "end": 1.1}],
+                        )
+                    ],
                 ),
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.load_vocab_terms",
@@ -296,6 +348,7 @@ class TranscribeAudioFilesTest(unittest.TestCase):
             payload = json.loads(structured_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["provider"], "funasr")
             self.assertEqual(len(payload["chunks"][0]["segments"]), 2)
+            self.assertEqual(payload["chunks"][0]["speech_segments"], [{"start": 0.0, "end": 1.1}])
 
     def test_uses_prepared_chunks_instead_of_raw_audio(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -313,10 +366,17 @@ class TranscribeAudioFilesTest(unittest.TestCase):
             chunk_three.write_bytes(b"mp3")
 
             prepared = [
-                [PreparedChunk(path=chunk_one, time_label="13:15")],
                 [
-                    PreparedChunk(path=chunk_two, time_label="13:45"),
-                    PreparedChunk(path=chunk_three, time_label="13:55"),
+                    PreparedChunk(
+                        path=chunk_one,
+                        time_label="13:15",
+                        duration_seconds=1.0,
+                        speech_segments=[{"start": 0.0, "end": 1.0}],
+                    )
+                ],
+                [
+                    PreparedChunk(path=chunk_two, time_label="13:45", duration_seconds=1.0, speech_segments=[]),
+                    PreparedChunk(path=chunk_three, time_label="13:55", duration_seconds=1.0, speech_segments=[]),
                 ],
             ]
 
@@ -379,7 +439,14 @@ class TranscribeAudioFilesTest(unittest.TestCase):
                 mock.patch.dict("os.environ", {"GEMINI_API_KEY": "fake-key", "OPENMY_STT_PROVIDER": "gemini"}, clear=True),
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.prepare_audio_chunks",
-                    return_value=[PreparedChunk(path=chunk_one, time_label="13:15")],
+                    return_value=[
+                        PreparedChunk(
+                            path=chunk_one,
+                            time_label="13:15",
+                            duration_seconds=1.0,
+                            speech_segments=[{"start": 0.0, "end": 1.0}],
+                        )
+                    ],
                 ),
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.load_vocab_terms",
@@ -435,8 +502,8 @@ class TranscribeAudioFilesTest(unittest.TestCase):
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.prepare_audio_chunks",
                     return_value=[
-                        PreparedChunk(path=chunk_one, time_label="13:15"),
-                        PreparedChunk(path=chunk_two, time_label="13:25"),
+                        PreparedChunk(path=chunk_one, time_label="13:15", duration_seconds=1.0, speech_segments=[]),
+                        PreparedChunk(path=chunk_two, time_label="13:25", duration_seconds=1.0, speech_segments=[]),
                     ],
                 ),
                 mock.patch("openmy.services.ingest.audio_pipeline.load_vocab_terms", return_value="OpenMy"),

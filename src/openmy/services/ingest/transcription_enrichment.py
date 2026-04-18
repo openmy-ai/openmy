@@ -89,7 +89,26 @@ def _normalize_aligned_segments(payload: dict[str, Any]) -> list[dict[str, Any]]
     return normalized
 
 
-def _derive_scene_audio_ref(evidence: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _normalize_speech_segments(payload: Any) -> list[dict[str, float]]:
+    segments: list[dict[str, float]] = []
+    for item in payload or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            start = float(item.get("start", 0.0) or 0.0)
+            end = float(item.get("end", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if end < start:
+            end = start
+        segments.append({"start": start, "end": end})
+    return segments
+
+
+def _derive_scene_audio_ref(
+    evidence: list[dict[str, Any]],
+    chunk: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     valid_items = [item for item in evidence if isinstance(item, dict)]
     chunk_ids = {
         str(item.get("chunk_id", "") or "").strip()
@@ -119,6 +138,8 @@ def _derive_scene_audio_ref(evidence: list[dict[str, Any]]) -> dict[str, Any] | 
         "chunk_id": next(iter(chunk_ids)),
         "offset_start": min(offsets_start),
         "offset_end": max(offsets_end),
+        "duration_seconds": float((chunk or {}).get("duration_seconds", 0.0) or 0.0),
+        "speech_segments": _normalize_speech_segments((chunk or {}).get("speech_segments", [])),
         "segment_ids": segment_ids,
         "source": "transcription_evidence",
     }
@@ -323,7 +344,7 @@ def apply_transcription_enrichment_to_scenes(
                     "speaker": str(segment.get("speaker", "") or ""),
                 }
             )
-        audio_ref = _derive_scene_audio_ref(evidence)
+        audio_ref = _derive_scene_audio_ref(evidence, chunk)
         if audio_ref:
             scene["transcription_evidence"] = evidence
             scene["audio_ref"] = audio_ref

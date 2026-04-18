@@ -3,6 +3,21 @@ import { state, sharedSceneAudio, setSharedSceneAudio } from './state.js';
 import { escapeHtml, showToast } from './utils.js';
 import { formatPlaybackClock } from './dates.js';
 
+function emitPlaybackChange() {
+  window.dispatchEvent(new CustomEvent('openmy:playback-change', {
+    detail: {
+      activeKey: state.playback.activeKey,
+      activeChunkId: state.playback.activeChunkId,
+      status: state.playback.status,
+      progress: state.playback.progress,
+      duration: state.playback.duration,
+      rate: state.playback.rate,
+      sceneStart: state.playback.sceneStart,
+      sceneEnd: state.playback.sceneEnd,
+    },
+  }));
+}
+
 export function getSceneByTime(time) {
   const scenes = state.currentData?.scenes?.scenes || [];
   return scenes.find((item) => item.time_start === time) || null;
@@ -26,7 +41,8 @@ export function getSegmentSceneTarget(segmentTime) {
 
   const start = Math.max(0, Number(audioRef.offset_start || 0));
   const rawEnd = Math.max(start, Number(audioRef.offset_end || start));
-  const end = rawEnd > start ? rawEnd : start + 5;
+  const realDuration = Math.max(0, Number(audioRef.duration_seconds || 0));
+  const end = rawEnd > start ? rawEnd : (realDuration > 0 ? start + realDuration : start + 5);
   return {
     key: segmentTime,
     scene,
@@ -85,18 +101,22 @@ export function stopScenePlayback() {
   state.playback.duration = 0;
   state.playback.sceneStart = 0;
   state.playback.sceneEnd = 0;
+  emitPlaybackChange();
 }
 
 export async function loadSceneAudioSource(audio, url) {
   await new Promise((resolve, reject) => {
-    const handleReady = () => {
+    function cleanup() {
       audio.removeEventListener('loadedmetadata', handleReady);
       audio.removeEventListener('error', handleError);
+    }
+
+    const handleReady = () => {
+      cleanup();
       resolve();
     };
     const handleError = () => {
-      audio.removeEventListener('loadedmetadata', handleReady);
-      audio.removeEventListener('error', handleError);
+      cleanup();
       reject(new Error('audio_load_failed'));
     };
     audio.addEventListener('loadedmetadata', handleReady, { once: true });
@@ -155,6 +175,7 @@ export function syncScenePlaybackUi() {
       speed.value = String(state.playback.rate || 1);
     }
   });
+  emitPlaybackChange();
 }
 
 export function renderScenePlaybackControl(segment) {

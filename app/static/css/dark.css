@@ -51,8 +51,22 @@
   background: rgba(2, 6, 23, 0.55);
 }
 
-[data-theme="dark"] .correction-drawer {
+[data-theme="dark"] .correction-drawer,
+[data-theme="dark"] .subtitle-review-panel {
   box-shadow: -18px 0 40px rgba(0, 0, 0, 0.38);
+}
+
+[data-theme="dark"] .selection-popover {
+  background: rgba(15, 17, 23, 0.96);
+  border-color: rgba(148, 163, 184, 0.16);
+}
+
+[data-theme="dark"] .subtitle-review-overlay {
+  background: rgba(2, 6, 23, 0.6);
+}
+
+[data-theme="dark"] .subtitle-sentence.is-active {
+  background: linear-gradient(135deg, rgba(59,130,246,0.14), rgba(52,211,153,0.08));
 }
 
 [data-theme="dark"] .toast { background: rgba(241, 245, 249, 0.92); color: #0f172a; }

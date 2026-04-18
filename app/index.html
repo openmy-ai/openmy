@@ -23,6 +23,7 @@
 </script>
 
 <link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/css/waveform.css">
 <script src="/static/vendor/chart.umd.js"></script>
 <script type="module" src="/static/app.js"></script>
 </head>
@@ -92,6 +93,32 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="selection-popover" id="selectionPopover">
+  <div class="selection-popover-label">这段我帮你对一下</div>
+  <div class="selection-popover-text" id="selectionPopoverText">先在日报里选一段字。</div>
+  <div class="selection-popover-actions">
+    <button class="action-btn" type="button" id="selectionPopoverSourceBtn" onclick="openSubtitleReviewFromSelection()">查看来源</button>
+    <button class="cp-submit selection-popover-submit" type="button" onclick="openCorrectionFromSelection()">纠错</button>
+  </div>
+</div>
+
+<div class="subtitle-review-overlay" id="subtitleReviewOverlay" role="dialog" aria-modal="true" onclick="if(event.target===this) closeSubtitleReview()">
+  <div class="subtitle-review-panel" onclick="event.stopPropagation()">
+    <div class="cp-header cp-header-drawer subtitle-review-header">
+      <div>
+        <div class="cp-title">字幕回看 V2</div>
+        <div class="cp-subtitle">边听边看句子流动，再决定要不要改字。</div>
+      </div>
+      <button class="cp-close" type="button" onclick="closeSubtitleReview()">关闭</button>
+    </div>
+    <div class="subtitle-review-content" id="subtitleReviewContent"></div>
+    <div class="subtitle-review-footer">
+      <button class="action-btn" type="button" onclick="closeSubtitleReview()">先不改</button>
+      <button class="cp-submit" type="button" onclick="jumpToCorrectionFromReview()">去纠错</button>
+    </div>
+  </div>
+</div>
 
 <div class="drawer-backdrop" id="correctionPopover" onclick="if(event.target===this) closeCorrectionPopover()">
   <div class="correction-drawer" role="dialog" aria-modal="true" aria-label="纠错抽屉">
