@@ -1,0 +1,43 @@
+
+.search-box { padding: 0 4px; margin: 12px 0; }
+
+.search-box input,
+
+.field-input,
+
+.field-select,
+
+.field-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font-body);
+  outline: none;
+  transition: border var(--transition), box-shadow var(--transition);
+}
+
+
+.search-box input:focus,
+
+.field-input:focus,
+
+.field-select:focus,
+
+.field-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+
+
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.cp-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--bg); color: var(--text); outline: none; font-family: var(--font-body); }
+
+.cp-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }

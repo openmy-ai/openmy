@@ -4,8 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OpenMy</title>
-<meta name="description" content="个人每日上下文工作台">
+<meta name="description" content="OpenMy — 把每天说的话变成可搜索、可回顾的个人上下文引擎">
 <link rel="icon" href="/static/icons/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script>
   (() => {
     const theme = localStorage.getItem('openmy-theme') || 'light';
@@ -21,7 +24,7 @@
 
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/vendor/chart.umd.js"></script>
-<script src="/static/app.js" defer></script>
+<script type="module" src="/static/app.js"></script>
 </head>
 <body>
 <div class="app">
@@ -32,7 +35,7 @@
   <aside class="sidebar" role="navigation" aria-label="日期导航">
     <div class="logo" onclick="state.showWikiHome=false;renderHomePage()" role="button" tabindex="0">
       <div class="logo-title"><img class="logo-mark" src="/static/icons/logo.svg" alt=""><span>OpenMy</span></div>
-      <div class="logo-sub">每日上下文</div>
+      <div class="logo-sub">语音日记 · 自动整理</div>
     </div>
     <div class="search-box">
       <button class="sidebar-search-btn" onclick="openSpotlight()" aria-label="打开搜索">
@@ -59,6 +62,7 @@
       <div class="sidebar-dict-list" id="sidebarDictList"></div>
     </div>
     <div class="sidebar-footer">
+      <button class="sidebar-settings-btn" onclick="state.showWikiHome=true;renderHomePage()" aria-label="使用说明"><img class="sidebar-icon" src="/static/icons/help.svg" alt="" onerror="this.replaceWith(document.createTextNode('❓'))"><span>使用说明</span></button>
       <button class="sidebar-settings-btn" id="settingsBtn" onclick="openSettings()" aria-label="打开设置"><img class="sidebar-icon" src="/static/icons/settings.svg" alt=""><span>设置</span></button>
     </div>
   </aside>

@@ -1,0 +1,15 @@
+
+.app {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+  position: relative;
+}
+
+
+.mobile-sidebar-toggle,
+
+.sidebar-backdrop { display: none; }
+
+
+.main { max-width: 760px; margin: 0 auto; padding: 64px 40px 100px; width: 100%; overflow-wrap: break-word; word-break: keep-all; }

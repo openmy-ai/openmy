@@ -1,0 +1,173 @@
+
+/* Settings Page */
+.settings-page { padding: 32px 0; max-width: 720px; }
+
+.settings-page h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; }
+
+.settings-section { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+
+.settings-section-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+
+.settings-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; gap: 12px; }
+
+.settings-row label { font-size: 14px; color: var(--text); }
+
+.settings-row .desc { font-size: 12px; color: var(--text-light); margin-top: 2px; }
+
+.settings-query-grid { display:grid; grid-template-columns:180px 1fr auto; gap:12px; align-items:center; }
+
+.settings-memory-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:16px; }
+
+
+
+.onboarding-card { margin-bottom: 24px; }
+
+.onboarding-title { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+
+.onboarding-copy { color: var(--text-secondary); margin-bottom: 14px; }
+
+.onboarding-command { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 16px; color: var(--text); }
+
+.onboarding-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.onboarding-group-title { font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+
+.onboarding-choice { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; background: var(--bg); margin-bottom: 8px; width: 100%; text-align: left; cursor: pointer; }
+
+.onboarding-choice.recommended { border-color: var(--accent); background: var(--accent-light); }
+
+.onboarding-choice-title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+
+.onboarding-choice-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+
+
+.onboarding-choice-cta { margin-top: 8px; font-size: 12px; font-weight: 700; color: var(--accent); }
+
+
+/* --- Transcription Lane Picker --- */
+.transcription-lane-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.transcription-lane {
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 16px;
+  background: var(--bg);
+  cursor: pointer;
+  text-align: center;
+  transition: all var(--transition);
+}
+
+.transcription-lane:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.transcription-lane.active {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.transcription-lane-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.transcription-lane-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.transcription-lane-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* --- Transcription Choices List --- */
+.transcription-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.transcription-option {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  background: var(--bg);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  transition: all var(--transition);
+}
+
+.transcription-option:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.transcription-option.active {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+
+.transcription-option-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.transcription-badge-rec {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  padding: 1px 7px;
+  border-radius: 999px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.transcription-option-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.transcription-option-check {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  flex-shrink: 0;
+  width: 24px;
+  text-align: center;
+}
+
+.transcription-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.transcription-current {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
