@@ -981,13 +981,22 @@ def render_query_result(result: dict[str, Any]) -> str:
 
 def _infer_question_kind(question: str) -> str:
     normalized = str(question or "").strip().lower()
-    if any(token in normalized for token in ("待办", "没做完", "还没", "pending", "open loop", "open")):
+
+    def _has_word(text: str, word: str) -> bool:
+        """Check if word appears as a standalone token, not as a substring."""
+        import re
+        # Chinese tokens don't need word boundaries
+        if re.search(r"[\u4e00-\u9fff]", word):
+            return word in text
+        return bool(re.search(r"(?<![a-z])" + re.escape(word) + r"(?![a-z])", text))
+
+    if any(_has_word(normalized, t) for t in ("待办", "没做完", "还没", "pending", "open loop", "open")):
         return "open"
-    if any(token in normalized for token in ("做完", "已完成", "关闭", "closed", "done")):
+    if any(_has_word(normalized, t) for t in ("做完", "已完成", "关闭", "closed", "done")):
         return "closed"
-    if any(token in normalized for token in ("谁", "联系人", "person")):
+    if any(_has_word(normalized, t) for t in ("谁", "联系人", "person")):
         return "person"
-    if any(token in normalized for token in ("证据", "出处", "来源", "原话", "evidence")):
+    if any(_has_word(normalized, t) for t in ("证据", "出处", "来源", "原话", "evidence")):
         return "evidence"
     return "project"
 
