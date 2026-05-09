@@ -213,8 +213,9 @@ python3 -m openmy.services.watcher ~/Recordings/OpenMy
 ## ロードマップ
 
 - ~~v0.1~~ ✅ 基本パイプライン完了
-- **v0.2 now** — quick-start, report workspace, correction dictionary, structured extraction, active context
-- **v0.3** — multilingual support, stronger cross-day context, Obsidian plugin
+- ~~v0.2~~ ✅ quick-start, report workspace, correction dictionary, structured extraction, active context
+- **v0.3 now** — First-Run Wizard, audio playback, subtitle review, Smart Audio Player V2 (Silero VAD + waveform + subtitle animation), grounded Q&A
+- **v0.4** — multilingual support, stronger cross-day context, Obsidian plugin
 - **v1.0** — stable API, plugin system, multiple model backends
 
 ---

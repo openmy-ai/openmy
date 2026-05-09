@@ -213,8 +213,9 @@ En pratique, le plus simple est de d’abord enregistrer, ensuite synchroniser l
 ## Feuille de route
 
 - ~~v0.1~~ ✅ chaîne principale fonctionnelle
-- **v0.2 now** — quick-start, report workspace, correction dictionary, structured extraction, active context
-- **v0.3** — multilingual support, stronger cross-day context, Obsidian plugin
+- ~~v0.2~~ ✅ quick-start, report workspace, correction dictionary, structured extraction, active context
+- **v0.3 now** — First-Run Wizard, audio playback, subtitle review, Smart Audio Player V2 (Silero VAD + waveform + subtitle animation), grounded Q&A
+- **v0.4** — multilingual support, stronger cross-day context, Obsidian plugin
 - **v1.0** — stable API, plugin system, multiple model backends
 
 ---

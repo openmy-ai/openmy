@@ -118,6 +118,10 @@ Users can:
 
 Agents do not need to click the web app, but should tell users they can open `localhost:8420` to watch progress.
 
+## Architecture
+
+For the full technical architecture (directory structure, data flow, API routes, providers), see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Build & Test
 
 ```bash

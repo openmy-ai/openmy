@@ -316,8 +316,9 @@ OpenMy 会在文件稳定落盘后自动触发处理。不开 watcher 也没关�
 ## 路线图
 
 - ~~v0.1~~ ✅ 核心链路跑通
-- **v0.2 当前**：quick-start、报告工作台、纠错词典、结构化提取、活跃上下文
-- **v0.3**：多语言、跨天上下文增强、Obsidian 插件
+- ~~v0.2~~ ✅ quick-start、报告工作台、纠错词典、结构化提取、活跃上下文
+- **v0.3 当前**：First-Run Wizard、音频回放、字幕审查、Smart Audio Player V2（Silero VAD + 波形 + 字幕动画）、grounded Q&A
+- **v0.4**：多语言、跨天上下文增强、Obsidian 插件
 - **v1.0**：稳定 API、插件系统、多模型后端
 
 ---
