@@ -435,7 +435,13 @@ def cmd_distill(args: argparse.Namespace) -> int:
             if not scene_is_usable_for_downstream(scene):
                 continue
             text = scene.get("text", "").strip()
-            scene["summary"] = summarize_scene(text, api_key, GEMINI_MODEL) if text else ""
+            if text:
+                try:
+                    scene["summary"] = summarize_scene(text, api_key, GEMINI_MODEL)
+                except Exception:
+                    scene["summary"] = ""
+            else:
+                scene["summary"] = ""
             progress.advance(task)
 
     write_json(scenes_path, data)

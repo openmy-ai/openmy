@@ -412,6 +412,13 @@ def _transcribe_chunk_with_retry(
                 word_timestamps=word_timestamps,
             )
             return chunk_job, _coerce_transcription_result(transcript_payload)
+        except FriendlyCliError as exc:
+            if "empty_transcript" in (exc.code or ""):
+                return chunk_job, TranscriptionResult(text="", segments=[])
+            last_error = exc
+            if attempt == 3:
+                raise
+            time.sleep(5)
         except Exception as exc:  # pragma: no cover - retried behavior exercised by tests
             last_error = exc
             if attempt == 3:
