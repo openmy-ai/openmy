@@ -40,6 +40,7 @@ SILENCE_FILTER = (
     "start_periods=1:"
     "start_threshold=-35dB"
 )
+VAD_SPEECH_RATIO_THRESHOLD = 0.1
 
 AUDIO_SOURCE_EXTENSIONS = {
     ".wav",
@@ -69,6 +70,32 @@ class ChunkJob:
     time_label: str
     duration_seconds: float = 0.0
     speech_segments: list[dict[str, float]] = field(default_factory=list)
+
+
+def _speech_ratio(job: ChunkJob) -> float | None:
+    duration = float(job.duration_seconds or 0.0)
+    if duration <= 0:
+        return None
+
+    speech_seconds = 0.0
+    for segment in job.speech_segments:
+        try:
+            start = float(segment.get("start", 0.0) or 0.0)
+            end = float(segment.get("end", 0.0) or 0.0)
+        except (AttributeError, TypeError, ValueError):
+            continue
+        speech_seconds += max(0.0, end - start)
+
+    return speech_seconds / duration
+
+
+def _should_skip_chunk_for_vad(job: ChunkJob, *, vad_enabled: bool) -> bool:
+    if not vad_enabled:
+        return False
+    ratio = _speech_ratio(job)
+    if ratio is None:
+        return False
+    return ratio < VAD_SPEECH_RATIO_THRESHOLD
 
 
 def run_ffmpeg(args: list[str]) -> None:
@@ -514,19 +541,23 @@ def transcribe_audio_files(
                 provider_name=final_provider_name,
                 vad_enabled=final_vad_filter,
             )
+            chunk_items: list[tuple[str, ChunkJob]] = []
             chunk_jobs: list[ChunkJob] = []
             for chunk in chunks:
                 persistent_chunk_path = persisted_chunk_dir / f"audio_{index:03d}_{chunk.path.name}"
                 shutil.copy2(chunk.path, persistent_chunk_path)
-                chunk_jobs.append(
-                    ChunkJob(
-                        source_audio_path=audio_path,
-                        persistent_chunk_path=persistent_chunk_path,
-                        time_label=chunk.time_label,
-                        duration_seconds=chunk.duration_seconds,
-                        speech_segments=chunk.speech_segments,
-                    )
+                chunk_job = ChunkJob(
+                    source_audio_path=audio_path,
+                    persistent_chunk_path=persistent_chunk_path,
+                    time_label=chunk.time_label,
+                    duration_seconds=chunk.duration_seconds,
+                    speech_segments=chunk.speech_segments,
                 )
+                if _should_skip_chunk_for_vad(chunk_job, vad_enabled=final_vad_filter):
+                    chunk_items.append(("skipped", chunk_job))
+                else:
+                    chunk_items.append(("transcribe", chunk_job))
+                    chunk_jobs.append(chunk_job)
 
             def transcribe_fn(job: ChunkJob) -> tuple[ChunkJob, TranscriptionResult]:
                 return _transcribe_chunk_with_retry(
@@ -545,18 +576,34 @@ def transcribe_audio_files(
             else:
                 chunk_results = [transcribe_fn(job) for job in chunk_jobs]
 
-            for chunk_job, transcript_result in chunk_results:
+            chunk_results_iter = iter(chunk_results)
+            for action, chunk_job in chunk_items:
+                base_payload = {
+                    "chunk_id": f"chunk_{len(transcription_payload['chunks']) + 1:04d}",
+                    "source_audio_path": str(chunk_job.source_audio_path),
+                    "chunk_path": str(chunk_job.persistent_chunk_path),
+                    "time_label": chunk_job.time_label,
+                    "duration_seconds": chunk_job.duration_seconds,
+                    "speech_segments": chunk_job.speech_segments,
+                }
+                if action == "skipped":
+                    rendered_parts.extend([f"## {chunk_job.time_label}", "", "[静音/环境音，已跳过]", ""])
+                    transcription_payload["chunks"].append(
+                        {
+                            **base_payload,
+                            "skipped_reason": "vad_below_threshold",
+                        }
+                    )
+                    continue
+
+                _, transcript_result = next(chunk_results_iter)
                 rendered_parts.extend([f"## {chunk_job.time_label}", "", transcript_result.text.strip(), ""])
                 transcription_payload["chunks"].append(
                     {
-                        "chunk_id": f"chunk_{len(transcription_payload['chunks']) + 1:04d}",
-                        "source_audio_path": str(chunk_job.source_audio_path),
-                        "chunk_path": str(chunk_job.persistent_chunk_path),
-                        "time_label": chunk_job.time_label,
+                        **base_payload,
                         "text": transcript_result.text,
                         "language": transcript_result.language,
                         "duration_seconds": chunk_job.duration_seconds or transcript_result.duration_seconds,
-                        "speech_segments": chunk_job.speech_segments,
                         "segments": [segment.to_dict() for segment in transcript_result.segments],
                         "provider_metadata": transcript_result.provider_metadata,
                     }

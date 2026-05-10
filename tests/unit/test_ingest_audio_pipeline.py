@@ -350,6 +350,95 @@ class TranscribeAudioFilesTest(unittest.TestCase):
             self.assertEqual(len(payload["chunks"][0]["segments"]), 2)
             self.assertEqual(payload["chunks"][0]["speech_segments"], [{"start": 0.0, "end": 1.1}])
 
+    def test_skips_low_vad_chunks_without_skipping_voice_or_zero_duration_chunks(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            audio_one = tmp_path / "TX01_MIC005_20260408_131552_orig.wav"
+            audio_one.write_bytes(b"wav")
+
+            low_voice_chunk = tmp_path / "low.mp3"
+            voice_chunk = tmp_path / "voice.mp3"
+            zero_duration_chunk = tmp_path / "zero.mp3"
+            for path in [low_voice_chunk, voice_chunk, zero_duration_chunk]:
+                path.write_bytes(b"mp3")
+
+            with (
+                mock.patch.dict(
+                    "os.environ",
+                    {
+                        "OPENMY_STT_PROVIDER": "faster-whisper",
+                        "OPENMY_STT_MODEL": "small",
+                    },
+                    clear=True,
+                ),
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.prepare_audio_chunks",
+                    return_value=[
+                        PreparedChunk(
+                            path=low_voice_chunk,
+                            time_label="13:15",
+                            duration_seconds=100.0,
+                            speech_segments=[{"start": 0.0, "end": 5.0}],
+                        ),
+                        PreparedChunk(
+                            path=voice_chunk,
+                            time_label="13:25",
+                            duration_seconds=100.0,
+                            speech_segments=[{"start": 0.0, "end": 50.0}],
+                        ),
+                        PreparedChunk(
+                            path=zero_duration_chunk,
+                            time_label="13:35",
+                            duration_seconds=0.0,
+                            speech_segments=[],
+                        ),
+                    ],
+                ),
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.load_vocab_terms",
+                    return_value="OpenMy",
+                ),
+                mock.patch(
+                    "openmy.services.ingest.audio_pipeline.transcribe_audio",
+                    side_effect=[
+                        {
+                            "text": "有人声的正常片段",
+                            "language": "zh",
+                            "duration_seconds": 100.0,
+                            "segments": [],
+                            "provider_metadata": {},
+                        },
+                        {
+                            "text": "时长未知也正常转写",
+                            "language": "zh",
+                            "duration_seconds": 0.0,
+                            "segments": [],
+                            "provider_metadata": {},
+                        },
+                    ],
+                ) as transcribe_mock,
+            ):
+                output_path = transcribe_audio_files(
+                    date_str="2026-04-08",
+                    audio_files=[str(audio_one)],
+                    output_dir=tmp_path,
+                    vad_filter=True,
+                )
+
+            content = output_path.read_text(encoding="utf-8")
+            self.assertIn("## 13:15", content)
+            self.assertIn("[静音/环境音，已跳过]", content)
+            self.assertIn("有人声的正常片段", content)
+            self.assertIn("时长未知也正常转写", content)
+            self.assertEqual(transcribe_mock.call_count, 2)
+
+            payload = json.loads((tmp_path / "transcript.transcription.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["chunks"][0]["time_label"], "13:15")
+            self.assertEqual(payload["chunks"][0]["skipped_reason"], "vad_below_threshold")
+            self.assertNotIn("text", payload["chunks"][0])
+            self.assertEqual(payload["chunks"][1]["text"], "有人声的正常片段")
+            self.assertEqual(payload["chunks"][2]["text"], "时长未知也正常转写")
+
     def test_uses_prepared_chunks_instead_of_raw_audio(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -375,8 +464,8 @@ class TranscribeAudioFilesTest(unittest.TestCase):
                     )
                 ],
                 [
-                    PreparedChunk(path=chunk_two, time_label="13:45", duration_seconds=1.0, speech_segments=[]),
-                    PreparedChunk(path=chunk_three, time_label="13:55", duration_seconds=1.0, speech_segments=[]),
+                    PreparedChunk(path=chunk_two, time_label="13:45", duration_seconds=1.0, speech_segments=[{"start": 0.0, "end": 1.0}]),
+                    PreparedChunk(path=chunk_three, time_label="13:55", duration_seconds=1.0, speech_segments=[{"start": 0.0, "end": 1.0}]),
                 ],
             ]
 
@@ -502,8 +591,8 @@ class TranscribeAudioFilesTest(unittest.TestCase):
                 mock.patch(
                     "openmy.services.ingest.audio_pipeline.prepare_audio_chunks",
                     return_value=[
-                        PreparedChunk(path=chunk_one, time_label="13:15", duration_seconds=1.0, speech_segments=[]),
-                        PreparedChunk(path=chunk_two, time_label="13:25", duration_seconds=1.0, speech_segments=[]),
+                        PreparedChunk(path=chunk_one, time_label="13:15", duration_seconds=1.0, speech_segments=[{"start": 0.0, "end": 1.0}]),
+                        PreparedChunk(path=chunk_two, time_label="13:25", duration_seconds=1.0, speech_segments=[{"start": 0.0, "end": 1.0}]),
                     ],
                 ),
                 mock.patch("openmy.services.ingest.audio_pipeline.load_vocab_terms", return_value="OpenMy"),

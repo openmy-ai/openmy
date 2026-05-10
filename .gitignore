@@ -16,3 +16,4 @@ src/openmy/resources/vocab.txt
 data/
 !data/.gitkeep
 .omx/
+.gstack/
