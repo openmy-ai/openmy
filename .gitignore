@@ -1,6 +1,9 @@
 *.raw.md
 *.pyc
 __pycache__/
+build/
+dist/
+*.egg-info/
 app/server.log
 nohup.out
 *.before-gemini-cli-*
