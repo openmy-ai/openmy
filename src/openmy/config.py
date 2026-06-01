@@ -21,10 +21,11 @@ from typing import Any
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 # 向后兼容：旧代码仍会直接 import GEMINI_MODEL
-GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
+GEMINI_MODEL = "gemini-3.5-flash"
 DEFAULT_STT_PROVIDER = ""  # 故意留空：用户必须显式选择转写引擎
 DEFAULT_LLM_PROVIDER = "gemini"
 DEFAULT_STT_MODELS = {
+    "bailian": "paraformer-realtime-v2",
     "gemini": GEMINI_MODEL,
     "faster-whisper": "small",
     "funasr": "paraformer-zh",
@@ -98,7 +99,7 @@ def get_stt_api_key(provider_name: str | None = None) -> str:
         return _read_env("OPENMY_STT_API_KEY", "GEMINI_API_KEY")
     if final_provider == "groq":
         return _read_env("OPENMY_STT_API_KEY", "GROQ_API_KEY")
-    if final_provider == "dashscope":
+    if final_provider in ("dashscope", "bailian"):
         return _read_env("OPENMY_STT_API_KEY", "DASHSCOPE_API_KEY")
     if final_provider == "deepgram":
         return _read_env("OPENMY_STT_API_KEY", "DEEPGRAM_API_KEY")

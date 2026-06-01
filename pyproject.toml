@@ -30,6 +30,7 @@ openmy = "openmy.cli:main"
 [project.optional-dependencies]
 cloud = [
     "google-genai>=1.12.1",
+    "dashscope>=1.25.17",
 ]
 local = [
     "faster-whisper>=1.1.0",

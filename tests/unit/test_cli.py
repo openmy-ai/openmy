@@ -740,29 +740,47 @@ class TestOpenMyCli(unittest.TestCase):
             self.cleanup_day_dir(date_str)
 
     def test_cli_distill_requires_api_key(self):
-        """openmy distill 没有 GEMINI_API_KEY 时应该友好报错。"""
+        """openmy distill 没有 GEMINI_API_KEY 时应该友好报错。
+
+        在隔离的临时目录里跑：临时目录放一个最小 pyproject.toml 让 find_project_root
+        认它为项目根，再把 OPENMY_PROJECT_ROOT/OPENMY_DATA_DIR/cwd 都指向它。
+        这样进程加载的 .env 是临时目录里的（不存在=无 key），绝不触碰用户真实 .env。
+        """
+        import tempfile
+
         date_str = "2099-01-05"
-        day_dir = self.make_day_dir(date_str)
-        (day_dir / "scenes.json").write_text(
-            '{"scenes":[{"scene_id":"s01","text":"测试文本","summary":""}],"stats":{"total_scenes":1,"role_distribution":{}}}',
-            encoding="utf-8",
-        )
+        with tempfile.TemporaryDirectory(prefix="openmy_distill_test_") as tmp:
+            tmp_root = Path(tmp)
+            # 最小 pyproject.toml：让 find_project_root 把临时目录认作项目根。
+            (tmp_root / "pyproject.toml").write_text(
+                "[project]\nname = \"openmy-test-fixture\"\nversion = \"0.0.0\"\n",
+                encoding="utf-8",
+            )
+            day_dir = tmp_root / "data" / date_str
+            day_dir.mkdir(parents=True, exist_ok=True)
+            (day_dir / "scenes.json").write_text(
+                '{"scenes":[{"scene_id":"s01","text":"测试文本","summary":""}],"stats":{"total_scenes":1,"role_distribution":{}}}',
+                encoding="utf-8",
+            )
 
-        env = dict(**os.environ)
-        env.pop("GEMINI_API_KEY", None)
+            # 剔除所有可能携带密钥的环境变量，并把项目根/数据目录指向临时目录。
+            env = {
+                k: v
+                for k, v in os.environ.items()
+                if "key" not in k.lower() and "api" not in k.lower() and "gemini" not in k.lower()
+            }
+            env["OPENMY_PROJECT_ROOT"] = str(tmp_root)
+            env["OPENMY_DATA_DIR"] = str(tmp_root / "data")
 
-        try:
             result = subprocess.run(
                 [sys.executable, "-m", "openmy", "distill", date_str],
                 capture_output=True,
                 text=True,
                 timeout=60,
-                cwd=PROJECT_ROOT,
+                cwd=tmp_root,
                 env=env,
             )
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        finally:
-            self.cleanup_day_dir(date_str)
 
     def test_cli_distill_ignores_role_hint_when_roles_are_frozen(self):
         """openmy distill 不应继续把角色标签塞进蒸馏 prompt。"""
@@ -1151,7 +1169,7 @@ class TestOpenMyCli(unittest.TestCase):
                         audio=["/tmp/fake.wav"],
                         skip_transcribe=False,
                         stt_provider="gemini",
-                        stt_model="gemini-3.1-flash-lite-preview",
+                        stt_model="gemini-3.5-flash",
                         stt_vad=False,
                         stt_word_timestamps=False,
                         stt_enrich_mode="off",
@@ -1619,7 +1637,7 @@ class TestOpenMyCli(unittest.TestCase):
                         audio=["/tmp/fake.wav"],
                         skip_transcribe=False,
                         stt_provider="gemini",
-                        stt_model="gemini-3.1-flash-lite-preview",
+                        stt_model="gemini-3.5-flash",
                         stt_vad=False,
                         stt_word_timestamps=False,
                         stt_enrich_mode="off",

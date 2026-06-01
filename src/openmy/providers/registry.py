@@ -14,6 +14,7 @@ from openmy.config import (
 from openmy.providers.export.notion import NotionExportProvider
 from openmy.providers.export.obsidian import ObsidianExportProvider
 from openmy.providers.llm.gemini import GeminiLLMProvider
+from openmy.providers.stt.bailian import BailianSTTProvider
 from openmy.providers.stt.deepgram import DeepgramSTTProvider
 from openmy.providers.stt.dashscope_asr import DashScopeASRProvider
 from openmy.providers.stt.faster_whisper import FasterWhisperSTTProvider
@@ -22,6 +23,7 @@ from openmy.providers.stt.gemini import GeminiSTTProvider
 from openmy.providers.stt.groq_whisper import GroqWhisperSTTProvider
 
 STT_PROVIDERS = {
+    "bailian": BailianSTTProvider,
     "gemini": GeminiSTTProvider,
     "faster-whisper": FasterWhisperSTTProvider,
     "funasr": FunASRSTTProvider,
