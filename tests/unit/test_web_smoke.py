@@ -10,11 +10,20 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, ProxyHandler
 from unittest.mock import patch
 
 import app.server as app_server
 from app.job_runner import JobController, JobRunner
+
+# Tests hit a loopback HTTP server. Honor no proxy so an ambient HTTP_PROXY
+# environment variable does not route 127.0.0.1 requests through an external
+# proxy (which returns 502 Bad Gateway).
+_NO_PROXY_OPENER = build_opener(ProxyHandler({}))
+
+
+def urlopen(*args, **kwargs):
+    return _NO_PROXY_OPENER.open(*args, **kwargs)
 
 
 class TestWebSmoke(unittest.TestCase):
@@ -564,7 +573,9 @@ class TestWebSmoke(unittest.TestCase):
                 self.stop_server(server, patches)
 
         self.assertEqual(style_type, "text/css")
-        self.assertIn("--font-body", style_body)
+        # style.css is now an aggregator that @imports the modular css files
+        # (e.g. css/tokens.css, which defines --font-body).
+        self.assertIn("@import url('./css/tokens.css')", style_body)
         self.assertEqual(script_type, "text/javascript")
         self.assertIn("function init()", script_body)
 

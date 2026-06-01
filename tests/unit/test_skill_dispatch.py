@@ -418,6 +418,15 @@ class TestSkillDispatch(unittest.TestCase):
                 patch("openmy.config.has_llm_credentials", return_value=True),
                 patch("openmy.config.get_stt_provider_name", return_value="faster-whisper"),
                 patch("openmy.config.has_stt_credentials", return_value=True),
+                # 本地引擎可用性原本会真去 import faster-whisper / funasr。
+                # 干净环境（CI、新用户 clone）没装这些可选引擎，会让
+                # faster-whisper 的 ready 变 False，进而让推荐引擎随环境漂移
+                # （空字符串或恰好有 key 的云引擎）。这里把检测固定下来：
+                # faster-whisper 可用、funasr 不可用，使推荐稳定为 faster-whisper。
+                patch(
+                    "openmy.skill_handlers.health_aggregate._local_provider_dependency_status",
+                    side_effect=lambda name: (True, "") if name == "faster-whisper" else (False, "install hint"),
+                ),
                 patch("openmy.services.cleaning.cleaner.CORRECTIONS_FILE", corrections),
                 patch("openmy.services.cleaning.cleaner.VOCAB_FILE", vocab),
                 patch("openmy.services.context.consolidation.profile_path", return_value=profile_file),

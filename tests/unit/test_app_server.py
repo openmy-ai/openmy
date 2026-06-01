@@ -5,12 +5,21 @@ import time
 import unittest
 from urllib.error import HTTPError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, ProxyHandler
 from pathlib import Path
 from unittest.mock import patch
 
 import app.server as app_server
 from app.job_runner import JobRunner
+
+# Tests hit a loopback HTTP server. Honor no proxy so an ambient HTTP_PROXY
+# environment variable does not route 127.0.0.1 requests through an external
+# proxy (which returns 502 Bad Gateway).
+_NO_PROXY_OPENER = build_opener(ProxyHandler({}))
+
+
+def urlopen(*args, **kwargs):
+    return _NO_PROXY_OPENER.open(*args, **kwargs)
 
 
 class TestAppServer(unittest.TestCase):
