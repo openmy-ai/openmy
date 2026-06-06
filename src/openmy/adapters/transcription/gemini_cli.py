@@ -18,13 +18,21 @@ from openmy.utils.errors import FriendlyCliError, doc_url
 def load_vocab_terms(vocab_file: Path) -> str:
     if not vocab_file.exists():
         return ""
-    terms: list[str] = []
+    entries: list[str] = []
     for raw_line in vocab_file.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        terms.append(line.split("|", 1)[0].strip())
-    return "、".join(t for t in terms if t)
+        parts = line.split("|", 1)
+        term = parts[0].strip()
+        if not term:
+            continue
+        if len(parts) > 1:
+            hint = parts[1].strip()
+            entries.append(f"{term}（{hint}）")
+        else:
+            entries.append(term)
+    return "、".join(entries)
 
 
 def build_prompt(vocab_terms: str) -> str:

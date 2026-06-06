@@ -359,10 +359,12 @@ def cmd_clean(args: argparse.Namespace) -> int:
         return 1
 
     from openmy.services.cleaning.cleaner import clean_text
+    from openmy.config import get_llm_api_key
 
     raw_text = raw_path.read_text(encoding="utf-8")
+    llm_key = get_llm_api_key("clean")
     with console.status("[bold green]🧹 清洗中..."):
-        cleaned = clean_text(raw_text)
+        cleaned = clean_text(raw_text, api_key=llm_key)
 
     output_path = ensure_day_dir(date_str) / "transcript.md"
     output_path.write_text(cleaned, encoding="utf-8")

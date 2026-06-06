@@ -301,6 +301,83 @@ def apply_corrections(text: str) -> str:
     return "\n".join(corrected_lines)
 
 
+def _load_vocab_for_correction() -> str:
+    """读取 vocab.txt 用于 LLM 纠错 prompt。"""
+    vocab_file = resolve_resource_path(VOCAB_FILE, VOCAB_EXAMPLE_FILE)
+    if not vocab_file:
+        return ""
+    entries: list[str] = []
+    for raw_line in vocab_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("|", 1)
+        term = parts[0].strip()
+        if not term:
+            continue
+        if len(parts) > 1:
+            entries.append(f"{term}（{parts[1].strip()}）")
+        else:
+            entries.append(term)
+    return "、".join(entries)
+
+
+def llm_correction(text: str, api_key: str) -> str:
+    """用 Gemini Flash 做一轮上下文纠错。只修正明显错误，不改语义。"""
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        return text
+
+    if not api_key:
+        return text
+
+    from openmy.config import get_llm_model
+    model = get_llm_model()
+
+    vocab = _load_vocab_for_correction()
+    prompt_parts = [
+        "你是语音转写纠错助手。下面是一段语音转写文本，可能存在同音字错误（尤其是人名）、方言误识别、噪音被误转为文字等问题。",
+        "",
+        "规则：",
+        "1. 只修正明显的转写错误（同音字、人名、术语），不改语义、不润色、不删内容。",
+        "2. 保留所有时间头（## HH:MM）、标签（[助手回复]、[疑似串台]）和格式。",
+        "3. 繁体字统一为简体。",
+        "4. 如果不确定是否错误，保持原样。宁可漏改也不要改错。",
+        "5. 直接输出修正后的完整文本，不加任何说明或前缀。",
+    ]
+    if vocab:
+        prompt_parts.extend(["", "词库（正确写法和提示）：", vocab])
+    prompt_parts.extend(["", "---", "", "待纠错文本：", "", text])
+    prompt = "\n".join(prompt_parts)
+
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=model,
+            contents=[prompt],
+            config=types.GenerateContentConfig(temperature=0.1),
+        )
+        corrected = response.text.strip() if response.text else ""
+    except Exception as e:
+        print(f"  ⚠ LLM 纠错失败，保留原文: {e}", file=sys.stderr)
+        return text
+
+    if not corrected:
+        return text
+
+    orig_len = len(text.replace("\n", "").replace(" ", ""))
+    new_len = len(corrected.replace("\n", "").replace(" ", ""))
+    if orig_len > 0 and abs(new_len - orig_len) / orig_len > 0.15:
+        print("  ⚠ LLM 纠错改动过大(>15%)，丢弃，保留原文", file=sys.stderr)
+        return text
+
+    diff_count = sum(1 for a, b in zip(text, corrected) if a != b)
+    print(f"  ✓ LLM 纠错: {diff_count} 处字符变更", file=sys.stderr)
+    return corrected
+
+
 def sync_correction_to_vocab(wrong: str, right: str, context: str = ''):
     """将纠正同步写入 vocab.txt（事前预防层）"""
     vocab_file = resolve_resource_path(VOCAB_FILE, VOCAB_EXAMPLE_FILE, auto_init=True)
@@ -381,6 +458,10 @@ def clean_text(text: str, api_key: str | None = None) -> str:
 
     # Step 10: 纠错替换（从 corrections.json 强制修正错词）
     result = apply_corrections(result)
+
+    # Step 11: LLM 上下文纠错（可选，需要 api_key）
+    if api_key:
+        result = llm_correction(result, api_key)
 
     return result
 

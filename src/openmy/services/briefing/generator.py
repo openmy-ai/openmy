@@ -119,15 +119,7 @@ def _sanitize_briefing_text(text: str) -> str:
         return ""
 
     replacements = [
-        ("今天大家", "今天我和其他人"),
-        ("大家都", "我们都"),
-        ("大家对", "我们对"),
-        ("大家聊", "我和其他人聊"),
-        ("大家", "我们"),
-        ("有人说", "对方说"),
-        ("有人提到", "对方提到"),
-        ("有人在", "对方在"),
-        ("有人", "对方"),
+        ("说话人", "我"),
     ]
     for old, new in replacements:
         cleaned = cleaned.replace(old, new)

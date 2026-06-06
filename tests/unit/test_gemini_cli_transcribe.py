@@ -8,16 +8,16 @@ from openmy.adapters.transcription import gemini_cli as gemini_cli_transcribe
 
 
 class GeminiCliTranscribeTest(unittest.TestCase):
-    def test_load_vocab_terms_ignores_comments_and_notes(self):
+    def test_load_vocab_terms_includes_hints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             vocab_path = Path(tmpdir) / 'vocab.txt'
             vocab_path.write_text(
-                '# 注释\nClaude | note\n\nStreamDeck | note\n',
+                '# 注释\nClaude | Anthropic AI model\n\nStreamDeck\n',
                 encoding='utf-8',
             )
             self.assertEqual(
                 gemini_cli_transcribe.load_vocab_terms(vocab_path),
-                'Claude、StreamDeck',
+                'Claude（Anthropic AI model）、StreamDeck',
             )
 
     def test_build_prompt_contains_vocab_and_instructions(self):

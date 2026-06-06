@@ -21,6 +21,14 @@ except ImportError:  # pragma: no cover - exercised in environments without sdk
     types = None
 
 
+SYSTEM_INSTRUCTION = (
+    "你是一个严格的语音转写引擎。你的唯一任务是把音频中的人声逐字转写为中文文字。"
+    "绝对不要总结、省略、润色、改写或编造任何内容。"
+    "听不清就输出 [无法识别]，整段无人声就只输出 [无人声]。"
+    "只转写音频中实际存在的人声，这是最重要的规则。"
+)
+
+
 def build_prompt(vocab_terms: str) -> str:
     sections = [
         "请转写这段音频文件。",
@@ -109,6 +117,10 @@ class GeminiSTTProvider(SpeechToTextProvider):
                     ],
                 ),
             ],
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_INSTRUCTION,
+                temperature=0.2,
+            ),
         )
         text = response.text.strip() if response.text else ""
         if not text:
