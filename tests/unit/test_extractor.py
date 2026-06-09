@@ -375,7 +375,7 @@ class TestExtractorCallGemini(unittest.TestCase):
         with self.assertRaises(extractor.ExtractionTimeoutError):
             extractor.call_gemini("你好", api_key="test-key", model="gemini-test", reference_date="2026-04-08")
 
-    @patch("openmy.services.extraction.extractor.time.sleep")
+    @patch("openmy.utils.retry.time.sleep")
     @patch("openmy.services.extraction.extractor.ProviderRegistry.from_env")
     def test_call_gemini_retries_retryable_errors(self, registry_factory, sleep_mock):
         provider = registry_factory.return_value.get_llm_provider.return_value

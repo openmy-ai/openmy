@@ -13,6 +13,8 @@ API_URL = "https://api.deepgram.com/v1/listen"
 
 class DeepgramSTTProvider(SpeechToTextProvider):
     name = "deepgram"
+    default_model = "nova-3"
+    api_key_env_vars = ["DEEPGRAM_API_KEY"]
 
     def transcribe(
         self,

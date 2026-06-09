@@ -22,9 +22,8 @@ import argparse
 import json
 import re
 import sys
-import time
 from copy import deepcopy
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -36,13 +35,18 @@ from openmy.config import (
     get_llm_api_key,
     get_stage_llm_model,
 )
-from openmy.domain.intent import DONE_STATUSES, DueDate, Fact, Intent
+from openmy.domain.intent import Fact, Intent
 from openmy.utils.io import safe_write_json
+from openmy.utils.retry import retry_llm_call
 from openmy.providers.registry import ProviderRegistry
 from openmy.services.query.search_index import update_search_index_for_day
 from openmy.services.scene_quality import annotate_scene_payload, scene_is_usable_for_downstream
 from openmy.services.screen_recognition.summary import infer_project_hint_from_text
-from openmy.utils.time import iso_at
+from openmy.services.extraction.temporal import (
+    adjudicate_temporality as _adjudicate_temporality,
+    normalize_due_date as _normalize_due_date,
+)
+from openmy.services.extraction.vault import distribute_to_vault
 
 CONFIDENCE_SCORE_BY_LABEL = {
     "high": 0.9,
@@ -54,24 +58,6 @@ VALID_ENRICH_STATUSES = {"pending", "running", "done", "failed", "skipped"}
 INTENT_ENRICH_FIELDS = ("speech_act", "source_scene_id", "source_recording_id")
 FACT_ENRICH_FIELDS = ("source_scene_id",)
 
-CN_NUMBER_MAP = {
-    "零": 0,
-    "〇": 0,
-    "一": 1,
-    "二": 2,
-    "两": 2,
-    "三": 3,
-    "四": 4,
-    "五": 5,
-    "六": 6,
-    "七": 7,
-    "八": 8,
-    "九": 9,
-}
-TIME_COLON_RE = re.compile(r"(?P<hour>\d{1,2})[:：](?P<minute>\d{2})")
-TIME_POINT_RE = re.compile(
-    r"(?P<hour>[零〇一二两三四五六七八九十\d]{1,3})(?:点|时)(?:(?P<minute>[零〇一二两三四五六七八九十\d]{1,2})分?)?(?P<half>半)?"
-)
 
 CORE_EXTRACT_PROMPT = """你是 OpenMy 的结构化提取器，要把一天的口述转写拆成“未来约束”和“已经发生/已经知道”的两类信息。
 
@@ -198,313 +184,6 @@ def _looks_like_timeout(exc: BaseException) -> bool:
     return False
 
 
-def _parse_reference_date(value: str | None) -> date | None:
-    if not value:
-        return None
-    try:
-        return datetime.strptime(value, "%Y-%m-%d").date()
-    except ValueError:
-        return None
-
-
-def _parse_chinese_number(token: str) -> int | None:
-    token = (token or "").strip()
-    if not token:
-        return None
-    if token.isdigit():
-        return int(token)
-    if token == "十":
-        return 10
-    if "十" in token:
-        left, right = token.split("十", 1)
-        tens = 1 if not left else CN_NUMBER_MAP.get(left)
-        ones = 0 if not right else CN_NUMBER_MAP.get(right)
-        if tens is None or ones is None:
-            return None
-        return tens * 10 + ones
-    if len(token) == 1:
-        return CN_NUMBER_MAP.get(token)
-    return None
-
-
-def _extract_relative_day_offset(raw_text: str) -> int | None:
-    if not raw_text:
-        return None
-    if "大后天" in raw_text:
-        return 3
-    if "后天" in raw_text or "后日" in raw_text:
-        return 2
-    if "明天" in raw_text or "明日" in raw_text:
-        return 1
-    if any(keyword in raw_text for keyword in ("今天", "今日", "今晚", "今早", "今晨", "今下午", "今上午")):
-        return 0
-    return None
-
-
-def _extract_time_parts(raw_text: str) -> tuple[int, int] | None:
-    colon_match = TIME_COLON_RE.search(raw_text)
-    if colon_match:
-        return int(colon_match.group("hour")), int(colon_match.group("minute"))
-
-    point_match = TIME_POINT_RE.search(raw_text)
-    if not point_match:
-        return None
-
-    hour = _parse_chinese_number(point_match.group("hour"))
-    minute_token = point_match.group("minute")
-    minute = _parse_chinese_number(minute_token) if minute_token else 0
-    if point_match.group("half"):
-        minute = 30
-    if hour is None or minute is None:
-        return None
-
-    if any(keyword in raw_text for keyword in ("下午", "晚上", "傍晚", "今晚")) and 1 <= hour < 12:
-        hour += 12
-    elif "中午" in raw_text and 1 <= hour < 11:
-        hour += 12
-    elif any(keyword in raw_text for keyword in ("凌晨",)) and hour == 12:
-        hour = 0
-
-    return hour, minute
-
-
-def _resolve_relative_due(raw_text: str, reference_date: str | None) -> tuple[str, str] | None:
-    base_date = _parse_reference_date(reference_date)
-    offset = _extract_relative_day_offset(raw_text)
-    if base_date is None or offset is None:
-        return None
-
-    target_date = base_date + timedelta(days=offset)
-    time_parts = _extract_time_parts(raw_text)
-    if time_parts is None:
-        return target_date.isoformat(), "day"
-
-    hour, minute = time_parts
-    target_dt = datetime.combine(target_date, datetime.min.time()).replace(hour=hour, minute=minute)
-    return target_dt.strftime("%Y-%m-%dT%H:%M:%S"), "time"
-
-
-def _normalize_due_date(due: DueDate, reference_date: str | None) -> DueDate:
-    resolved = _resolve_relative_due(due.raw_text, reference_date)
-    if not resolved:
-        return due
-    iso_date, granularity = resolved
-    return DueDate(raw_text=due.raw_text, iso_date=iso_date, granularity=granularity)
-
-
-PAST_MARKERS = (
-    "昨天",
-    "昨晚",
-    "前天",
-    "刚才",
-    "刚刚",
-    "已经",
-    "想过",
-    "考虑过",
-    "看过",
-    "聊了",
-    "聊完",
-    "去了",
-    "吃完",
-    "做完",
-    "改完",
-    "写完",
-    "发了",
-    "见了",
-    "处理完",
-    "搞定了",
-)
-FUTURE_MARKERS = (
-    "明天",
-    "后天",
-    "下次",
-    "待会",
-    "一会",
-    "稍后",
-    "之后",
-    "打算",
-    "准备",
-    "记得",
-    "提醒",
-    "还没",
-    "需要",
-    "要",
-    "得",
-)
-ONGOING_MARKERS = (
-    "正在",
-    "在做",
-    "在改",
-    "还在",
-    "继续",
-    "推进中",
-    "处理中",
-    "没改完",
-    "没做完",
-)
-COMPLETED_TASK_HINTS = (
-    "README",
-    "OpenMy",
-    "文档",
-    "配置",
-    "代码",
-    "提取器",
-    "prompt",
-    "日报",
-    "状态",
-    "测试",
-    "接口",
-    "脚本",
-    "发布",
-    "同步",
-    "回电话",
-    "联系",
-    "修",
-    "改",
-    "写",
-    "补",
-    "提交",
-    "更新",
-)
-LIFE_EVENT_HINTS = (
-    "按摩",
-    "火锅",
-    "吃饭",
-    "散步",
-    "买菜",
-    "咖啡",
-    "回家",
-    "睡觉",
-    "约饭",
-    "洗澡",
-    "看电影",
-)
-
-
-def _match_markers(text: str, markers: tuple[str, ...]) -> list[str]:
-    return [marker for marker in markers if marker and marker in text]
-
-
-def _temporal_text(intent: Intent) -> str:
-    return " ".join(
-        part
-        for part in (
-            intent.evidence_quote.strip(),
-            intent.what.strip(),
-            intent.due.raw_text.strip(),
-        )
-        if part
-    )
-
-
-def _looks_like_completed_task(intent: Intent, text: str) -> bool:
-    if intent.status in DONE_STATUSES:
-        return True
-    if any(marker in text for marker in LIFE_EVENT_HINTS):
-        return False
-    if intent.project_hint.strip() or intent.topic.strip():
-        return True
-    return any(marker in text for marker in COMPLETED_TASK_HINTS)
-
-
-def _demoted_fact_type(intent: Intent) -> str:
-    topic = (intent.project_hint.strip() or intent.topic.strip())
-    if topic and topic not in {"生活", "日常", "个人", "杂项"}:
-        return "project_update"
-    if intent.kind == "decision":
-        return "idea"
-    return "observation"
-
-
-def _intent_to_fact(intent: Intent) -> Fact:
-    content = intent.evidence_quote.strip() or intent.what.strip()
-    return Fact(
-        fact_type=_demoted_fact_type(intent),
-        content=content,
-        topic=intent.project_hint.strip() or intent.topic.strip(),
-        confidence_label=intent.confidence_label,
-        confidence_score=intent.confidence_score,
-        source_scene_id=intent.source_scene_id,
-    )
-
-
-def _temporal_basis_label(prefix: str, values: list[str]) -> list[str]:
-    return [f"{prefix}:{value}" for value in values]
-
-
-def _resolve_temporal_verdict(intent: Intent) -> tuple[str, str, list[str]]:
-    text = _temporal_text(intent)
-    past_hits = _match_markers(text, PAST_MARKERS)
-    future_hits = _match_markers(text, FUTURE_MARKERS)
-    ongoing_hits = _match_markers(text, ONGOING_MARKERS)
-    strong_future_hits = [marker for marker in future_hits if marker not in {"还没", "要", "得"}]
-    basis: list[str] = []
-
-    if intent.kind == "open_question":
-        return "future", "keep_intent", ["question_kind"]
-
-    if ongoing_hits and (intent.due.raw_text.strip() or strong_future_hits):
-        return "future", "keep_intent", _temporal_basis_label("future", future_hits) + _temporal_basis_label("ongoing", ongoing_hits)
-
-    if ongoing_hits:
-        return "ongoing", "keep_intent", _temporal_basis_label("ongoing", ongoing_hits)
-
-    if past_hits and not future_hits:
-        basis = _temporal_basis_label("past", past_hits)
-        if _looks_like_completed_task(intent, text):
-            return "past", "force_done", basis
-        return "past", "demote_to_fact", basis
-
-    if future_hits and not past_hits:
-        return "future", "keep_intent", _temporal_basis_label("future", future_hits)
-
-    if past_hits and future_hits:
-        basis = _temporal_basis_label("mixed_past", past_hits) + _temporal_basis_label("mixed_future", future_hits)
-        if intent.due.raw_text.strip() or future_hits:
-            return "future", "keep_intent", basis + ["mixed_future_bias"]
-        return "unclear", "demote_to_fact", basis
-
-    if intent.due.raw_text.strip():
-        return "future", "keep_intent", ["due_signal"]
-
-    if intent.kind in {"action_item", "commitment"}:
-        return "future", "keep_intent", ["model_intent_default"]
-
-    return "unclear", "keep_intent", ["model_default"]
-
-
-def _adjudicate_temporality(intents: list[Intent], facts: list[Fact]) -> tuple[list[Intent], list[Fact]]:
-    kept_intents: list[Intent] = []
-    merged_facts: list[Fact] = list(facts)
-    seen_facts = {fact.content.strip() for fact in merged_facts if fact.content.strip()}
-
-    for intent in intents:
-        state, action, basis = _resolve_temporal_verdict(intent)
-        intent.temporal_state = state
-        intent.temporal_basis = basis
-
-        if action == "demote_to_fact":
-            fact = _intent_to_fact(intent)
-            content = fact.content.strip()
-            if content and content not in seen_facts:
-                seen_facts.add(content)
-                merged_facts.append(fact)
-            continue
-
-        if action == "force_done":
-            intent.status = "done"
-        elif state == "ongoing" and intent.status not in DONE_STATUSES:
-            intent.status = "active"
-
-        if state == "unclear":
-            intent.needs_review = True
-            if intent.confidence_label == "high":
-                intent.confidence_label = "medium"
-                intent.confidence_score = min(intent.confidence_score or 0.9, 0.7)
-
-        kept_intents.append(intent)
-
-    return kept_intents, merged_facts
 
 
 def _build_extract_prompt(text: str, reference_date: str | None) -> str:
@@ -788,7 +467,7 @@ def _resolve_user_language(user_language: str | None = None) -> str:
         return str(user_language).strip().lower()
 
     try:
-        from openmy.services.context.consolidation import load_profile_settings
+        from openmy.services.onboarding.state import load_profile_settings
         from openmy.utils.paths import DATA_ROOT
 
         profile = load_profile_settings(DATA_ROOT)
@@ -1180,11 +859,6 @@ ENRICH_EXTRACTION_SCHEMA = {
 }
 
 
-def _is_retryable_llm_error(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return "429" in message or "503" in message or "resource exhausted" in message or "temporarily unavailable" in message
-
-
 def _call_gemini_json(
     prompt: str,
     *,
@@ -1199,26 +873,17 @@ def _call_gemini_json(
             api_key=api_key,
             model=model or get_stage_llm_model("extract") or GEMINI_MODEL,
         )
-        last_error: Exception | None = None
-        for attempt in range(1, 4):
-            try:
-                return provider.generate_json(
-                    task="structured extraction",
-                    prompt=prompt,
-                    schema=response_json_schema,
-                    model=model,
-                    temperature=EXTRACT_TEMPERATURE,
-                    thinking_level=EXTRACT_THINKING_LEVEL,
-                    timeout_seconds=timeout_seconds,
-                )
-            except Exception as exc:
-                last_error = exc
-                if attempt == 3 or not _is_retryable_llm_error(exc):
-                    raise
-                time.sleep(2 ** (attempt - 1))
-        if last_error is not None:  # pragma: no cover - guarded by raise above
-            raise last_error
-        raise ExtractionError("Gemini 请求失败")
+        return retry_llm_call(
+            lambda: provider.generate_json(
+                task="structured extraction",
+                prompt=prompt,
+                schema=response_json_schema,
+                model=model,
+                temperature=EXTRACT_TEMPERATURE,
+                thinking_level=EXTRACT_THINKING_LEVEL,
+                timeout_seconds=timeout_seconds,
+            )
+        )
     except Exception as exc:
         if _looks_like_timeout(exc):
             raise ExtractionTimeoutError(f"Gemini 提取超时（{timeout_seconds}s）") from exc
@@ -1281,124 +946,6 @@ def save_meta_json(data: dict, date: str, output_dir: str):
     print(f"✓ 结构化数据: {meta_path}", file=sys.stderr)
 
 
-def distribute_to_vault(data: dict, date: str, vault_path: str):
-    """分发提取结果到 Obsidian Vault。"""
-    compat_payload = build_legacy_compatible_payload(data)
-    vault = Path(vault_path)
-
-    event_dir = vault / "系统" / "事件流" / date
-    event_dir.mkdir(parents=True, exist_ok=True)
-    event_file = event_dir / "context.jsonl"
-
-    events = compat_payload.get("events", [])
-    existing_event_lines = set(event_file.read_text(encoding="utf-8").splitlines()) if event_file.exists() else set()
-    new_event_lines: list[str] = []
-    for event in events:
-        entry = {
-            "time": iso_at(date, str(event.get("time", "00:00") or "00:00")),
-            "actor": "context",
-            "project": event.get("project", ""),
-            "type": "口述记录",
-            "summary": event.get("summary", ""),
-        }
-        line = json.dumps(entry, ensure_ascii=False)
-        if line in existing_event_lines:
-            continue
-        existing_event_lines.add(line)
-        new_event_lines.append(line)
-    if new_event_lines:
-        with open(event_file, "a", encoding="utf-8") as fh:
-            fh.write("\n".join(new_event_lines) + "\n")
-        print(f"✓ 事件流: {len(new_event_lines)} 条 → {event_file}", file=sys.stderr)
-
-    summary = compat_payload.get("daily_summary", "")
-    if summary:
-        log_dir = vault / "日志"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = log_dir / f"{date}-上下文.md"
-        content = f"# {date} 上下文摘要\n\n{summary}\n"
-
-        decisions = compat_payload.get("decisions", [])
-        if decisions:
-            content += "\n## 决策\n\n"
-            for item in decisions:
-                proj = f"【{item['project']}】" if item.get("project") else ""
-                content += f"- {proj}{item.get('what', '')}"
-                if item.get("why"):
-                    content += f"（{item['why']}）"
-                content += "\n"
-
-        todos = compat_payload.get("todos", [])
-        if todos:
-            content += "\n## 待办\n\n"
-            for item in todos:
-                prio = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(
-                    item.get("priority", "medium"),
-                    "🟡",
-                )
-                proj = f"【{item['project']}】" if item.get("project") else ""
-                content += f"- {prio} {proj}{item.get('task', '')}\n"
-
-        insights = compat_payload.get("insights", [])
-        if insights:
-            content += "\n## 洞察\n\n"
-            for item in insights:
-                content += f"- **{item.get('topic', '')}**: {item.get('content', '')}\n"
-
-        log_file.write_text(content, encoding="utf-8")
-        print(f"✓ 日志摘要: {log_file}", file=sys.stderr)
-
-    inbox_file = vault / "收件箱" / "灵感速记.md"
-    inbox_file.parent.mkdir(parents=True, exist_ok=True)
-    inbox_appends: list[str] = []
-    existing_inbox_lines = set(inbox_file.read_text(encoding="utf-8").splitlines()) if inbox_file.exists() else set()
-
-    for todo in compat_payload.get("todos", []):
-        prio = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(todo.get("priority", "medium"), "🟡")
-        proj = f"[{todo['project']}] " if todo.get("project") else ""
-        line = f"- [ ] {prio} {proj}{todo.get('task', '')} _{date}_"
-        if line not in existing_inbox_lines:
-            existing_inbox_lines.add(line)
-            inbox_appends.append(line)
-
-    for insight in compat_payload.get("insights", []):
-        line = f"- 💡 **{insight.get('topic', '')}**: {insight.get('content', '')} _{date}_"
-        if line not in existing_inbox_lines:
-            existing_inbox_lines.add(line)
-            inbox_appends.append(line)
-
-    if inbox_appends:
-        with open(inbox_file, "a", encoding="utf-8") as fh:
-            fh.write("\n" + "\n".join(inbox_appends) + "\n")
-        print(f"✓ 收件箱同步: {len(inbox_appends)} 条 → {inbox_file}", file=sys.stderr)
-
-    decisions = compat_payload.get("decisions", [])
-    if decisions:
-        decision_file = vault / "日志" / "决策复盘库.md"
-        decision_file.parent.mkdir(parents=True, exist_ok=True)
-        if not decision_file.exists():
-            decision_file.write_text("# 决策复盘库\n\n", encoding="utf-8")
-        existing_decision_lines = set(decision_file.read_text(encoding="utf-8").splitlines())
-        new_decision_lines: list[str] = []
-
-        for item in decisions:
-            proj = f"【{item['project']}】" if item.get("project") else ""
-            line = f"- **{date}** {proj}{item.get('what', '')} （{item.get('why', '')}）"
-            if line not in existing_decision_lines:
-                existing_decision_lines.add(line)
-                new_decision_lines.append(line)
-        if new_decision_lines:
-            with open(decision_file, "a", encoding="utf-8") as fh:
-                fh.write("\n".join(new_decision_lines) + "\n")
-            print(f"✓ 决策复盘同步: {len(new_decision_lines)} 条", file=sys.stderr)
-
-    todos = compat_payload.get("todos", [])
-    if todos:
-        print("\n📋 提取到的待办事项：", file=sys.stderr)
-        for item in todos:
-            prio = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(item.get("priority", "medium"), "🟡")
-            proj = f"[{item['project']}] " if item.get("project") else ""
-            print(f"  {prio} {proj}{item.get('task', '')}", file=sys.stderr)
 
 
 def _resolve_final_date(input_path: Path, date_value: str | None) -> str:

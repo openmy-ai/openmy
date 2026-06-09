@@ -27,7 +27,7 @@ from openmy.config import (
     get_stt_provider_name,
     stt_provider_requires_api_key,
 )
-from openmy.utils.io import safe_write_json
+from openmy.utils.io import safe_write_json, upsert_env_value
 from openmy.utils.errors import FriendlyCliError, doc_url
 from openmy.utils.paths import DATA_ROOT, PROJECT_ENV_PATH, PROJECT_ROOT as ROOT_DIR
 
@@ -147,29 +147,7 @@ def maybe_get_update_hint() -> str | None:
     return None
 
 def _upsert_project_env(key: str, value: str) -> Path:
-    lines: list[str] = []
-    if PROJECT_ENV_PATH.exists():
-        lines = PROJECT_ENV_PATH.read_text(encoding="utf-8").splitlines()
-
-    replaced = False
-    for index, raw_line in enumerate(lines):
-        stripped = raw_line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        existing_key = stripped.split("=", 1)[0].strip()
-        if existing_key != key:
-            continue
-        lines[index] = f"{key}={value}"
-        replaced = True
-        break
-
-    if not replaced:
-        if lines and lines[-1].strip():
-            lines.append("")
-        lines.append(f"{key}={value}")
-
-    PROJECT_ENV_PATH.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
-    return PROJECT_ENV_PATH
+    return upsert_env_value(PROJECT_ENV_PATH, key, value)
 
 def clear_project_runtime_env() -> None:
     """CLI 只认当前项目 .env，先清掉 shell 注入的 OpenMy/Gemini 配置。"""

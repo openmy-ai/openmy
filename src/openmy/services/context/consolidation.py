@@ -44,7 +44,6 @@ from openmy.services.context.active_context import (
     TodayState,
 )
 from openmy.services.context.corrections import apply_corrections, load_corrections
-from openmy.utils.io import safe_write_json
 from openmy.utils.time import iso_at, iso_now
 
 
@@ -52,61 +51,14 @@ DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ROOT_FILE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.(?:md|meta\.json|scenes\.json)$")
 
 
-DEFAULT_PROFILE_PAYLOAD: dict[str, Any] = {
-    "name": "User",
-    "language": "en",
-    "timezone": "UTC",
-    "audio_source_dir": "",
-    "roles": [],
-    "answer_language": "en",
-    "answer_style": "direct_compact",
-    "tone": "plain",
-    "avoid": ["long_bullet_lists", "empty_empathy"],
-    "prefer": ["short_paragraphs", "specific_recommendations"],
-}
-_ACTIVE_TIMEZONE = DEFAULT_PROFILE_PAYLOAD["timezone"]
-
-
-def profile_path(data_root: Path) -> Path:
-    return data_root / "profile.json"
-
-
-def load_profile_settings(data_root: Path) -> dict[str, Any]:
-    payload = dict(DEFAULT_PROFILE_PAYLOAD)
-    path = profile_path(data_root)
-    if not path.exists():
-        return payload
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return payload
-
-    for key, value in raw.items():
-        if key not in payload:
-            continue
-        if isinstance(payload[key], list):
-            if isinstance(value, list):
-                payload[key] = value
-            continue
-        if isinstance(value, str) and value.strip():
-            payload[key] = value.strip()
-    return payload
-
-
-def save_profile_settings(data_root: Path, updates: dict[str, Any]) -> dict[str, Any]:
-    payload = load_profile_settings(data_root)
-    for key, value in updates.items():
-        if key not in payload:
-            continue
-        if isinstance(payload[key], list):
-            if isinstance(value, list):
-                payload[key] = value
-            continue
-        if isinstance(value, str) and value.strip():
-            payload[key] = value.strip()
-    path = profile_path(data_root)
-    safe_write_json(path, payload, trailing_newline=True)
-    return payload
+# Profile helpers live in openmy.services.onboarding.state; re-exported here
+# for backward compatibility with existing callers.
+from openmy.services.onboarding.state import (  # noqa: E402, F401
+    DEFAULT_PROFILE_PAYLOAD,
+    load_profile_settings,
+    profile_path,
+    save_profile_settings,
+)
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -157,17 +109,17 @@ def _known_relation_type(name: str) -> str:
 
 
 def _slug(prefix: str, text: str) -> str:
-    cleaned = re.sub(r"[^\w\u4e00-\u9fff]+", "_", text).strip("_").lower()
+    cleaned = re.sub(r"[^\w一-鿿]+", "_", text).strip("_").lower()
     cleaned = cleaned[:40] if cleaned else "item"
     return f"{prefix}_{cleaned}"
 
 
-def _iso_at(date_str: str, time_str: str = "00:00") -> str:
-    return iso_at(date_str, time_str, timezone_name=_ACTIVE_TIMEZONE)
+def _iso_at(date_str: str, time_str: str = "00:00", *, timezone_name: str = "") -> str:
+    return iso_at(date_str, time_str, timezone_name=timezone_name or DEFAULT_PROFILE_PAYLOAD["timezone"])
 
 
-def _iso_day_end(date_str: str) -> str:
-    return iso_at(date_str, "23:59", timezone_name=_ACTIVE_TIMEZONE, seconds=59)
+def _iso_day_end(date_str: str, *, timezone_name: str = "") -> str:
+    return iso_at(date_str, "23:59", timezone_name=timezone_name or DEFAULT_PROFILE_PAYLOAD["timezone"], seconds=59)
 
 
 def _build_provenance(
@@ -233,7 +185,7 @@ def _extract_projects(briefing: dict[str, Any], meta: dict[str, Any]) -> dict[st
     return projects
 
 
-def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: str) -> list[OpenLoop]:
+def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: str, *, timezone_name: str = "") -> list[OpenLoop]:
     loops: dict[str, OpenLoop] = {}
 
     raw_intents = meta.get("intents")
@@ -264,16 +216,16 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                     waiting_on=intent.who.label if intent.who.kind in {"agent", "other_person"} else "",
                     source_rank="declared",
                     confidence=intent.confidence_score or 0.8,
-                    first_seen_at=_iso_at(date_str),
-                    last_seen_at=_iso_day_end(date_str),
+                    first_seen_at=_iso_at(date_str, timezone_name=timezone_name),
+                    last_seen_at=_iso_day_end(date_str, timezone_name=timezone_name),
                     reinforcement_count=1,
                     due_hint=intent.due.iso_date or intent.due.raw_text,
-                    valid_from=intent.valid_from or _iso_at(date_str),
+                    valid_from=intent.valid_from or _iso_at(date_str, timezone_name=timezone_name),
                     valid_until=intent.valid_until or "",
                     current_state=adjudicate_temporal_state(
                         status=intent.status,
                         current_state=intent.current_state,
-                        valid_from=intent.valid_from or _iso_at(date_str),
+                        valid_from=intent.valid_from or _iso_at(date_str, timezone_name=timezone_name),
                         valid_until=intent.valid_until,
                         due_iso_date=intent.due.iso_date,
                         reference_date=date_str,
@@ -281,7 +233,7 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                     state_reason=adjudicate_temporal_state(
                         status=intent.status,
                         current_state=intent.current_state,
-                        valid_from=intent.valid_from or _iso_at(date_str),
+                        valid_from=intent.valid_from or _iso_at(date_str, timezone_name=timezone_name),
                         valid_until=intent.valid_until,
                         due_iso_date=intent.due.iso_date,
                         reference_date=date_str,
@@ -318,10 +270,10 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                 status="open",
                 source_rank="aggregate",
                 confidence=0.8,
-                first_seen_at=_iso_at(date_str),
-                last_seen_at=_iso_day_end(date_str),
+                first_seen_at=_iso_at(date_str, timezone_name=timezone_name),
+                last_seen_at=_iso_day_end(date_str, timezone_name=timezone_name),
                 reinforcement_count=1,
-                valid_from=_iso_at(date_str),
+                valid_from=_iso_at(date_str, timezone_name=timezone_name),
                 current_state="active",
                 state_reason="briefing_open_loop",
                 provenance_refs=_build_provenance(
@@ -356,10 +308,10 @@ def _make_open_loops(briefing: dict[str, Any], meta: dict[str, Any], date_str: s
                 status="open",
                 source_rank="declared",
                 confidence=0.9,
-                first_seen_at=_iso_at(date_str),
-                last_seen_at=_iso_day_end(date_str),
+                first_seen_at=_iso_at(date_str, timezone_name=timezone_name),
+                last_seen_at=_iso_day_end(date_str, timezone_name=timezone_name),
                 reinforcement_count=1,
-                valid_from=_iso_at(date_str),
+                valid_from=_iso_at(date_str, timezone_name=timezone_name),
                 current_state="active",
                 state_reason="meta_open_loop",
                 provenance_refs=_build_provenance(
@@ -405,13 +357,15 @@ def _filter_stale_loops(
 def _auto_close_loops(
     loops: dict[str, OpenLoop],
     all_metas: list[tuple[str, dict]],
+    *,
+    timezone_name: str = "",
 ) -> None:
     """Fix I: 用新录音的 done intents 自动关闭匹配的 open_loops。"""
 
     def _token_set(text: str) -> set[str]:
         return {
             token
-            for token in re.split(r"[^\w\u4e00-\u9fff]+", text.lower())
+            for token in re.split(r"[^\w一-鿿]+", text.lower())
             if token
         }
 
@@ -445,7 +399,7 @@ def _auto_close_loops(
                 continue
             intent = Intent.from_dict(raw)
             if intent.status in DONE_STATUSES and intent.what.strip():
-                done_whats[intent.what.strip().lower()] = intent.valid_until or _iso_at(date_str, "23:59")
+                done_whats[intent.what.strip().lower()] = intent.valid_until or _iso_at(date_str, "23:59", timezone_name=timezone_name)
 
     if not done_whats:
         return
@@ -463,7 +417,7 @@ def _auto_close_loops(
                 break
 
 
-def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: str) -> list[DecisionItem]:
+def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: str, *, timezone_name: str = "") -> list[DecisionItem]:
     items: dict[str, DecisionItem] = {}
 
     raw_intents = meta.get("intents")
@@ -486,14 +440,14 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
                     topic=topic,
                     decision=decision,
                     scope="project",
-                    effective_from=_iso_at(date_str, "12:00"),
+                    effective_from=_iso_at(date_str, "12:00", timezone_name=timezone_name),
                     source_rank="declared",
                     confidence=intent.confidence_score or 0.9,
-                    valid_from=intent.valid_from or _iso_at(date_str),
+                    valid_from=intent.valid_from or _iso_at(date_str, timezone_name=timezone_name),
                     valid_until=intent.valid_until or "",
                     current_state=intent.current_state or "active",
-                    first_seen_at=intent.valid_from or _iso_at(date_str),
-                    last_seen_at=_iso_day_end(date_str),
+                    first_seen_at=intent.valid_from or _iso_at(date_str, timezone_name=timezone_name),
+                    last_seen_at=_iso_day_end(date_str, timezone_name=timezone_name),
                     reinforcement_count=1,
                     state_reason="intent_decision",
                     provenance_refs=_build_provenance(
@@ -521,13 +475,13 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
                 topic="briefing",
                 decision=decision,
                 scope="project",
-                effective_from=_iso_at(date_str, "12:00"),
+                effective_from=_iso_at(date_str, "12:00", timezone_name=timezone_name),
                 source_rank="aggregate",
                 confidence=0.8,
-                valid_from=_iso_at(date_str),
+                valid_from=_iso_at(date_str, timezone_name=timezone_name),
                 current_state="active",
-                first_seen_at=_iso_at(date_str),
-                last_seen_at=_iso_day_end(date_str),
+                first_seen_at=_iso_at(date_str, timezone_name=timezone_name),
+                last_seen_at=_iso_day_end(date_str, timezone_name=timezone_name),
                 reinforcement_count=1,
                 state_reason="briefing_decision",
                 provenance_refs=_build_provenance(
@@ -555,13 +509,13 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
                 topic=topic,
                 decision=decision,
                 scope="project",
-                effective_from=_iso_at(date_str, "12:00"),
+                effective_from=_iso_at(date_str, "12:00", timezone_name=timezone_name),
                 source_rank="declared",
                 confidence=0.9,
-                valid_from=_iso_at(date_str),
+                valid_from=_iso_at(date_str, timezone_name=timezone_name),
                 current_state="active",
-                first_seen_at=_iso_at(date_str),
-                last_seen_at=_iso_day_end(date_str),
+                first_seen_at=_iso_at(date_str, timezone_name=timezone_name),
+                last_seen_at=_iso_day_end(date_str, timezone_name=timezone_name),
                 reinforcement_count=1,
                 state_reason="meta_decision",
                 provenance_refs=_build_provenance(
@@ -575,7 +529,7 @@ def _make_decisions(briefing: dict[str, Any], meta: dict[str, Any], date_str: st
     return list(items.values())
 
 
-def _make_recent_events(meta: dict[str, Any], date_str: str) -> list[EventItem]:
+def _make_recent_events(meta: dict[str, Any], date_str: str, *, timezone_name: str = "") -> list[EventItem]:
     events: list[EventItem] = []
     for raw in meta.get("events", []):
         if not isinstance(raw, dict):
@@ -585,7 +539,7 @@ def _make_recent_events(meta: dict[str, Any], date_str: str) -> list[EventItem]:
         if not summary:
             continue
         time_label = event.time.strip() or str(raw.get("time", "")).strip()
-        happened_at = event.valid_from or _iso_at(date_str, time_label or "00:00")
+        happened_at = event.valid_from or _iso_at(date_str, time_label or "00:00", timezone_name=timezone_name)
         events.append(
             EventItem(
                 id=event.event_id or _slug("event", f"{date_str}_{summary}"),
@@ -744,43 +698,22 @@ def _group_fact_conflicts(meta_payload: dict[str, Any], date_str: str) -> dict[s
     return grouped
 
 
-def consolidate(data_root: Path, existing_context: ActiveContext | None = None) -> ActiveContext:
-    """扫描所有日期数据，生成新的 ActiveContext。"""
-    global _ACTIVE_TIMEZONE
-    project_root = data_root.parent
-    dates = _list_dates(project_root, data_root)
-    ctx = ActiveContext()
+# ---------------------------------------------------------------------------
+# consolidate() decomposition — five named extraction stages
+# ---------------------------------------------------------------------------
 
-    if existing_context:
-        ctx.context_seq = existing_context.context_seq + 1
-    else:
-        ctx.context_seq = 1
-    ctx.materialized_from_event_seq = ctx.context_seq
-    profile = load_profile_settings(data_root)
-    _ACTIVE_TIMEZONE = str(profile.get("timezone", "") or DEFAULT_PROFILE_PAYLOAD["timezone"])
-    ctx.generated_at = iso_now(data_root=data_root)
-    ctx.stable_profile = StableProfile(
-        identity=Identity(
-            canonical_name=str(profile.get("name", "") or DEFAULT_PROFILE_PAYLOAD["name"]),
-            preferred_name=str(profile.get("name", "") or DEFAULT_PROFILE_PAYLOAD["name"]),
-            primary_language=str(profile.get("language", "") or DEFAULT_PROFILE_PAYLOAD["language"]),
-            timezone=str(profile.get("timezone", "") or DEFAULT_PROFILE_PAYLOAD["timezone"]),
-            roles=list(profile.get("roles", DEFAULT_PROFILE_PAYLOAD["roles"])),
-        ),
-        communication_contract=CommunicationContract(
-            answer_language=str(profile.get("answer_language", "") or DEFAULT_PROFILE_PAYLOAD["answer_language"]),
-            answer_style=str(profile.get("answer_style", "") or DEFAULT_PROFILE_PAYLOAD["answer_style"]),
-            tone=str(profile.get("tone", "") or DEFAULT_PROFILE_PAYLOAD["tone"]),
-            avoid=list(profile.get("avoid", DEFAULT_PROFILE_PAYLOAD["avoid"])),
-            prefer=list(profile.get("prefer", DEFAULT_PROFILE_PAYLOAD["prefer"])),
-        ),
-    )
 
-    if not dates:
-        ctx.status_line = "当前还没有可汇总的日数据。"
-        _append_update_log(data_root, ctx)
-        return ctx
+def _scan_daily_data(
+    dates: list[str],
+    data_root: Path,
+    project_root: Path,
+    *,
+    timezone_name: str = "",
+) -> dict[str, Any]:
+    """Stage 1: iterate date directories and load scenes/briefings/meta files.
 
+    Returns a dict with all accumulated intermediate state needed by later stages.
+    """
     latest_date = dates[-1]
     latest_day = _parse_date(latest_date)
 
@@ -844,7 +777,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             if delta_days <= 6 and bool(role.get("needs_review")):
                 uncertain_count_7d += 1
 
-        for loop in _make_open_loops(briefing_payload, meta_payload, date_str):
+        for loop in _make_open_loops(briefing_payload, meta_payload, date_str, timezone_name=timezone_name):
             canonical = build_canonical_key("loop", loop.title)
             existing_loop = all_loops.get(canonical)
             if existing_loop is None:
@@ -852,7 +785,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             else:
                 all_loops[canonical] = _merge_loop(existing_loop, loop)
 
-        for decision in _make_decisions(briefing_payload, meta_payload, date_str):
+        for decision in _make_decisions(briefing_payload, meta_payload, date_str, timezone_name=timezone_name):
             canonical = build_canonical_key("decision", decision.decision, decision.topic)
             if canonical not in all_decisions:
                 all_decisions[canonical] = decision
@@ -862,7 +795,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
                 existing_decision.last_seen_at = max(filter(None, [existing_decision.last_seen_at, decision.last_seen_at]), default=decision.last_seen_at)
                 existing_decision.reinforcement_count = max(existing_decision.reinforcement_count, 1) + 1
 
-        all_events.extend(_make_recent_events(meta_payload, date_str))
+        all_events.extend(_make_recent_events(meta_payload, date_str, timezone_name=timezone_name))
         for canonical, claims in _group_fact_conflicts(meta_payload, date_str).items():
             conflict_candidates[canonical].extend(claims)
 
@@ -872,8 +805,8 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             all_projects[project_title] = {
                 "title": project_title,
                 "snippets": snippets,
-                "last_touched_at": _iso_day_end(date_str),
-                "valid_from": _iso_at(date_str),
+                "last_touched_at": _iso_day_end(date_str, timezone_name=timezone_name),
+                "valid_from": _iso_at(date_str, timezone_name=timezone_name),
                 "provenance_refs": _build_provenance(
                     date_str=date_str,
                     kind="project.aggregate",
@@ -882,11 +815,11 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             }
 
         if delta_days <= 2:
-            for decision in _make_decisions(briefing_payload, meta_payload, date_str):
+            for decision in _make_decisions(briefing_payload, meta_payload, date_str, timezone_name=timezone_name):
                 recent_changes.append(
                     ChangeItem(
                         change_id=_slug("chg", f"{date_str}_{decision.decision}"),
-                        changed_at=_iso_day_end(date_str),
+                        changed_at=_iso_day_end(date_str, timezone_name=timezone_name),
                         change_type="new_decision",
                         summary=decision.decision,
                         affected_ids=[decision.decision_id],
@@ -894,8 +827,38 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
                     )
                 )
 
+    return {
+        "latest_date": latest_date,
+        "latest_day": latest_day,
+        "addressed_date_hits": addressed_date_hits,
+        "addressed_counts_7d": addressed_counts_7d,
+        "addressed_counts_30d": addressed_counts_30d,
+        "addressed_topics": addressed_topics,
+        "all_projects": all_projects,
+        "all_loops": all_loops,
+        "all_decisions": all_decisions,
+        "all_events": all_events,
+        "all_metas_for_close": all_metas_for_close,
+        "conflict_candidates": conflict_candidates,
+        "recent_changes": recent_changes,
+        "scene_count_7d": scene_count_7d,
+        "coverage_days_30d": coverage_days_30d,
+        "uncertain_count_7d": uncertain_count_7d,
+        "latest_scenes": latest_scenes,
+        "latest_briefing": latest_briefing,
+        "latest_meta": latest_meta,
+    }
+
+
+def _aggregate_entities(
+    daily_data: dict[str, Any],
+    *,
+    timezone_name: str = "",
+) -> list[EntityRegistryCard]:
+    """Stage 2: build people registry from addressed_date_hits."""
+    addressed_date_hits = daily_data["addressed_date_hits"]
     # Fix D: 门槛从 >=2天 降到 >=1天，首次出现 confidence 0.5
-    ctx.stable_profile.key_people_registry = [
+    return [
         EntityRegistryCard(
             id=_slug("entity", name),
             entity_id=name,
@@ -904,15 +867,33 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
             aliases=[name],
             confidence=0.9 if len(date_hits) >= 2 else 0.5,
             source_rank="aggregate",
-            last_seen_at=_iso_day_end(max(date_hits)),
+            last_seen_at=_iso_day_end(max(date_hits), timezone_name=timezone_name),
         )
         for name, date_hits in sorted(addressed_date_hits.items())
         if len(date_hits) >= 1
     ]
 
-    # Fix I: 用 done intents 自动关闭匹配的 open_loops
-    _auto_close_loops(all_loops, all_metas_for_close)
 
+def _build_loops_and_decisions(
+    daily_data: dict[str, Any],
+    *,
+    timezone_name: str = "",
+) -> tuple[dict[str, OpenLoop], dict[str, DecisionItem]]:
+    """Stage 3: auto-close stale loops, return final loops and decisions dicts."""
+    all_loops = daily_data["all_loops"]
+    all_metas_for_close = daily_data["all_metas_for_close"]
+
+    # Fix I: 用 done intents 自动关闭匹配的 open_loops
+    _auto_close_loops(all_loops, all_metas_for_close, timezone_name=timezone_name)
+
+    return all_loops, daily_data["all_decisions"]
+
+
+def _detect_conflicts(
+    daily_data: dict[str, Any],
+) -> list[ConflictItem]:
+    """Stage 4: find contradicting facts across days."""
+    conflict_candidates = daily_data["conflict_candidates"]
     recent_conflicts: list[ConflictItem] = []
     for canonical, claims in conflict_candidates.items():
         variants = sorted({item["variant"] for item in claims if item.get("variant")})
@@ -940,6 +921,38 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
                 provenance_refs=refs,
             )
         )
+    return recent_conflicts
+
+
+def _build_quality_metrics(
+    daily_data: dict[str, Any],
+    *,
+    ctx: ActiveContext,
+    dates: list[str],
+    timezone_name: str = "",
+) -> None:
+    """Stage 5: compute quality scores, realtime context, status line, and core memory.
+
+    Mutates *ctx* in place — sets rolling_context, core_memory, realtime_context,
+    quality, and status_line.
+    """
+    latest_date = daily_data["latest_date"]
+    latest_day = daily_data["latest_day"]
+    latest_scenes = daily_data["latest_scenes"]
+    latest_briefing = daily_data["latest_briefing"]
+    latest_meta = daily_data["latest_meta"]
+    addressed_counts_7d = daily_data["addressed_counts_7d"]
+    addressed_date_hits = daily_data["addressed_date_hits"]
+    addressed_topics = daily_data["addressed_topics"]
+    scene_count_7d = daily_data["scene_count_7d"]
+    coverage_days_30d = daily_data["coverage_days_30d"]
+    uncertain_count_7d = daily_data["uncertain_count_7d"]
+    all_loops = daily_data["all_loops"]
+    all_decisions = daily_data["all_decisions"]
+    all_events = daily_data["all_events"]
+    all_projects = daily_data["all_projects"]
+    recent_changes = daily_data["recent_changes"]
+    recent_conflicts = daily_data["recent_conflicts"]
 
     # 项目去重 — 合并相似名、过滤一次性提及（映射表在 config.py）
     from openmy.config import PROJECT_MERGE_MAP
@@ -956,6 +969,8 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
                 existing["snippets"]["last_touched_at"] = snippets["last_touched_at"]
         else:
             filtered_projects[merged] = {"snippets": snippets}
+
+    addressed_counts_30d = daily_data["addressed_counts_30d"]
 
     ctx.rolling_context = RollingContext(
         recent_changes=recent_changes[:10],
@@ -1008,7 +1023,7 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
                 entity_id=name,
                 interaction_7d_count=addressed_counts_7d[name],
                 interaction_30d_count=addressed_counts_30d[name],
-                last_interaction_at=_iso_day_end(max(addressed_date_hits[name])),
+                last_interaction_at=_iso_day_end(max(addressed_date_hits[name]), timezone_name=timezone_name),
                 recent_topics=addressed_topics[name][:3],
             )
             for name, _count in addressed_counts_30d.most_common()
@@ -1154,6 +1169,58 @@ def consolidate(data_root: Path, existing_context: ActiveContext | None = None) 
         f"当前有 {len(active_loops)} 个待办未闭环；"
         f"高频互动对象是 {entity_text}。"
     )
+
+
+def consolidate(data_root: Path, existing_context: ActiveContext | None = None) -> ActiveContext:
+    """扫描所有日期数据，生成新的 ActiveContext。"""
+    project_root = data_root.parent
+    dates = _list_dates(project_root, data_root)
+    ctx = ActiveContext()
+
+    if existing_context:
+        ctx.context_seq = existing_context.context_seq + 1
+    else:
+        ctx.context_seq = 1
+    ctx.materialized_from_event_seq = ctx.context_seq
+    profile = load_profile_settings(data_root)
+    timezone_name = str(profile.get("timezone", "") or DEFAULT_PROFILE_PAYLOAD["timezone"])
+    ctx.generated_at = iso_now(data_root=data_root)
+    ctx.stable_profile = StableProfile(
+        identity=Identity(
+            canonical_name=str(profile.get("name", "") or DEFAULT_PROFILE_PAYLOAD["name"]),
+            preferred_name=str(profile.get("name", "") or DEFAULT_PROFILE_PAYLOAD["name"]),
+            primary_language=str(profile.get("language", "") or DEFAULT_PROFILE_PAYLOAD["language"]),
+            timezone=str(profile.get("timezone", "") or DEFAULT_PROFILE_PAYLOAD["timezone"]),
+            roles=list(profile.get("roles", DEFAULT_PROFILE_PAYLOAD["roles"])),
+        ),
+        communication_contract=CommunicationContract(
+            answer_language=str(profile.get("answer_language", "") or DEFAULT_PROFILE_PAYLOAD["answer_language"]),
+            answer_style=str(profile.get("answer_style", "") or DEFAULT_PROFILE_PAYLOAD["answer_style"]),
+            tone=str(profile.get("tone", "") or DEFAULT_PROFILE_PAYLOAD["tone"]),
+            avoid=list(profile.get("avoid", DEFAULT_PROFILE_PAYLOAD["avoid"])),
+            prefer=list(profile.get("prefer", DEFAULT_PROFILE_PAYLOAD["prefer"])),
+        ),
+    )
+
+    if not dates:
+        ctx.status_line = "当前还没有可汇总的日数据。"
+        _append_update_log(data_root, ctx)
+        return ctx
+
+    # Stage 1: scan all daily data
+    daily_data = _scan_daily_data(dates, data_root, project_root, timezone_name=timezone_name)
+
+    # Stage 2: aggregate entity registry
+    ctx.stable_profile.key_people_registry = _aggregate_entities(daily_data, timezone_name=timezone_name)
+
+    # Stage 3: finalize loops (auto-close done ones) and decisions
+    _build_loops_and_decisions(daily_data, timezone_name=timezone_name)
+
+    # Stage 4: detect fact conflicts
+    daily_data["recent_conflicts"] = _detect_conflicts(daily_data)
+
+    # Stage 5: build quality metrics, rolling/realtime context, status line
+    _build_quality_metrics(daily_data, ctx=ctx, dates=dates, timezone_name=timezone_name)
 
     corrections = load_corrections(data_root)
     if corrections:

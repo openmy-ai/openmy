@@ -190,31 +190,10 @@ def meta_has_core_content(payload: dict[str, Any]) -> bool:
 
 
 def upsert_project_env(cli_getter: Callable[[], Any], key: str, value: str) -> Path:
+    from openmy.utils.io import upsert_env_value
+
     cli = cli_getter()
-    env_path = cli.PROJECT_ENV_PATH
-    lines: list[str] = []
-    if env_path.exists():
-        lines = env_path.read_text(encoding="utf-8").splitlines()
-
-    replaced = False
-    for index, raw_line in enumerate(lines):
-        stripped = raw_line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        existing_key = stripped.split("=", 1)[0].strip()
-        if existing_key != key:
-            continue
-        lines[index] = f"{key}={value}"
-        replaced = True
-        break
-
-    if not replaced:
-        if lines and lines[-1].strip():
-            lines.append("")
-        lines.append(f"{key}={value}")
-
-    env_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
-    return env_path
+    return upsert_env_value(cli.PROJECT_ENV_PATH, key, value)
 
 
 def normalize_week_value(raw: str | None) -> str:

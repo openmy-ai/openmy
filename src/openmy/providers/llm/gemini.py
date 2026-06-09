@@ -27,6 +27,8 @@ def _strip_code_fences(text: str) -> str:
 
 class GeminiLLMProvider(TextGenerationProvider):
     name = "gemini"
+    default_model = "gemini-3.1-flash-lite-preview"
+    api_key_env_vars = ["GEMINI_API_KEY"]
 
     def _client(self):
         if getattr(genai, "Client", None) is None:

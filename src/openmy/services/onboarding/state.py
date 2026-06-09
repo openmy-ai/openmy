@@ -1,9 +1,77 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 from openmy.utils.io import safe_write_json
+
+
+# ---------------------------------------------------------------------------
+# Profile settings — canonical home for load/save profile helpers.
+# These were originally in consolidation.py and are re-exported from there
+# for backward compatibility.
+# ---------------------------------------------------------------------------
+
+DEFAULT_PROFILE_PAYLOAD: dict[str, Any] = {
+    "name": "User",
+    "language": "en",
+    "timezone": "UTC",
+    "audio_source_dir": "",
+    "roles": [],
+    "answer_language": "en",
+    "answer_style": "direct_compact",
+    "tone": "plain",
+    "avoid": ["long_bullet_lists", "empty_empathy"],
+    "prefer": ["short_paragraphs", "specific_recommendations"],
+}
+
+
+def profile_path(data_root: Path) -> Path:
+    return data_root / "profile.json"
+
+
+def load_profile_settings(data_root: Path) -> dict[str, Any]:
+    payload = dict(DEFAULT_PROFILE_PAYLOAD)
+    path = profile_path(data_root)
+    if not path.exists():
+        return payload
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return payload
+
+    for key, value in raw.items():
+        if key not in payload:
+            continue
+        if isinstance(payload[key], list):
+            if isinstance(value, list):
+                payload[key] = value
+            continue
+        if isinstance(value, str) and value.strip():
+            payload[key] = value.strip()
+    return payload
+
+
+def save_profile_settings(data_root: Path, updates: dict[str, Any]) -> dict[str, Any]:
+    payload = load_profile_settings(data_root)
+    for key, value in updates.items():
+        if key not in payload:
+            continue
+        if isinstance(payload[key], list):
+            if isinstance(value, list):
+                payload[key] = value
+            continue
+        if isinstance(value, str) and value.strip():
+            payload[key] = value.strip()
+    path = profile_path(data_root)
+    safe_write_json(path, payload, trailing_newline=True)
+    return payload
+
+
+# ---------------------------------------------------------------------------
+# Onboarding state
+# ---------------------------------------------------------------------------
 
 PRIORITY = ["funasr", "faster-whisper", "dashscope", "gemini", "groq", "deepgram"]
 LABELS = {
@@ -128,8 +196,6 @@ def load_onboarding_state(data_root: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        import json
-
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}

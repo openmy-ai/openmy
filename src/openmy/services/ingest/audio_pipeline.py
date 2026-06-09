@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from openmy.adapters.transcription.gemini_cli import load_vocab_terms
+from openmy.utils.io import load_vocab_terms
 from openmy.config import (
     AUDIO_PIPELINE_TIMEOUT,
     GEMINI_MODEL,
@@ -26,7 +26,7 @@ from openmy.config import (
 )
 from openmy.utils.errors import FriendlyCliError, doc_url
 from openmy.providers.base import TranscriptionResult, TranscriptionSegment, TranscriptionWord
-from openmy.providers.registry import ProviderRegistry
+from openmy.providers.registry import ProviderRegistry, STT_PROVIDERS
 from openmy.services.cleaning.cleaner import VOCAB_EXAMPLE_FILE, VOCAB_FILE, resolve_resource_path
 
 
@@ -308,7 +308,8 @@ def prepare_audio_chunks(
 ) -> list[PreparedChunk]:
     work_dir.mkdir(parents=True, exist_ok=True)
     final_provider_name = (provider_name or "").lower()
-    prefer_wav_chunks = final_provider_name == "funasr"
+    provider_cls = STT_PROVIDERS.get(final_provider_name)
+    prefer_wav_chunks = getattr(provider_cls, 'preferred_input_format', 'mp3') == 'wav'
     compressed_path = work_dir / f"{audio_path.stem}.mp3"
     normalized_wav_path = work_dir / f"{audio_path.stem}.wav"
 

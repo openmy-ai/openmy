@@ -110,6 +110,9 @@ def _normalize_segments(payload: dict[str, Any]) -> list[TranscriptionSegment]:
 class FunASRSTTProvider(SpeechToTextProvider):
     name = "funasr"
     requires_api_key = False
+    default_model = "paraformer-zh"
+    api_key_env_vars: list[str] = []
+    preferred_input_format = "wav"
 
     def transcribe(
         self,

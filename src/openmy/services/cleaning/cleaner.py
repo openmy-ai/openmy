@@ -327,7 +327,7 @@ def sync_correction_to_vocab(wrong: str, right: str, context: str = ''):
 #  主入口
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def clean_text(text: str, api_key: str | None = None) -> str:
+def clean_text(text: str) -> str:
     """完整清洗流程（纯规则引擎，不调 API）。
 
     设计原则：
