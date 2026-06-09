@@ -120,14 +120,9 @@ def _collect_finished_at(step_payloads: list[dict[str, Any]]) -> str | None:
 
 
 def _duration_seconds(started_at: str | None, finished_at: str | None) -> int | None:
-    if not started_at or not finished_at:
-        return None
-    try:
-        started = datetime.fromisoformat(started_at)
-        finished = datetime.fromisoformat(finished_at)
-    except ValueError:
-        return None
-    return max(0, int((finished - started).total_seconds()))
+    from openmy.utils.time import duration_seconds
+
+    return duration_seconds(started_at, finished_at)
 
 
 def _sync_job_from_run_status(job_id: str, date_str: str, last_synced_mtime_ns: int | None) -> tuple[str | None, int | None]:

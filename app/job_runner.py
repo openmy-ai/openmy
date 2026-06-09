@@ -394,14 +394,9 @@ class JobRunner:
 
     @staticmethod
     def _duration_seconds(started_at: str | None, finished_at: str | None) -> int | None:
-        if not started_at or not finished_at:
-            return None
-        try:
-            started = datetime.fromisoformat(started_at)
-            finished = datetime.fromisoformat(finished_at)
-        except ValueError:
-            return None
-        return max(0, int((finished - started).total_seconds()))
+        from openmy.utils.time import duration_seconds
+
+        return duration_seconds(started_at, finished_at)
 
     @staticmethod
     def _compute_progress_pct(steps: list[dict[str, Any]], status: str) -> int:

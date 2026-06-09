@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from openmy.utils.search import resolve_item as _resolve_item
+
 
 def _server():
     import app.server as server_module
@@ -43,13 +45,12 @@ def _append_context_correction(op: str, target_type: str, target_id: str, payloa
 
 
 def handle_close_loop(data: dict) -> dict:
-    server = _server()
     query = str(data.get('query', '')).strip()
     status = str(data.get('status', 'done')).strip() or 'done'
     ctx = load_active_context_model()
     if ctx is None:
         return {'success': False, 'error': 'active_context.json 不存在，请先生成 context。'}
-    loop = server._resolve_item(ctx.rolling_context.open_loops, query, lambda item: [item.loop_id, item.id, item.title])
+    loop = _resolve_item(ctx.rolling_context.open_loops, query, lambda item: [item.loop_id, item.id, item.title])
     if loop is None:
         return {'success': False, 'error': f'没找到待办：{query}'}
     target_id = loop.loop_id or loop.id or loop.title
@@ -58,12 +59,11 @@ def handle_close_loop(data: dict) -> dict:
 
 
 def handle_reject_loop(data: dict) -> dict:
-    server = _server()
     query = str(data.get('query', '')).strip()
     ctx = load_active_context_model()
     if ctx is None:
         return {'success': False, 'error': 'active_context.json 不存在，请先生成 context。'}
-    loop = server._resolve_item(ctx.rolling_context.open_loops, query, lambda item: [item.loop_id, item.id, item.title])
+    loop = _resolve_item(ctx.rolling_context.open_loops, query, lambda item: [item.loop_id, item.id, item.title])
     if loop is None:
         return {'success': False, 'error': f'没找到待办：{query}'}
     target_id = loop.loop_id or loop.id or loop.title
@@ -72,14 +72,13 @@ def handle_reject_loop(data: dict) -> dict:
 
 
 def handle_merge_project(data: dict) -> dict:
-    server = _server()
     source_query = str(data.get('source', '')).strip()
     target_query = str(data.get('target', '')).strip()
     ctx = load_active_context_model()
     if ctx is None:
         return {'success': False, 'error': 'active_context.json 不存在，请先生成 context。'}
-    source_project = server._resolve_item(ctx.rolling_context.active_projects, source_query, lambda item: [item.project_id, item.id, item.title])
-    target_project = server._resolve_item(ctx.rolling_context.active_projects, target_query, lambda item: [item.project_id, item.id, item.title])
+    source_project = _resolve_item(ctx.rolling_context.active_projects, source_query, lambda item: [item.project_id, item.id, item.title])
+    target_project = _resolve_item(ctx.rolling_context.active_projects, target_query, lambda item: [item.project_id, item.id, item.title])
     if source_project is None or target_project is None:
         return {'success': False, 'error': '找不到要合并的项目。'}
     source_id = source_project.project_id or source_project.id or source_project.title
@@ -89,12 +88,11 @@ def handle_merge_project(data: dict) -> dict:
 
 
 def handle_reject_project(data: dict) -> dict:
-    server = _server()
     query = str(data.get('query', '')).strip()
     ctx = load_active_context_model()
     if ctx is None:
         return {'success': False, 'error': 'active_context.json 不存在，请先生成 context。'}
-    project = server._resolve_item(ctx.rolling_context.active_projects, query, lambda item: [item.project_id, item.id, item.title])
+    project = _resolve_item(ctx.rolling_context.active_projects, query, lambda item: [item.project_id, item.id, item.title])
     if project is None:
         return {'success': False, 'error': f'没找到项目：{query}'}
     target_id = project.project_id or project.id or project.title
@@ -103,12 +101,11 @@ def handle_reject_project(data: dict) -> dict:
 
 
 def handle_reject_decision(data: dict) -> dict:
-    server = _server()
     query = str(data.get('query', '')).strip()
     ctx = load_active_context_model()
     if ctx is None:
         return {'success': False, 'error': 'active_context.json 不存在，请先生成 context。'}
-    decision = server._resolve_item(ctx.rolling_context.recent_decisions, query, lambda item: [item.decision_id, item.id, item.decision, item.topic])
+    decision = _resolve_item(ctx.rolling_context.recent_decisions, query, lambda item: [item.decision_id, item.id, item.decision, item.topic])
     if decision is None:
         return {'success': False, 'error': f'没找到决策：{query}'}
     target_id = decision.decision_id or decision.id or decision.decision

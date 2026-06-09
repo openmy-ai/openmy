@@ -6,12 +6,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlencode
 
-from openmy.services.screen_recognition.capture import (
-    activity_summary as local_activity_summary,
+from openmy.services.screen_recognition.capture_engine import (
     daemon_running,
     is_capture_supported,
-    query_events,
     read_status,
+)
+from openmy.services.screen_recognition.capture_store import (
+    activity_summary as local_activity_summary,
+    query_events,
     search_elements as local_search_elements,
 )
 

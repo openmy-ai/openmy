@@ -156,40 +156,9 @@ def load_json(path: Path):
         return None
 
 
-def _normalize_match_text(text: str) -> str:
-    return re.sub(r"\s+", "", str(text or "")).strip().lower()
-
-
-def _score_match(query: str, *candidates: str) -> int:
-    normalized_query = _normalize_match_text(query)
-    if not normalized_query:
-        return -1
-
-    best = -1
-    for candidate in candidates:
-        normalized_candidate = _normalize_match_text(candidate)
-        if not normalized_candidate:
-            continue
-        if normalized_query == normalized_candidate:
-            return 1000 + len(normalized_candidate)
-        if normalized_query in normalized_candidate:
-            best = max(best, 500 - max(0, len(normalized_candidate) - len(normalized_query)))
-        elif normalized_candidate in normalized_query:
-            best = max(best, 100 - max(0, len(normalized_query) - len(normalized_candidate)))
-    return best
-
-
-def _resolve_item(items: list, query: str, candidate_getter):
-    best_item = None
-    best_score = -1
-    for item in items:
-        score = _score_match(query, *candidate_getter(item))
-        if score > best_score:
-            best_score = score
-            best_item = item
-    if best_score < 0:
-        return None
-    return best_item
+from openmy.utils.search import normalize_match_text as _normalize_match_text  # noqa: E402, F401
+from openmy.utils.search import resolve_item as _resolve_item  # noqa: E402, F401
+from openmy.utils.search import score_match as _score_match  # noqa: E402, F401
 
 
 def build_server(host: str = DEFAULT_HOST, port: int = PORT) -> ThreadingHTTPServer:

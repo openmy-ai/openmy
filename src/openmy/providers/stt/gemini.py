@@ -43,6 +43,8 @@ def build_prompt(vocab_terms: str) -> str:
 
 class GeminiSTTProvider(SpeechToTextProvider):
     name = "gemini"
+    default_model = "gemini-3.1-flash-lite-preview"
+    api_key_env_vars = ["GEMINI_API_KEY"]
 
     def transcribe(
         self,

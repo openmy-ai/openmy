@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from openmy.services.screen_recognition.capture_common import (
+from openmy.services.screen_recognition.capture_engine import (
     DEFAULT_CAPTURE_INTERVAL_SECONDS,
     DEFAULT_SCREENSHOT_RETENTION_HOURS,
     DEFAULT_DATA_ROOT,
@@ -17,8 +17,8 @@ from openmy.services.screen_recognition.capture_common import (
     _now_local,
     _parse_time,
     event_store_path,
-    safe_write_json,
 )
+from openmy.utils.io import safe_write_json
 
 
 def _file_hash(path: Path) -> str:

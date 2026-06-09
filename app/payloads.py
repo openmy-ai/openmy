@@ -5,34 +5,13 @@ import re
 from pathlib import Path
 
 from openmy.config import DEFAULT_STT_MODELS, LOCAL_STT_PROVIDERS, get_stt_api_key, get_stt_provider_name, stt_provider_requires_api_key
-from openmy.services.onboarding.state import save_onboarding_state
+from openmy.services.onboarding.state import build_onboarding_state, save_onboarding_state
 from openmy.services.screen_recognition.settings import (
     ScreenContextSettings,
     load_screen_context_settings,
     save_screen_context_settings,
 )
 
-
-LABELS = {
-    'funasr': '本地中文优先',
-    'faster-whisper': '本地通用优先',
-    'dashscope': '云端中文优先',
-    'gemini': '云端省事优先',
-    'groq': '云端速度优先',
-    'deepgram': '云端英文优先',
-}
-DESCRIPTIONS = {
-    'funasr': '中文录音优先，而且不用密钥。',
-    'faster-whisper': '本地就能跑，先成功最稳。',
-    'dashscope': '中文精度更强，但要先填一次密钥。',
-    'gemini': '少折腾，适合先跑通云端路线。',
-    'groq': '速度快，但也要先填一次密钥。',
-    'deepgram': '更偏英文场景，也要先填一次密钥。',
-}
-CHOICE_GROUPS = {
-    'local': ['funasr', 'faster-whisper'],
-    'cloud': ['dashscope', 'gemini', 'groq', 'deepgram'],
-}
 
 
 def _local_provider_ready(name: str) -> bool:
@@ -66,49 +45,10 @@ def load_active_context_snapshot() -> dict:
 
 
 def _upsert_project_env(key: str, value: str) -> Path:
+    from openmy.utils.io import upsert_env_value
+
     server = _server()
-    env_path = server.ROOT_DIR / '.env'
-    lines: list[str] = []
-    if env_path.exists():
-        lines = env_path.read_text(encoding='utf-8').splitlines()
-
-    replaced = False
-    for index, raw_line in enumerate(lines):
-        stripped = raw_line.strip()
-        if not stripped or stripped.startswith('#') or '=' not in stripped:
-            continue
-        existing_key = stripped.split('=', 1)[0].strip()
-        if existing_key != key:
-            continue
-        lines[index] = f"{key}={value}"
-        replaced = True
-        break
-
-    if not replaced:
-        if lines and lines[-1].strip():
-            lines.append('')
-        lines.append(f"{key}={value}")
-
-    env_path.write_text("\n".join(lines).rstrip() + "\n", encoding='utf-8')
-    return env_path
-
-
-def _provider_view(name: str, stt_providers: list[dict], recommended: str) -> dict:
-    match = next((item for item in stt_providers if item.get('name') == name), {})
-    return {
-        'name': name,
-        'label': LABELS.get(name, name),
-        'description': DESCRIPTIONS.get(name, ''),
-        'type': match.get('type', ''),
-        'ready': bool(match.get('ready')),
-        'is_active': bool(match.get('is_active')),
-        'is_recommended': name == recommended,
-        'needs_api_key': bool(match.get('needs_api_key')),
-    }
-
-
-def _build_choice_groups(stt_providers: list[dict], recommended: str) -> dict:
-    return {group: [_provider_view(name, stt_providers, recommended) for name in names] for group, names in CHOICE_GROUPS.items()}
+    return upsert_env_value(server.ROOT_DIR / '.env', key, value)
 
 
 def _build_current_onboarding_payload(provider_override: str | None = None) -> dict:
@@ -128,46 +68,19 @@ def _build_current_onboarding_payload(provider_override: str | None = None) -> d
             'ready': ready,
         })
 
-    ready_map = {item['name']: bool(item['ready']) for item in stt_providers}
-    effective_current_stt = current_stt if ready_map.get(current_stt) else ''
-    recommended = effective_current_stt or next((name for name in CHOICE_GROUPS['local'] if any(item['name']==name and item['ready'] for item in stt_providers)), 'funasr')
     profile_exists = (server.DATA_ROOT / 'profile.json').exists()
-    vocab_exists = (server.ROOT_DIR / 'src' / 'openmy' / 'resources' / 'corrections.json').exists() and (server.ROOT_DIR / 'src' / 'openmy' / 'resources' / 'vocab.txt').exists()
+    vocab_exists = (
+        (server.ROOT_DIR / 'src' / 'openmy' / 'resources' / 'corrections.json').exists()
+        and (server.ROOT_DIR / 'src' / 'openmy' / 'resources' / 'vocab.txt').exists()
+    )
 
-    if not effective_current_stt:
-        stage = 'choose_provider'
-        headline = f'先别自己挑，先按推荐路线走：{LABELS.get(recommended, recommended)}'
-        next_step = '先选转写引擎，再开始第一次转写。'
-        primary_action = f'先运行 openmy skill profile.set --stt-provider {recommended} --json，先把推荐路线定下来。'
-    elif not profile_exists:
-        stage = 'complete_profile'
-        headline = f'转写模型已经定了：{LABELS.get(current_stt, current_stt)}'
-        next_step = '先补个人资料，再开始第一次转写。'
-        primary_action = '先补个人资料，再开始第一次转写。'
-    elif not vocab_exists:
-        stage = 'init_vocab'
-        headline = f'转写模型已经定了：{LABELS.get(current_stt, current_stt)}'
-        next_step = '先补词库，再开始第一次转写。'
-        primary_action = '先补词库，再开始第一次转写。'
-    else:
-        stage = 'ready'
-        headline = f'现在可以直接开始第一次转写：{LABELS.get(current_stt, current_stt)}'
-        next_step = '现在可以直接开始第一次转写。'
-        primary_action = f'现在就可以直接试：openmy quick-start --stt-provider {current_stt} <你的音频路径>'
-
-    return {
-        'stage': stage,
-        'completed': stage == 'ready',
-        'recommended_provider': recommended,
-        'recommended_label': LABELS.get(recommended, ''),
-        'recommended_reason': DESCRIPTIONS.get(recommended, ''),
-        'headline': headline,
-        'primary_action': primary_action,
-        'choices': _build_choice_groups(stt_providers, recommended),
-        'current_provider': current_stt,
-        'next_step': next_step,
-        'state_path': str(server.DATA_ROOT / 'onboarding_state.json'),
-    }
+    return build_onboarding_state(
+        data_root=server.DATA_ROOT,
+        stt_providers=stt_providers,
+        current_stt=current_stt,
+        profile_exists=profile_exists,
+        vocab_exists=vocab_exists,
+    )
 
 
 def _public_onboarding_payload(payload: dict) -> dict:
@@ -514,6 +427,8 @@ def get_corrections():
 
 
 def handle_correction(data: dict) -> dict:
+    from openmy.services.context.corrections import apply_text_correction
+
     server = _server()
     wrong = data.get("wrong", "").strip()
     right = data.get("right", "").strip()
@@ -526,59 +441,21 @@ def handle_correction(data: dict) -> dict:
     if wrong == right:
         return {"success": False, "error": "纠正前后相同"}
 
-    corrections_data = get_corrections()
-    corrections = corrections_data.get("corrections", [])
-    existing = next((item for item in corrections if item["wrong"] == wrong), None)
-    if existing:
-        existing["right"] = right
-        existing["count"] = existing.get("count", 0) + 1
-        existing["last_updated"] = server.datetime.now().isoformat()
-    else:
-        corrections.append({
-            "wrong": wrong,
-            "right": right,
-            "context": context,
-            "count": 1,
-            "first_seen": server.datetime.now().strftime("%Y-%m-%d"),
-            "last_updated": server.datetime.now().isoformat(),
-        })
-
-    corrections_data["corrections"] = corrections
-    server.CORRECTIONS_FILE.write_text(json.dumps(corrections_data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    replaced_in_file = 0
-    if date:
-        transcript_path = server.resolve_day_paths(date)["transcript"]
-        if transcript_path.exists():
-            content = transcript_path.read_text(encoding="utf-8")
-            if wrong in content:
-                transcript_path.write_text(content.replace(wrong, right), encoding="utf-8")
-                replaced_in_file = content.count(wrong)
-
-        for extra_path in (
-            server.DATA_ROOT / date / "scenes.json",
-            server.DATA_ROOT / date / "daily_briefing.json",
-            server.DATA_ROOT / date / f"{date}.meta.json",
-        ):
-            if not extra_path.exists():
-                continue
-            try:
-                raw = extra_path.read_text(encoding="utf-8")
-            except Exception:
-                continue
-            if wrong not in raw:
-                continue
-            extra_path.write_text(raw.replace(wrong, right), encoding="utf-8")
-
-    if sync_vocab:
-        try:
-            server.sync_correction_to_vocab(wrong, right, context)
-        except Exception:
-            pass
+    result = apply_text_correction(
+        data_root=server.DATA_ROOT,
+        corrections_file=server.CORRECTIONS_FILE,
+        date=date,
+        wrong=wrong,
+        right=right,
+        context=context,
+        sync_vocab=sync_vocab,
+        sync_vocab_fn=server.sync_correction_to_vocab,
+        resolve_day_paths_fn=server.resolve_day_paths,
+    )
 
     return {
         "success": True,
         "correction": {"wrong": wrong, "right": right},
-        "replaced_in_file": replaced_in_file,
-        "total_corrections": len(corrections),
+        "replaced_in_file": result["replaced_in_file"],
+        "total_corrections": result["total_corrections"],
     }

@@ -13,6 +13,8 @@ except ImportError:  # pragma: no cover - optional dependency
 
 class DashScopeASRProvider(SpeechToTextProvider):
     name = "dashscope"
+    default_model = "qwen3-asr-1.7b"
+    api_key_env_vars = ["DASHSCOPE_API_KEY"]
 
     def transcribe(
         self,

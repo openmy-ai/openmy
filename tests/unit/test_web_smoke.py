@@ -118,6 +118,10 @@ class TestWebSmoke(unittest.TestCase):
             patch.object(app_server, "JOB_RUNNER", runner),
             patch("app.payloads.get_stt_provider_name", return_value=""),
             patch("app.payloads.get_stt_api_key", return_value=""),
+            patch("app.payloads.stt_provider_requires_api_key", side_effect=lambda name: name not in ("funasr", "faster-whisper")),
+            patch("app.payloads._local_provider_ready", return_value=True),
+            patch("app.payloads.DEFAULT_STT_MODELS", {"funasr": "paraformer-zh", "faster-whisper": "large-v3", "dashscope": "paraformer-v2", "gemini": "gemini-2.0-flash", "groq": "whisper-large-v3-turbo", "deepgram": "nova-3"}),
+            patch("app.payloads.LOCAL_STT_PROVIDERS", {"funasr", "faster-whisper"}),
         ]
         for item in patches:
             item.start()

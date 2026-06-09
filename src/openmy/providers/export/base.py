@@ -5,6 +5,7 @@ from typing import Any
 
 class ExportProvider:
     name = "unknown"
+    config_env_vars: list[str] = []
 
     def __init__(self, *, config: dict[str, Any]):
         self.config = config

@@ -10,6 +10,7 @@ from openmy.utils.errors import FriendlyCliError, doc_url
 
 class ObsidianExportProvider(ExportProvider):
     name = "obsidian"
+    config_env_vars = ["OPENMY_OBSIDIAN_VAULT_PATH"]
 
     def __init__(self, *, config: dict[str, Any]):
         super().__init__(config=config)
