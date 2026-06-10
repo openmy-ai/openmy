@@ -81,6 +81,7 @@ class TextGenerationProvider:
         model: str | None = None,
         temperature: float | None = None,
         thinking_level: str | None = None,
+        allow_empty: bool = False,
     ) -> str:
         raise NotImplementedError
 

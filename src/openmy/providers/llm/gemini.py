@@ -57,6 +57,7 @@ class GeminiLLMProvider(TextGenerationProvider):
         model: str | None = None,
         temperature: float | None = None,
         thinking_level: str | None = None,
+        allow_empty: bool = False,
     ) -> str:
         client = self._client()
         kwargs = {
@@ -89,6 +90,9 @@ class GeminiLLMProvider(TextGenerationProvider):
             )
         text = response.text.strip() if response.text else ""
         if not text:
+            # 蒸馏等 prompt 明确允许"无实质内容输出空"，空对它们是合法值（dogfood 阻塞点 #7）
+            if allow_empty:
+                return ""
             raise FriendlyCliError(
                 f"Gemini 没有返回 {task} 的文本结果。",
                 code="gemini_text_empty",
