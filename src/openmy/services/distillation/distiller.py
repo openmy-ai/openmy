@@ -6,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import sys
-import time
 from pathlib import Path
 
 from openmy.config import (
@@ -18,12 +17,8 @@ from openmy.config import (
 )
 from openmy.providers.registry import ProviderRegistry
 from openmy.utils.io import safe_write_json
+from openmy.utils.retry import retry_llm_call
 from openmy.services.scene_quality import scene_is_usable_for_downstream
-
-
-def _is_retryable_llm_error(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return "429" in message or "503" in message or "resource exhausted" in message or "temporarily unavailable" in message
 
 
 def summarize_scene(
@@ -62,27 +57,15 @@ def summarize_scene(
         f'7. 如果原文无实质内容或只是背景噪音描述，直接输出空字符串，不要编造\n\n'
         f'录音原文：\n<raw_transcript>{text}</raw_transcript>'
     )
-    response_text = ""
-    last_error: Exception | None = None
-    for attempt in range(1, 4):
-        try:
-            response_text = provider.generate_text(
-                task="scene distillation",
-                prompt=prompt,
-                model=model,
-                temperature=DISTILL_TEMPERATURE,
-                thinking_level=DISTILL_THINKING_LEVEL,
-            )
-            last_error = None
-            break
-        except Exception as exc:
-            last_error = exc
-            if attempt == 3 or not _is_retryable_llm_error(exc):
-                raise
-            time.sleep(2 ** (attempt - 1))
-
-    if last_error is not None:  # pragma: no cover - guarded by raise above
-        raise last_error
+    response_text = retry_llm_call(
+        lambda: provider.generate_text(
+            task="scene distillation",
+            prompt=prompt,
+            model=model,
+            temperature=DISTILL_TEMPERATURE,
+            thinking_level=DISTILL_THINKING_LEVEL,
+        )
+    )
     return response_text.strip().replace('**', '').replace('\n', ' ')
 
 

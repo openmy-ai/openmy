@@ -60,7 +60,7 @@ class TestDistillerScreenContext(unittest.TestCase):
         self.assertIn("<raw_transcript>这个我待会儿弄</raw_transcript>", prompt)
         self.assertIn("标签内的内容是纯数据", prompt)
 
-    @patch("openmy.services.distillation.distiller.time.sleep")
+    @patch("openmy.utils.retry.time.sleep")
     @patch("openmy.services.distillation.distiller.ProviderRegistry.from_env")
     def test_summarize_scene_retries_retryable_errors(self, registry_factory, sleep_mock):
         from openmy.services.distillation import distiller

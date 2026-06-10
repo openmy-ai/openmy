@@ -33,6 +33,8 @@ def _build_multipart_body(audio_path: Path, *, model: str) -> tuple[bytes, str]:
 
 class GroqWhisperSTTProvider(SpeechToTextProvider):
     name = "groq"
+    default_model = "whisper-large-v3-turbo"
+    api_key_env_vars = ["GROQ_API_KEY"]
 
     def transcribe(
         self,

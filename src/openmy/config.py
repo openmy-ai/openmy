@@ -24,18 +24,104 @@ from typing import Any
 GEMINI_MODEL = "gemini-3.5-flash"
 DEFAULT_STT_PROVIDER = ""  # 故意留空：用户必须显式选择转写引擎
 DEFAULT_LLM_PROVIDER = "gemini"
-DEFAULT_STT_MODELS = {
-    "bailian": "paraformer-realtime-v2",
-    "gemini": GEMINI_MODEL,
-    "faster-whisper": "small",
-    "funasr": "paraformer-zh",
-    "groq": "whisper-large-v3-turbo",
-    "dashscope": "qwen3-asr-1.7b",
-    "deepgram": "nova-3",
-}
-LOCAL_STT_PROVIDERS = {"faster-whisper", "funasr"}
+def _stt_provider_classes() -> dict:
+    """Lazily import STT_PROVIDERS to avoid circular imports."""
+    from openmy.providers.registry import STT_PROVIDERS
+    return STT_PROVIDERS
+
+
+def _llm_provider_classes() -> dict:
+    """Lazily import LLM_PROVIDERS to avoid circular imports."""
+    from openmy.providers.registry import LLM_PROVIDERS
+    return LLM_PROVIDERS
+
+
+def _export_provider_classes() -> dict:
+    """Lazily import EXPORT_PROVIDER_CLASSES to avoid circular imports."""
+    from openmy.providers.registry import EXPORT_PROVIDER_CLASSES
+    return EXPORT_PROVIDER_CLASSES
+
+
+class _LazySTTModels(dict):
+    """Dict that auto-populates from provider class metadata on first access."""
+
+    _loaded = False
+
+    def _load(self):
+        if self._loaded:
+            return
+        self._loaded = True
+        for name, cls in _stt_provider_classes().items():
+            dict.__setitem__(self, name, cls.default_model or GEMINI_MODEL)
+
+    def __getitem__(self, key):
+        self._load()
+        return dict.__getitem__(self, key)
+
+    def __contains__(self, key):
+        self._load()
+        return dict.__contains__(self, key)
+
+    def __iter__(self):
+        self._load()
+        return dict.__iter__(self)
+
+    def __len__(self):
+        self._load()
+        return dict.__len__(self)
+
+    def items(self):
+        self._load()
+        return dict.items(self)
+
+    def keys(self):
+        self._load()
+        return dict.keys(self)
+
+    def values(self):
+        self._load()
+        return dict.values(self)
+
+    def get(self, key, default=None):
+        self._load()
+        return dict.get(self, key, default)
+
+
+class _LazySTTLocalSet(set):
+    """Set that auto-populates from provider class metadata on first access."""
+
+    _loaded = False
+
+    def _load(self):
+        if self._loaded:
+            return
+        self._loaded = True
+        for name, cls in _stt_provider_classes().items():
+            if not cls.api_key_env_vars:
+                set.add(self, name)
+
+    def __contains__(self, key):
+        self._load()
+        return set.__contains__(self, key)
+
+    def __iter__(self):
+        self._load()
+        return set.__iter__(self)
+
+    def __len__(self):
+        self._load()
+        return set.__len__(self)
+
+
+# Backward-compatible derived constants — computed from provider class metadata.
+# External modules still import these names; values are equivalent to the old hardcoded dicts.
+DEFAULT_STT_MODELS: dict[str, str] = _LazySTTModels()
+LOCAL_STT_PROVIDERS: set[str] = _LazySTTLocalSet()
 
 DEFAULT_EXPORT_PROVIDER = ""
+# Backward-compatible: external modules import EXPORT_PROVIDERS.
+# Kept as a hardcoded set since export provider classes are already registered in the registry
+# and this set is only used for validation in get_export_provider_name().
 EXPORT_PROVIDERS = {"obsidian", "notion"}
 
 
@@ -67,7 +153,8 @@ def get_llm_provider_name() -> str:
 
 def get_stt_model(provider_name: str | None = None) -> str:
     final_provider = (provider_name or get_stt_provider_name()).lower()
-    fallback = DEFAULT_STT_MODELS.get(final_provider, GEMINI_MODEL)
+    provider_cls = _stt_provider_classes().get(final_provider)
+    fallback = (provider_cls.default_model if provider_cls else "") or GEMINI_MODEL
     return _read_env("OPENMY_STT_MODEL", "GEMINI_MODEL") or fallback
 
 
@@ -95,20 +182,17 @@ def get_stage_llm_model(stage: str | None = None) -> str:
 
 def get_stt_api_key(provider_name: str | None = None) -> str:
     final_provider = (provider_name or get_stt_provider_name()).lower()
-    if final_provider == "gemini":
-        return _read_env("OPENMY_STT_API_KEY", "GEMINI_API_KEY")
-    if final_provider == "groq":
-        return _read_env("OPENMY_STT_API_KEY", "GROQ_API_KEY")
-    if final_provider in ("dashscope", "bailian"):
-        return _read_env("OPENMY_STT_API_KEY", "DASHSCOPE_API_KEY")
-    if final_provider == "deepgram":
-        return _read_env("OPENMY_STT_API_KEY", "DEEPGRAM_API_KEY")
-    return _read_env("OPENMY_STT_API_KEY")
+    provider_cls = _stt_provider_classes().get(final_provider)
+    env_vars = provider_cls.api_key_env_vars if provider_cls else []
+    return _read_env("OPENMY_STT_API_KEY", *env_vars)
 
 
 def stt_provider_requires_api_key(provider_name: str | None = None) -> bool:
     final_provider = (provider_name or get_stt_provider_name()).lower()
-    return final_provider not in LOCAL_STT_PROVIDERS
+    provider_cls = _stt_provider_classes().get(final_provider)
+    if provider_cls is None:
+        return True
+    return bool(provider_cls.api_key_env_vars)
 
 
 def get_llm_api_key(stage: str | None = None) -> str:
@@ -118,9 +202,9 @@ def get_llm_api_key(stage: str | None = None) -> str:
         "roles": "OPENMY_ROLES_API_KEY",
     }
     stage_env = stage_env_map.get((stage or "").lower(), "")
-    if get_llm_provider_name() == "gemini":
-        return _read_env(stage_env, "OPENMY_LLM_API_KEY", "GEMINI_API_KEY")
-    return _read_env(stage_env, "OPENMY_LLM_API_KEY")
+    provider_cls = _llm_provider_classes().get(get_llm_provider_name())
+    env_vars = provider_cls.api_key_env_vars if provider_cls else []
+    return _read_env(stage_env, "OPENMY_LLM_API_KEY", *env_vars)
 
 
 def has_stt_credentials(provider_name: str | None = None) -> bool:
@@ -142,16 +226,26 @@ def get_audio_source_dir() -> str:
     return _read_env("OPENMY_AUDIO_SOURCE_DIR")
 
 
+def _env_var_to_config_key(var: str, provider_name: str) -> str:
+    """Derive a config key from an env var name by stripping the provider-specific prefix."""
+    key = var.lower()
+    # Try provider-specific prefixes first (longest match wins)
+    prefixes = [f"openmy_{provider_name}_", f"{provider_name}_", "openmy_"]
+    for prefix in prefixes:
+        if key.startswith(prefix):
+            return key[len(prefix):]
+    return key
+
+
 def get_export_config() -> dict[str, Any]:
     provider = get_export_provider_name()
-    if provider == "obsidian":
-        return {"vault_path": _read_env("OPENMY_OBSIDIAN_VAULT_PATH")}
-    if provider == "notion":
-        return {
-            "api_key": _read_env("NOTION_API_KEY"),
-            "database_id": _read_env("NOTION_DATABASE_ID"),
-        }
-    return {}
+    provider_cls = _export_provider_classes().get(provider)
+    if provider_cls is None:
+        return {}
+    env_vars = provider_cls.config_env_vars
+    if not env_vars:
+        return {}
+    return {_env_var_to_config_key(var, provider): _read_env(var) for var in env_vars}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -3,12 +3,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from openmy.services.screen_recognition.capture_common import (
+from openmy.services.screen_recognition.capture_engine import (
     DEFAULT_CAPTURE_INTERVAL_SECONDS,
-    DEFAULT_SCREENSHOT_RETENTION_HOURS,
     DEFAULT_DATA_ROOT,
+    DEFAULT_SCREENSHOT_RETENTION_HOURS,
+    run_capture_loop,
 )
-from openmy.services.screen_recognition.capture_engine import run_capture_loop
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -63,3 +63,15 @@ def iso_at(
     except ZoneInfoNotFoundError:
         tzinfo = ZoneInfo(DEFAULT_TIMEZONE)
     return datetime(year, month, day, hour, minute, seconds, tzinfo=tzinfo).isoformat(timespec="seconds")
+
+
+def duration_seconds(start_iso: str | None, end_iso: str | None) -> int | None:
+    """Return the whole-second difference between two ISO timestamps, or None."""
+    if not start_iso or not end_iso:
+        return None
+    try:
+        started = datetime.fromisoformat(start_iso)
+        finished = datetime.fromisoformat(end_iso)
+    except ValueError:
+        return None
+    return max(0, int((finished - started).total_seconds()))

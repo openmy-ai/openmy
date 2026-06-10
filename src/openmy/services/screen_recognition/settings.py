@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from openmy.services.screen_recognition.capture import (
+from openmy.services.screen_recognition.capture_engine import (
     DEFAULT_CAPTURE_INTERVAL_SECONDS,
     DEFAULT_EVENT_RETENTION_DAYS,
     DEFAULT_SCREENSHOT_RETENTION_HOURS,

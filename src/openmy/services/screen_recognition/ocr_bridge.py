@@ -4,10 +4,10 @@ import json
 import subprocess
 from pathlib import Path
 
-from openmy.services.screen_recognition.capture_common import (
+from openmy.services.screen_recognition.capture_engine import (
     DEFAULT_OCR_LANGUAGES,
-    OcrPayload,
     CaptureMetadata,
+    OcrPayload,
     context_helper_binary_path,
     context_helper_source_path,
     ensure_runtime_dir,

@@ -49,6 +49,9 @@ class TranscriptionResult:
 class SpeechToTextProvider:
     name = "unknown"
     requires_api_key = True
+    default_model: str = ""
+    api_key_env_vars: list[str] = []
+    preferred_input_format: str = "mp3"
 
     def __init__(self, *, api_key: str, model: str):
         self.api_key = api_key
@@ -68,6 +71,8 @@ class SpeechToTextProvider:
 
 class TextGenerationProvider:
     name = "unknown"
+    default_model: str = ""
+    api_key_env_vars: list[str] = []
 
     def __init__(self, *, api_key: str, model: str):
         self.api_key = api_key

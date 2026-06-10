@@ -24,12 +24,16 @@ class TestScreenProductCopy(unittest.TestCase):
             self.assertNotIn(legacy_brand.lower(), content, path.as_posix())
 
     def test_frontend_uses_openmy_screen_context_terms(self):
-        content = "\n".join(
-            [
-                (PROJECT_ROOT / "app" / "index.html").read_text(encoding="utf-8"),
-                (PROJECT_ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8"),
-            ]
-        )
+        # The frontend was refactored into ES modules; UI copy that used to live
+        # in app.js now lives across app/static/modules/*.js.
+        static_dir = PROJECT_ROOT / "app" / "static"
+        parts = [
+            (PROJECT_ROOT / "app" / "index.html").read_text(encoding="utf-8"),
+            (static_dir / "app.js").read_text(encoding="utf-8"),
+        ]
+        for module_file in sorted((static_dir / "modules").glob("*.js")):
+            parts.append(module_file.read_text(encoding="utf-8"))
+        content = "\n".join(parts)
         self.assertIn("屏幕上下文", content)
 
 

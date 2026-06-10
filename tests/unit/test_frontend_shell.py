@@ -6,16 +6,32 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INDEX_HTML = PROJECT_ROOT / "app" / "index.html"
-STYLE_CSS = PROJECT_ROOT / "app" / "static" / "style.css"
-APP_JS = PROJECT_ROOT / "app" / "static" / "app.js"
+STATIC_DIR = PROJECT_ROOT / "app" / "static"
+STYLE_CSS = STATIC_DIR / "style.css"
+APP_JS = STATIC_DIR / "app.js"
+CSS_DIR = STATIC_DIR / "css"
+MODULES_DIR = STATIC_DIR / "modules"
 
 
 class TestFrontendShell(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.html_content = INDEX_HTML.read_text(encoding="utf-8")
-        cls.style_content = STYLE_CSS.read_text(encoding="utf-8")
-        cls.script_content = APP_JS.read_text(encoding="utf-8")
+
+        # The frontend was refactored into ES modules and modular CSS.
+        # style.css now @imports css/*.css and app.js now imports modules/*.js,
+        # so the real implementation lives across those files. We aggregate all
+        # of them so the shell assertions verify the post-refactor source.
+        style_parts = [STYLE_CSS.read_text(encoding="utf-8")]
+        for css_file in sorted(CSS_DIR.glob("*.css")):
+            style_parts.append(css_file.read_text(encoding="utf-8"))
+        cls.style_content = "\n".join(style_parts)
+
+        script_parts = [APP_JS.read_text(encoding="utf-8")]
+        for module_file in sorted(MODULES_DIR.glob("*.js")):
+            script_parts.append(module_file.read_text(encoding="utf-8"))
+        cls.script_content = "\n".join(script_parts)
+
         cls.content = "\n".join(
             [
                 cls.html_content,
@@ -108,7 +124,7 @@ class TestFrontendShell(unittest.TestCase):
 
     def test_timeline_distillation_uses_plain_summary_fallback(self):
         match = re.search(
-            r"function getSegmentDistillation\(segment, meta\) \{(?P<body>.*?)\n\}\n\nfunction initCharts",
+            r"function getSegmentDistillation\(segment, meta\) \{(?P<body>.*?)\n\}",
             self.content,
             re.S,
         )

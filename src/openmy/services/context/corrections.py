@@ -137,6 +137,93 @@ def load_corrections(data_root: Path) -> list[CorrectionEvent]:
     return sorted(events, key=lambda item: item.created_at)
 
 
+def apply_text_correction(
+    *,
+    data_root: Path,
+    corrections_file: Path,
+    date: str,
+    wrong: str,
+    right: str,
+    context: str = "",
+    sync_vocab: bool = True,
+    sync_vocab_fn: Any = None,
+    resolve_day_paths_fn: Any = None,
+) -> dict[str, Any]:
+    """Apply a text correction: update the corrections ledger, replace text in
+    day-level files, and optionally sync to the vocab file.
+
+    Returns a result dict suitable for HTTP response.
+    """
+    # --- Update corrections ledger ---
+    corrections_data: dict[str, Any] = {}
+    if corrections_file.exists():
+        try:
+            corrections_data = json.loads(corrections_file.read_text(encoding="utf-8"))
+        except Exception:
+            corrections_data = {}
+    corrections = corrections_data.get("corrections", [])
+
+    now = datetime.now()
+    existing = next((item for item in corrections if item.get("wrong") == wrong), None)
+    if existing:
+        existing["right"] = right
+        existing["count"] = existing.get("count", 0) + 1
+        existing["last_updated"] = now.isoformat()
+    else:
+        corrections.append({
+            "wrong": wrong,
+            "right": right,
+            "context": context,
+            "count": 1,
+            "first_seen": now.strftime("%Y-%m-%d"),
+            "last_updated": now.isoformat(),
+        })
+
+    corrections_data["corrections"] = corrections
+    corrections_file.parent.mkdir(parents=True, exist_ok=True)
+    corrections_file.write_text(
+        json.dumps(corrections_data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    # --- Replace text in day-level files ---
+    replaced_in_file = 0
+    if date and resolve_day_paths_fn is not None:
+        transcript_path = resolve_day_paths_fn(date).get("transcript")
+        if transcript_path and transcript_path.exists():
+            content = transcript_path.read_text(encoding="utf-8")
+            if wrong in content:
+                transcript_path.write_text(content.replace(wrong, right), encoding="utf-8")
+                replaced_in_file = content.count(wrong)
+
+        for extra_path in (
+            data_root / date / "scenes.json",
+            data_root / date / "daily_briefing.json",
+            data_root / date / f"{date}.meta.json",
+        ):
+            if not extra_path.exists():
+                continue
+            try:
+                raw = extra_path.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            if wrong not in raw:
+                continue
+            extra_path.write_text(raw.replace(wrong, right), encoding="utf-8")
+
+    # --- Sync to vocab ---
+    if sync_vocab and sync_vocab_fn is not None:
+        try:
+            sync_vocab_fn(wrong, right, context)
+        except Exception:
+            pass
+
+    return {
+        "replaced_in_file": replaced_in_file,
+        "total_corrections": len(corrections),
+    }
+
+
 def _find_project_index(ctx: ActiveContext, query: str) -> int:
     for index, project in enumerate(ctx.rolling_context.active_projects):
         if _matches(query, project.project_id, project.id, project.title):

@@ -5,17 +5,20 @@ from pathlib import Path
 from unittest.mock import patch
 
 from openmy.adapters.screen_recognition.client import ScreenRecognitionClient
-from openmy.services.screen_recognition.capture_common import CaptureMetadata, OcrPayload
-from openmy.services.screen_recognition.capture import (
+from openmy.services.screen_recognition.capture_engine import (
+    CaptureMetadata,
     OcrCache,
+    OcrPayload,
     ScreenEventRecord,
-    activity_summary,
-    append_event,
     capture_once,
     capture_screen_event,
+    start_capture_daemon,
+)
+from openmy.services.screen_recognition.capture_store import (
+    activity_summary,
+    append_event,
     query_events,
     search_elements,
-    start_capture_daemon,
 )
 
 
@@ -185,9 +188,9 @@ class TestCaptureWorkerIsolation(unittest.TestCase):
             payload = OcrPayload(text="缓存文本", text_json=[{"text": "缓存文本"}], confidence=1.0, engine="apple-vision")
 
             with (
-                patch("openmy.services.screen_recognition.capture_engine.get_frontmost_context", return_value=metadata),
-                patch("openmy.services.screen_recognition.capture_engine.capture_screenshot", side_effect=fake_capture_screenshot),
-                patch("openmy.services.screen_recognition.capture_engine._file_hash", return_value="hash-1"),
+                patch("openmy.services.screen_recognition.ocr_bridge.get_frontmost_context", return_value=metadata),
+                patch("openmy.services.screen_recognition.ocr_bridge.capture_screenshot", side_effect=fake_capture_screenshot),
+                patch("openmy.services.screen_recognition.capture_store._file_hash", return_value="hash-1"),
                 patch("openmy.services.screen_recognition.capture_engine._run_ocr_in_subprocess", return_value=payload) as worker_mock,
             ):
                 first = capture_screen_event(data_root=data_root, ocr_cache=cache)

@@ -16,6 +16,7 @@ NOTION_API_BASE = "https://api.notion.com/v1"
 
 class NotionExportProvider(ExportProvider):
     name = "notion"
+    config_env_vars = ["NOTION_API_KEY", "NOTION_DATABASE_ID"]
 
     def __init__(self, *, config: dict[str, Any]):
         super().__init__(config=config)

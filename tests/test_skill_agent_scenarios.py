@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -19,11 +20,48 @@ PROJECT_ROOT = str(Path(__file__).resolve().parents[1])
 OPENMY_CMD = [sys.executable, "-m", "openmy"]
 
 
-def _run_skill(action: str, *extra_args: str, data_root: str | None = None) -> dict:
-    """Run a skill command and return parsed JSON output."""
+@contextlib.contextmanager
+def _isolated_env(*, env_lines: tuple[str, ...] = ()):
+    """提供一套完全隔离的运行环境，避免测试之间互相污染。
+
+    OpenMy CLI 启动时会清空所有 OPENMY_* / GEMINI_* 环境变量，只认项目根
+    目录下的 .env（见 commands/common.clear_project_runtime_env）。因此要稳定
+    控制 STT provider / key，必须给子进程一个独立的项目根（带 pyproject.toml
+    和自己的 .env），否则就会读写共享的项目 .env，造成顺序敏感的污染。
+
+    - OPENMY_PROJECT_ROOT：隔离项目根（决定它读哪个 .env，profile.set 也写到
+      这里，不会动到真实仓库的 .env）。
+    - OPENMY_DATA_DIR：隔离数据目录（status.get 的 total_days 来源，不再依赖
+      仓库里残留的 data/ 目录）。
+
+    两个变量都在 paths.py 模块导入时被读取，早于 clear，所以不会被清掉。
+    """
+    with tempfile.TemporaryDirectory() as root_dir, tempfile.TemporaryDirectory() as data_dir:
+        root = Path(root_dir)
+        (root / "pyproject.toml").write_text("[project]\nname = 'openmy-test-sandbox'\n", encoding="utf-8")
+        if env_lines:
+            (root / ".env").write_text("\n".join(env_lines) + "\n", encoding="utf-8")
+        env = {"OPENMY_PROJECT_ROOT": str(root), "OPENMY_DATA_DIR": str(data_dir)}
+        yield env, Path(data_dir)
+
+
+def _run_skill(
+    action: str,
+    *extra_args: str,
+    data_root: str | None = None,
+    extra_env: dict[str, str] | None = None,
+) -> dict:
+    """Run a skill command and return parsed JSON output.
+
+    data_root 通过 OPENMY_DATA_DIR 注入（产品实际读取的就是这个变量，
+    早先这里误写成 OPENMY_DATA_ROOT，导致隔离不生效、测试之间共享项目
+    data 目录互相污染）。
+    """
     env = os.environ.copy()
     if data_root:
-        env["OPENMY_DATA_ROOT"] = data_root
+        env["OPENMY_DATA_DIR"] = data_root
+    if extra_env:
+        env.update(extra_env)
     cmd = [*OPENMY_CMD, "skill", action, "--json", *extra_args]
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT, env=env)
     # Parse JSON from stdout, ignoring stderr
@@ -137,20 +175,40 @@ class TestCorrectionApply:
 
 class TestProfileStt:
     def test_set_ready_local_stt_makes_configured_true(self):
-        """设置一个真的可用的本地转写路线后，stt_configured 应为 True。"""
-        before = _run_skill("health.check")
-        providers = before["data"]["stt_providers"]
-        ready_local = next(p["name"] for p in providers if p["type"] == "local" and p["ready"])
-        set_payload = _run_skill("profile.set", "--stt-provider", ready_local)
-        assert set_payload["ok"] is True
-        health = _run_skill("health.check")
-        assert health["data"]["stt_configured"] is True
+        """设置一个可用的转写路线后，stt_configured 应为 True。
+
+        干净环境（CI、新用户 clone）不会安装 faster-whisper / funasr 等本地
+        引擎，所以本机不一定有 ready 的本地引擎。这里在隔离项目根里注入一个
+        带 key 的云引擎（gemini），保证一定有一条可用的转写路线，再验证
+        “设置可用引擎 → stt_configured 变 True” 这条核心契约。优先用 ready 的
+        本地引擎（装了本地引擎的机器仍走本地），否则退回任意 ready 引擎。
+        """
+        with _isolated_env(env_lines=("OPENMY_STT_API_KEY=fake-key-for-test",)) as (env, _data):
+            before = _run_skill("health.check", extra_env=env)
+            providers = before["data"]["stt_providers"]
+            ready_local = next(
+                (p["name"] for p in providers if p["type"] == "local" and p["ready"]),
+                None,
+            )
+            ready_provider = ready_local or next(
+                (p["name"] for p in providers if p["ready"]),
+                None,
+            )
+            assert ready_provider is not None, (
+                f"隔离环境里应至少有一个 ready 的转写引擎，实际: {providers}"
+            )
+            set_payload = _run_skill("profile.set", "--stt-provider", ready_provider, extra_env=env)
+            assert set_payload["ok"] is True
+            health = _run_skill("health.check", extra_env=env)
+            assert health["data"]["stt_configured"] is True
 
     def test_restore_stt_provider(self):
-        """测试后恢复原来的 provider（清理）。"""
-        before = _run_skill("health.check")
-        original = before["data"].get("stt_active") or "gemini"
-        _run_skill("profile.set", "--stt-provider", original)
+        """profile.set 能把 provider 切回指定引擎（在隔离环境里自包含验证）。"""
+        with _isolated_env() as (env, _data):
+            before = _run_skill("health.check", extra_env=env)
+            original = before["data"].get("stt_active") or "gemini"
+            restore = _run_skill("profile.set", "--stt-provider", original, extra_env=env)
+            assert restore["ok"] is True
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -159,9 +217,19 @@ class TestProfileStt:
 
 class TestBasicSkills:
     def test_status_get(self):
-        payload = _run_skill("status.get")
-        assert payload["ok"] is True
-        assert payload["data"]["total_days"] > 0
+        """status.get 的 total_days 来自数据目录里的日期文件夹。
+
+        原来直接打仓库共享的 data/ 目录，total_days 取决于本机/前序测试残留的
+        数据——干净 clone 后 data/ 为空，total_days=0，断言就挂；本机有残留时
+        又侥幸通过。这里用隔离数据目录预置一天数据，让断言确定。
+        """
+        with _isolated_env() as (env, data_dir):
+            day_dir = data_dir / "2099-01-15"
+            day_dir.mkdir(parents=True, exist_ok=True)
+            (day_dir / "transcript.md").write_text("测试转写内容", encoding="utf-8")
+            payload = _run_skill("status.get", extra_env=env)
+            assert payload["ok"] is True
+            assert payload["data"]["total_days"] > 0
 
     def test_profile_get(self):
         payload = _run_skill("profile.get")

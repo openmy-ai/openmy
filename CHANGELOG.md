@@ -27,7 +27,7 @@
 - ARCHITECTURE.md：从代码扫描生成的技术架构文档，替代过时的 STATE/ROADMAP/PROJECT
 - 僵尸 worktree 清理：8 个断根 codex worktree 审计完成，7 个删除、1 个封存
 - 过时的 .planning/ 文档归档到 .planning/archived/
-- 328 个测试全部通过
+- 527 个测试全部通过
 
 ## [0.2.0] - 2026-04-12
 

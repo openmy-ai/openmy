@@ -7,6 +7,66 @@ from pathlib import Path
 from typing import Any
 
 
+def upsert_env_value(env_path: Path, key: str, value: str) -> Path:
+    """Read a .env file, find/replace a key=value line, write it back.
+
+    If the key already exists its line is updated in-place; otherwise
+    a new ``key=value`` line is appended.  Returns *env_path* for
+    convenience.
+    """
+    lines: list[str] = []
+    if env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+
+    replaced = False
+    for index, raw_line in enumerate(lines):
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        existing_key = stripped.split("=", 1)[0].strip()
+        if existing_key != key:
+            continue
+        lines[index] = f"{key}={value}"
+        replaced = True
+        break
+
+    if not replaced:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append(f"{key}={value}")
+
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return env_path
+
+
+def load_vocab_terms(vocab_file: Path) -> str:
+    """Load vocabulary terms from a ``vocab.txt`` file.
+
+    Each non-blank, non-comment line has the term as the first
+    pipe-delimited field; the optional second field is a correction hint
+    (e.g. ``张韧 | 不是"张刃"``) that is preserved as ``term（hint）`` so
+    the STT prompt can disambiguate similar-sounding words.  Returns a
+    Chinese-comma-separated string.
+    """
+    if not vocab_file.exists():
+        return ""
+    entries: list[str] = []
+    for raw_line in vocab_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("|", 1)
+        term = parts[0].strip()
+        if not term:
+            continue
+        if len(parts) > 1 and parts[1].strip():
+            entries.append(f"{term}（{parts[1].strip()}）")
+        else:
+            entries.append(term)
+    return "、".join(entries)
+
+
 def safe_write_json(
     path: Path,
     data: Any,

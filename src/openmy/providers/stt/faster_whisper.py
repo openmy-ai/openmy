@@ -48,6 +48,8 @@ def _get_model(model_name: str, device: str, compute_type: str):
 class FasterWhisperSTTProvider(SpeechToTextProvider):
     name = "faster-whisper"
     requires_api_key = False
+    default_model = "small"
+    api_key_env_vars: list[str] = []
 
     def transcribe(
         self,

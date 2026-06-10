@@ -8,7 +8,7 @@ from openmy.utils.errors import FriendlyCliError
 
 
 def cmd_screen(args: argparse.Namespace) -> int:
-    from openmy.services.screen_recognition.capture import (
+    from openmy.services.screen_recognition.capture_engine import (
         is_capture_supported,
         read_status,
         run_capture_loop,
