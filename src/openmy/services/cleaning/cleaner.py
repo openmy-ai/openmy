@@ -15,6 +15,12 @@ import shutil
 import sys
 from pathlib import Path
 
+from openmy.services.markers import (
+    ATTRIBUTION_PREFIXES,
+    SOURCE_PLAYBACK,
+    parse_attribution,
+)
+
 
 # ── 时间头保护 ────────────────────────────────────────────
 TIME_HEADER_RE = re.compile(r'^##\s+\d{1,2}:\d{2}', re.MULTILINE)
@@ -79,6 +85,9 @@ CONTEXT_REPLY_WORDS = {'嗯', '哦', '对', '是', '好', '行', '嗯嗯', '对�
 def is_filler_line(line: str, prev_line: str = '') -> bool:
     """整行是废词就返回 True。
     Fix 2: 如果前一行以问号结尾，"嗯"/"哦"/"对"等短答复保留。
+
+    判定在去归因前缀后的净文本上进行——^-anchored filler patterns
+    对 "我：嗯嗯。" 形式的行只有先剥前缀才匹配得到。
     """
     stripped = line.strip()
     if not stripped:
@@ -86,23 +95,37 @@ def is_filler_line(line: str, prev_line: str = '') -> bool:
     # 保护时间头
     if TIME_HEADER_RE.match(stripped):
         return False
+    # 剥离归因前缀，在净文本上做废词判定
+    _, net = parse_attribution(stripped)
+    net = net.strip()
+    if not net:
+        return False
     # Fix 2: 去掉标点后看是不是答复词
-    bare = re.sub(r'[，。、！？!?\s]+$', '', stripped)
+    bare = re.sub(r'[，。、！？!?\s]+$', '', net)
     if bare in CONTEXT_REPLY_WORDS:
         prev_stripped = prev_line.strip()
         if prev_stripped and prev_stripped.endswith(('？', '?', '吗', '呢', '吧')):
             return False  # 前面是问句，这是回答，保留
-    return any(p.match(stripped) for p in COMPILED_FILLERS)
+    return any(p.match(net) for p in COMPILED_FILLERS)
 
 
 def clean_inline(line: str) -> str:
-    """句中废词清理"""
+    """句中废词清理。对带归因前缀的行，只清理净文本部分后再拼回前缀。"""
     stripped = line.strip()
     if not stripped or TIME_HEADER_RE.match(stripped) or stripped.startswith('#'):
         return line
+    # 提取归因前缀，只对净文本做行内清理
+    prefix = ''
+    for pfx in ATTRIBUTION_PREFIXES:
+        if stripped.startswith(pfx):
+            prefix = pfx
+            break
+    body = stripped[len(prefix):] if prefix else line
     for pattern, replacement in COMPILED_INLINE:
-        line = pattern.sub(replacement, line)
-    return line
+        body = pattern.sub(replacement, body)
+    if prefix:
+        return prefix + body
+    return body
 
 
 def remove_ai_preamble(text: str) -> str:
@@ -113,16 +136,41 @@ def remove_ai_preamble(text: str) -> str:
 
 
 def remove_music_markers(text: str) -> str:
-    """清除 [音乐] 标记"""
-    return MUSIC_RE.sub('', text)
+    """清除 [音乐] 标记——按净文本判定，避免误删归因前缀内容。"""
+    out_lines: list[str] = []
+    for line in text.split('\n'):
+        source, net = parse_attribution(line)
+        if MUSIC_RE.search(net):
+            # 只在净文本部分替换 [音乐]，再拼回原前缀
+            prefix = ''
+            for pfx in ATTRIBUTION_PREFIXES:
+                if line.lstrip().startswith(pfx):
+                    prefix = pfx
+                    break
+            cleaned_net = MUSIC_RE.sub('', net)
+            out_lines.append(prefix + cleaned_net if prefix else cleaned_net)
+        else:
+            out_lines.append(line)
+    return '\n'.join(out_lines)
 
 
 def deduplicate_lines(lines: list[str]) -> list[str]:
-    """去除连续重复行"""
+    """去除连续重复行。
+
+    带归因前缀的行按 (来源, 净文本) 去重——相同净文本但前缀不同的
+    相邻行不去重（"我：好的" 紧跟 "人：好的" 是真实应答）。
+    """
     result: list[str] = []
     for line in lines:
-        if result and line.strip() == result[-1].strip() and line.strip():
+        stripped = line.strip()
+        if not stripped:
+            result.append(line)
             continue
+        if result and result[-1].strip():
+            src_cur, net_cur = parse_attribution(stripped)
+            src_prev, net_prev = parse_attribution(result[-1].strip())
+            if net_cur == net_prev and src_cur == src_prev:
+                continue
         result.append(line)
     return result
 
@@ -135,7 +183,11 @@ REPLY_WORDS = {'对', '是', '行', '好', '嗯', '哦', '对啊', '是啊', '�
 
 
 def merge_short_lines(lines: list[str], min_length: int = 3) -> list[str]:
-    """Fix 1: 只合并句尾附着词到上一行，保留完整回合词的独立性。"""
+    """Fix 1: 只合并句尾附着词到上一行，保留完整回合词的独立性。
+
+    带归因前缀的行：判短用净文本长度，附着词只并入同前缀的上一行，
+    纯标记行（净文本为空）不并入上一行。
+    """
     result: list[str] = []
     for line in lines:
         stripped = line.strip()
@@ -143,14 +195,22 @@ def merge_short_lines(lines: list[str], min_length: int = 3) -> list[str]:
         if not stripped or TIME_HEADER_RE.match(stripped) or stripped.startswith('#'):
             result.append(line)
             continue
-        # 太短的碎句：看它是附着词还是回合词
-        bare = re.sub(r'[，。、！？!?\s]+$', '', stripped)
-        if len(stripped) < min_length and result and result[-1].strip():
-            if bare in SUFFIX_PARTICLES:
+        # 用净文本判断短行
+        src_cur, net_cur = parse_attribution(stripped)
+        net_cur = net_cur.strip()
+        # 纯标记行（只有前缀，净文本为空）不合并
+        if not net_cur:
+            result.append(line)
+            continue
+        bare = re.sub(r'[，。、！？!?\s]+$', '', net_cur)
+        if len(net_cur) < min_length and result and result[-1].strip():
+            # 要求前缀一致才合并
+            src_prev, _ = parse_attribution(result[-1].strip())
+            if bare in SUFFIX_PARTICLES and src_cur == src_prev:
                 # 句尾附着词 → 合并到上一行
-                result[-1] = result[-1].rstrip() + stripped
+                result[-1] = result[-1].rstrip() + net_cur
             else:
-                # 回合词或其他短句 → 保持独立
+                # 回合词、不同前缀或其他短句 → 保持独立
                 result.append(line)
         else:
             result.append(line)
@@ -169,6 +229,8 @@ QUESTION_COMMAND_RE = re.compile(r'[？?]$|你先|帮我|给我|说中文|看一
 def mark_assistant_replies(lines: list[str], min_length: int = 80) -> list[str]:
     """Fix 4: 给疑似助手回复打标签，不删除。
     条件：前一行是提问/命令 + 当前行较长 + 有讲解式句型。
+
+    外放行（外：前缀）跳过——归因标记已声明来源。
     """
     result: list[str] = []
     for i, line in enumerate(lines):
@@ -176,8 +238,13 @@ def mark_assistant_replies(lines: list[str], min_length: int = 80) -> list[str]:
         if not stripped or TIME_HEADER_RE.match(stripped) or stripped.startswith('#'):
             result.append(line)
             continue
-        # 检测助手回复特征
-        if len(stripped) >= min_length and ASSISTANT_REPLY_CUES.search(stripped):
+        # 外：行已标归因，跳过助手回复检测
+        source, net = parse_attribution(stripped)
+        if source == SOURCE_PLAYBACK:
+            result.append(line)
+            continue
+        # 检测助手回复特征——用净文本判断长度和内容
+        if len(net) >= min_length and ASSISTANT_REPLY_CUES.search(net):
             prev = lines[i - 1].strip() if i > 0 else ''
             if prev and QUESTION_COMMAND_RE.search(prev):
                 result.append(f'[助手回复] {line}')
@@ -187,13 +254,21 @@ def mark_assistant_replies(lines: list[str], min_length: int = 80) -> list[str]:
 
 
 def mark_suspicious_crosstalk(lines: list[str], min_length: int = 40) -> list[str]:
-    """给明显像外放/串台的长行打标签，不直接删除。"""
+    """给明显像外放/串台的长行打标签，不直接删除。
+
+    外：前缀的行已通过归因标记声明来源，不再打 [疑似串台]。
+    """
     from openmy.services.scene_quality import inspect_scene_text
 
     result: list[str] = []
     for line in lines:
         stripped = line.strip()
         if not stripped or TIME_HEADER_RE.match(stripped) or stripped.startswith('#'):
+            result.append(line)
+            continue
+        # 外：行已标归因，跳过串台检测
+        source, _ = parse_attribution(stripped)
+        if source == SOURCE_PLAYBACK:
             result.append(line)
             continue
         quality = inspect_scene_text(stripped)
@@ -218,21 +293,32 @@ def collapse_blank_lines(lines: list[str]) -> list[str]:
 
 
 def split_long_paragraphs(text: str) -> str:
-    """长段落（>500字）在句号处强制切分"""
+    """长段落（>500字）在句号处强制切分。
+
+    带归因前缀的长行：切分后每个片段重新加上原前缀，
+    避免续段全部失去来源标记。
+    """
     lines = text.split('\n')
     result: list[str] = []
     for line in lines:
         if len(line) > MAX_PARAGRAPH_CHARS and not TIME_HEADER_RE.match(line.strip()):
-            sentences = SENTENCE_SPLIT_RE.split(line)
+            # 提取归因前缀
+            prefix = ''
+            for pfx in ATTRIBUTION_PREFIXES:
+                if line.lstrip().startswith(pfx):
+                    prefix = pfx
+                    break
+            body = line.lstrip()[len(prefix):] if prefix else line
+            sentences = SENTENCE_SPLIT_RE.split(body)
             current = ''
             for sent in sentences:
                 if len(current) + len(sent) > MAX_PARAGRAPH_CHARS and current:
-                    result.append(current)
+                    result.append(prefix + current)
                     current = sent
                 else:
                     current += sent
             if current:
-                result.append(current)
+                result.append(prefix + current)
         else:
             result.append(line)
     return '\n'.join(result)
@@ -343,9 +429,10 @@ def llm_correction(text: str, api_key: str) -> str:
         "规则：",
         "1. 只修正明显的转写错误（同音字、人名、术语），不改语义、不润色、不删内容。",
         "2. 保留所有时间头（## HH:MM）、标签（[助手回复]、[疑似串台]）和格式。",
-        "3. 繁体字统一为简体。",
-        "4. 如果不确定是否错误，保持原样。宁可漏改也不要改错。",
-        "5. 直接输出修正后的完整文本，不加任何说明或前缀。",
+        "3. 保留所有归因前缀（我：、人：、外：）和存疑记号（[?内容]），不得删除、改写或移动。",
+        "4. 繁体字统一为简体。",
+        "5. 如果不确定是否错误，保持原样。宁可漏改也不要改错。",
+        "6. 直接输出修正后的完整文本，不加任何说明或前缀。",
     ]
     if vocab:
         prompt_parts.extend(["", "词库（正确写法和提示）：", vocab])
@@ -419,8 +506,19 @@ def clean_text(text: str, api_key: str | None = None) -> str:
     # Step 2: 清除 [音乐] 标记
     text = remove_music_markers(text)
 
-    # Step 2.5 (Fix 3): 清除环境噪音行
-    text = ENV_NOISE_RE.sub('', text)
+    # Step 2.5 (Fix 3): 清除环境噪音行——外：行已声明归因来源，
+    # 不删除；其余行对净文本做判定
+    env_filtered: list[str] = []
+    for env_line in text.split('\n'):
+        source, env_net = parse_attribution(env_line)
+        if source == SOURCE_PLAYBACK:
+            env_filtered.append(env_line)  # 外：行不删
+            continue
+        net_stripped = env_net.strip()
+        if net_stripped and ENV_NOISE_RE.match(net_stripped):
+            continue  # 净文本是环境噪音，删除整行
+        env_filtered.append(env_line)
+    text = '\n'.join(env_filtered)
 
     lines = text.split('\n')
 

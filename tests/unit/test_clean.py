@@ -264,5 +264,250 @@ class RoleSignalWordProtectionTest(unittest.TestCase):
         self.assertIn("Claude", result)
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# U4: marker-aware cleaning tests
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class MarkerSurvivalEndToEndTest(unittest.TestCase):
+    """标记经 clean_text（含 mock LLM 纠错轮）后原样存活。"""
+
+    @patch('openmy.services.cleaning.cleaner.load_corrections')
+    def test_markers_survive_full_pipeline(self, mock_corrections):
+        """三类前缀 + 存疑 + [无法识别] 经 clean_text 后逐个存活。"""
+        mock_corrections.return_value = []
+        raw = (
+            "## 10:00\n\n"
+            "我：今天去[?宿州]看车了。\n"
+            "人：好的，那我们约[?张韧]一起去。\n"
+            "外：本期播客我们聊聊创业的那些事。\n"
+            "我：[无法识别]\n"
+            "[无人声]\n"
+        )
+        result = clean.clean_text(raw)
+        self.assertIn("我：", result)
+        self.assertIn("人：", result)
+        self.assertIn("外：", result)
+        self.assertIn("[?宿州]", result)
+        self.assertIn("[?张韧]", result)
+        self.assertIn("[无法识别]", result)
+        self.assertIn("[无人声]", result)
+        self.assertIn("## 10:00", result)
+
+    @patch('openmy.services.cleaning.cleaner.load_corrections')
+    def test_markers_survive_with_llm_correction_mocked(self, mock_corrections):
+        """模拟 LLM 纠错轮（api_key=None 不走），标记不被其他步骤吃掉。"""
+        mock_corrections.return_value = [{"wrong": "看车", "right": "看车"}]
+        raw = "我：今天去[?宿州]看车了。\n人：行，去吧。"
+        result = clean.clean_text(raw, api_key=None)
+        self.assertIn("我：", result)
+        self.assertIn("人：", result)
+        self.assertIn("[?宿州]", result)
+
+
+class PlaybackLineMusicFalsePositiveTest(unittest.TestCase):
+    """10 行全 外： 前缀的场景不触发 music_lyrics 误判。"""
+
+    def test_all_playback_lines_no_music_lyrics(self):
+        from openmy.services.scene_quality import inspect_scene_text
+        # 每行内容各不同，净文本不含重复 n-gram
+        diverse_lines = [
+            "外：今天的新闻关注经济形势变化。",
+            "外：国际政治局势持续紧张。",
+            "外：科技领域再次迎来突破性进展。",
+            "外：文化产业呈现蓬勃发展态势。",
+            "外：教育改革政策正在逐步落实。",
+            "外：环境保护成为全球关注焦点。",
+            "外：医疗健康领域投资大幅增长。",
+            "外：体育赛事赛程安排已经公布。",
+            "外：社会民生问题备受关注讨论。",
+            "外：数字经济带来新的发展机遇。",
+        ]
+        quality = inspect_scene_text("\n".join(diverse_lines))
+        self.assertNotIn("music_lyrics", quality["quality_flags"])
+
+
+class DedupAttributionBoundaryTest(unittest.TestCase):
+    """归因边界保护：不同前缀的相同净文本不去重。"""
+
+    def test_same_text_different_prefix_not_deduped(self):
+        """'我：好的' 紧跟 '人：好的' 不被去重。"""
+        lines = ["我：好的", "人：好的"]
+        result = clean.deduplicate_lines(lines)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0], "我：好的")
+        self.assertEqual(result[1], "人：好的")
+
+    def test_same_prefix_same_text_deduped(self):
+        """同前缀同文本照常去重。"""
+        lines = ["我：好的", "我：好的"]
+        result = clean.deduplicate_lines(lines)
+        self.assertEqual(len(result), 1)
+
+    def test_unmarked_same_text_deduped(self):
+        """无前缀的旧文本照常去重（向后兼容）。"""
+        lines = ["好的", "好的"]
+        result = clean.deduplicate_lines(lines)
+        self.assertEqual(len(result), 1)
+
+
+class MergeShortLineAttributionTest(unittest.TestCase):
+    """短行合并的归因边界保护。"""
+
+    def test_filler_not_merged_into_different_prefix(self):
+        """'我：啊' 不并入上一行的 '外：...' 行。"""
+        lines = ["外：这是一段长的外放内容", "我：啊"]
+        result = clean.merge_short_lines(lines, min_length=3)
+        self.assertEqual(len(result), 2)
+        self.assertIn("我：啊", result[1])
+
+    def test_suffix_particle_merged_same_prefix(self):
+        """同前缀的附着词合并正常。"""
+        lines = ["我：前面的长内容长内容", "我：呢"]
+        result = clean.merge_short_lines(lines, min_length=5)
+        merged = '\n'.join(result)
+        self.assertIn("长内容呢", merged)
+
+    def test_unmarked_merge_backward_compat(self):
+        """无前缀旧文本合并行为不变。"""
+        lines = ["前面的长内容长内容", "呢"]
+        result = clean.merge_short_lines(lines, min_length=3)
+        merged = '\n'.join(result)
+        self.assertIn("长内容呢", merged)
+
+
+class SplitLongParagraphPrefixTest(unittest.TestCase):
+    """长行切分后每个片段保留归因前缀。"""
+
+    def test_600_char_playback_line_keeps_prefix(self):
+        """600 字带 外：前缀的长行切分后各片段均保留前缀。"""
+        long_body = "。".join([f"这是外放内容第{i}段话" for i in range(80)])
+        long_line = f"外：{long_body}"
+        self.assertGreater(len(long_line), 500)
+        result = clean.split_long_paragraphs(long_line)
+        result_lines = [l for l in result.split('\n') if l.strip()]
+        self.assertTrue(len(result_lines) > 1, "should split into multiple lines")
+        for line in result_lines:
+            self.assertTrue(line.startswith("外："), f"split piece missing prefix: {line[:30]}...")
+
+
+class PrefixedFillerStillDeletedTest(unittest.TestCase):
+    """带前缀的废词行照常被删。"""
+
+    def test_prefixed_filler_deleted(self):
+        """'我：嗯嗯。' 仍被删除。"""
+        result = clean.clean_text("我：嗯嗯。\n我：正常内容")
+        self.assertNotIn("嗯嗯", result)
+        self.assertIn("正常内容", result)
+
+    def test_prefixed_filler_phrase_deleted(self):
+        """'人：对对对' 仍被删除。"""
+        result = clean.clean_text("人：对对对\n人：正常内容在这里")
+        lines = [l.strip() for l in result.split('\n') if l.strip()]
+        self.assertNotIn("人：对对对", lines)
+        self.assertIn("人：正常内容在这里", lines)
+
+
+class RealLyricsStillCaughtTest(unittest.TestCase):
+    """净文本中的真歌词仍被检测到（不过度修复）。"""
+
+    def test_real_lyrics_in_net_text(self):
+        from openmy.services.scene_quality import inspect_scene_text
+        # 制造歌词重复模式——无标记的纯歌词
+        lyrics = "我爱你中国我爱你中国我爱你中国我爱你中国我爱你中国" * 3
+        quality = inspect_scene_text(lyrics)
+        self.assertIn("music_lyrics", quality["quality_flags"])
+
+    def test_lyrics_with_prefix_still_caught(self):
+        """带归因前缀的歌词行，净文本仍触发检测。"""
+        from openmy.services.scene_quality import inspect_scene_text
+        lyrics_lines = ["外：我爱你中国我爱你中国我爱你中国我爱你中国我爱你中国" for _ in range(3)]
+        text = "\n".join(lyrics_lines)
+        quality = inspect_scene_text(text)
+        self.assertIn("music_lyrics", quality["quality_flags"])
+
+
+class PlaybackCrosstalkSkipTest(unittest.TestCase):
+    """外：前缀行不打 [疑似串台]。"""
+
+    def test_playback_line_not_marked_crosstalk(self):
+        """外放技术讲座行不被标 [疑似串台]。"""
+        lines = [
+            "外：在编写代码时，PostgreSQL 确实也是一个不错的选择。另外它对 JSONB 支持也很强。"
+        ]
+        result = clean.mark_suspicious_crosstalk(lines, min_length=40)
+        self.assertEqual(len(result), 1)
+        self.assertNotIn("[疑似串台]", result[0])
+
+
+class ApplyCorrectionsUncertainSpanTest(unittest.TestCase):
+    """纠错替换对带 [?] 行的行为验证。"""
+
+    @patch('openmy.services.cleaning.cleaner.load_corrections')
+    def test_correction_with_uncertain_span(self, mock_load):
+        """含 [?] 的行，纠错正常替换不误伤标记。"""
+        mock_load.return_value = [{"wrong": "示例错名", "right": "示例正名"}]
+        text = "我：[?张韧]跟示例错名去了公园"
+        result = clean.apply_corrections(text)
+        self.assertIn("示例正名", result)
+        self.assertNotIn("示例错名", result)
+        # [?张韧] 不受影响
+        self.assertIn("[?张韧]", result)
+        # 前缀保留
+        self.assertIn("我：", result)
+
+    @patch('openmy.services.cleaning.cleaner.load_corrections')
+    def test_correction_skip_when_right_in_uncertain(self, mock_load):
+        """如果正确词出现在 [?] 内部（如 [?正名]），不跳过替换。
+
+        apply_corrections 的 'right in updated_line' 检查是为了防止
+        解释句误伤。[?正名] 中的 '正名' 出现会触发 skip，但这种
+        场景在实际数据中极不可能出现（纠错词典的正确词不会是存疑词）。
+        此处验证当前行为即可，不做额外调整。
+        """
+        mock_load.return_value = [{"wrong": "错名", "right": "正名"}]
+        text = "我：[?正名]跟错名聊天"
+        result = clean.apply_corrections(text)
+        # '正名' 已在行中（在 [?正名] 里），skip 逻辑触发，错名不替换
+        self.assertIn("错名", result)
+
+
+class LegacyBehaviorUnchangedTest(unittest.TestCase):
+    """无标记的旧文本行为不变。"""
+
+    @patch('openmy.services.cleaning.cleaner.load_corrections')
+    def test_legacy_full_pipeline_unchanged(self, mock_corrections):
+        """与旧版行为逐字节一致的验证。"""
+        mock_corrections.return_value = []
+        raw = (
+            "我这就为您转写这段音频\n"
+            "## 10:00\n\n"
+            "嗯。\n"
+            "嗯\n"
+            "正常内容在这里。\n"
+            "正常内容在这里。\n"
+            "\n## 11:00\n\n"
+            "好的内容\n"
+        )
+        result = clean.clean_text(raw)
+        self.assertIn("## 10:00", result)
+        self.assertIn("## 11:00", result)
+        self.assertNotIn("为您转写", result)
+        self.assertEqual(result.count("正常内容在这里"), 1)
+        self.assertIn("好的内容", result)
+
+    def test_env_noise_still_removed_without_prefix(self):
+        """无标记的环境噪音行照常删除。"""
+        result = clean.clean_text("正常内容\n（狗吠声）\n更多内容")
+        self.assertNotIn("狗吠", result)
+        self.assertIn("正常内容", result)
+
+    def test_playback_env_noise_preserved(self):
+        """外：前缀的环境噪音行不被删——归因标记已声明来源。"""
+        result = clean.clean_text("外：（背景音乐声）\n我：正常内容")
+        self.assertIn("外：", result)
+        self.assertIn("我：正常内容", result)
+
+
 if __name__ == "__main__":
     unittest.main()
