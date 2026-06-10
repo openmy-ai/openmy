@@ -54,6 +54,17 @@ Use it when:
 - The pipeline keeps going when that happens; it does not stop the whole day.
 - A skipped scene may end with an empty summary, so the agent should treat that as expected partial output instead of a pipeline crash.
 
+## Post-Distillation: Transcript Confirmation
+
+After `distill.submit` clears all pending scenes:
+
+1. Call `openmy skill transcript.confirm.pending --date YYYY-MM-DD --json`.
+2. If items exist, follow the `openmy-transcript-confirm` SKILL.md dialogue rules to ask the user about uncertain spans (max 5).
+3. Submit confirmations with `transcript.confirm.submit`.
+4. Then continue to `extract.core.pending`.
+
+If no uncertain items are found, skip straight to `extract.core.pending`.
+
 ## Error Handling
 
 If any command returns `ok: false`:
