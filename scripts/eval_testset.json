@@ -1,0 +1,48 @@
+{
+  "_comment": "固定转写测试集（CONTEXT.md：测试集/硬伤）。音频本体在 git-ignored 的 data/ 下，丢失可按 source 字段从原始录音重切。",
+  "date": "2026-06-05",
+  "segments": [
+    {
+      "id": "clean_baseline",
+      "label": "清晰对话基线段",
+      "audio": "data/2026-06-05/stt_chunks/audio_001_sub_0000.mp3",
+      "source": "TX01_MIC016_20260605_165006",
+      "time_label": "16:50",
+      "dialogue": true
+    },
+    {
+      "id": "dialect",
+      "label": "方言段",
+      "audio": "data/2026-06-05/stt_chunks/audio_003_sub_0000.mp3",
+      "source": "TX01_MIC018_20260605_190307",
+      "time_label": "19:03",
+      "dialogue": true
+    },
+    {
+      "id": "ktv",
+      "label": "KTV 段",
+      "audio": "data/2026-06-05/stt_chunks/audio_007_sub_0000.mp3",
+      "source": "TX01_MIC022_20260605_210308",
+      "time_label": "21:03",
+      "dialogue": false
+    },
+    {
+      "id": "playback",
+      "label": "外放段",
+      "audio": "data/2026-06-05/stt_chunks/audio_009_TX01_MIC024_20260605_220308_orig.mp3",
+      "source": "TX01_MIC024_20260605_220308",
+      "time_label": "22:03",
+      "dialogue": false
+    }
+  ],
+  "hard_error_categories": ["凑字", "歌词混入", "外放冒充对话", "归因错误"],
+  "wearer_split_criteria": {
+    "registered_at": "2026-06-10",
+    "rule": "dialogue=true 的测试段中，我/人归因错误行数不超过该段归因行总数的 10%，且任一段不出现整段归因反转（把佩戴者整段标成他人或反之）",
+    "note": "R6（b）预注册标准：基线存档时定稿，跑 A/B 前不得修改，不得按跑分结果倒推"
+  },
+  "scoring": {
+    "method": "人/agent 对照原音频逐段计数四类硬伤，评测入口只产出并排对比产物，不做自动评分",
+    "gate": "（a）基线也转写了的内容上四类硬伤逐类不高于基线，归因版新增转写的外放内容单独计数不超上限；（b）佩戴者二分达到 wearer_split_criteria"
+  }
+}

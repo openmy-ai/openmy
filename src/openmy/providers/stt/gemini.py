@@ -63,6 +63,8 @@ class GeminiSTTProvider(SpeechToTextProvider):
         timeout_seconds: int,
         vad_filter: bool = False,
         word_timestamps: bool = False,
+        system_instruction: str | None = None,
+        prompt_text: str | None = None,
     ) -> TranscriptionResult:
         if getattr(genai, "Client", None) is None:
             raise FriendlyCliError(
@@ -110,18 +112,21 @@ class GeminiSTTProvider(SpeechToTextProvider):
                 fix_en="Check the audio format, then retry with a shorter file.",
             )
 
+        # 评测入口可注入实验版 prompt；不传时行为与原先完全一致
+        instruction = system_instruction if system_instruction is not None else SYSTEM_INSTRUCTION
+        prompt = prompt_text if prompt_text is not None else build_prompt(vocab_terms)
         response = client.models.generate_content(
             model=self.model,
             contents=[
                 types.Content(
                     parts=[
-                        types.Part.from_text(text=build_prompt(vocab_terms)),
+                        types.Part.from_text(text=prompt),
                         types.Part.from_uri(file_uri=uploaded.uri, mime_type=uploaded.mime_type),
                     ],
                 ),
             ],
             config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
+                system_instruction=instruction,
                 temperature=0.0,
             ),
         )
