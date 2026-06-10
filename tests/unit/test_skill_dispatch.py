@@ -63,6 +63,8 @@ class TestSkillDispatch(unittest.TestCase):
                 "profile.get",
                 "profile.set",
                 "status.get",
+                "transcript.confirm.pending",
+                "transcript.confirm.submit",
                 "vocab.init",
             },
         )

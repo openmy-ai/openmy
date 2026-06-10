@@ -33,6 +33,8 @@ openmy skill profile.set --export-provider obsidian --export-path "/path/to/vaul
 openmy skill profile.set --export-provider notion --export-key "secret" --export-db "database_id" --json
 openmy skill profile.set --screen-recognition on --json
 openmy skill profile.set --screen-recognition off --json
+openmy skill transcript.confirm.pending --date YYYY-MM-DD --json
+openmy skill transcript.confirm.submit --date YYYY-MM-DD --payload-file payload.json --json
 openmy skill health.check --json
 ```
 
@@ -95,3 +97,36 @@ Automatic export contract:
 - `openmy skill day.run --json` may export the generated daily briefing automatically when `OPENMY_EXPORT_PROVIDER` is configured.
 - `openmy skill health.check --json` reports whether export is configured and ready.
 - No separate export action is required for the automatic daily-briefing path.
+
+- `transcript.confirm.pending` returns uncertain `[?X]` spans from scenes that are usable and have summaries, sorted by scene time, capped at 5.
+- `transcript.confirm.submit` accepts:
+
+```json
+{
+  "date": "2026-06-10",
+  "items": [
+    {
+      "item_id": "s0_l0_abc12345",
+      "wrong": "宿州",
+      "right": "苏州",
+      "resolution": "corrected"
+    },
+    {
+      "item_id": "s1_l2_def67890",
+      "wrong": "张韧",
+      "resolution": "confirmed_correct"
+    },
+    {
+      "item_id": "s2_l0_ghi24680",
+      "wrong": "瓦矿",
+      "resolution": "unknown"
+    }
+  ]
+}
+```
+
+  - `resolution` must be one of: `corrected` (wrong word, provide `right`), `confirmed_correct` (word is correct, unwrap mark), `unknown` (user unsure, unwrap mark, no dictionary writes).
+  - `corrected` upserts `corrections.json`, appends `vocab.txt`, and replaces the marker in `transcript.md` and `scenes.json`.
+  - `confirmed_correct` only unwraps the `[?]` mark; no dictionary writes.
+  - `unknown` only unwraps the `[?]` mark; no dictionary writes.
+  - Submitting the same item twice is idempotent (upsert semantics, second transcript replace is a no-op).

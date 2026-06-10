@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 from typing import Any, Callable
 
-from openmy.skill_handlers import context_profile, day_pipeline, health_aggregate
+from openmy.skill_handlers import context_profile, day_pipeline, health_aggregate, transcript_confirm
 from openmy.skill_handlers.common import (
     SkillDispatchError,
     build_correction_tokens,
@@ -220,6 +220,24 @@ def handle_health_check(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     return health_aggregate.handle_health_check(args, cli_getter=_cli, build_success_payload=build_success_payload)
 
 
+def handle_transcript_confirm_pending(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    return transcript_confirm.handle_confirm_pending(
+        args,
+        cli_getter=_cli,
+        require_date_fn=_require_date,
+        build_success_payload=build_success_payload,
+    )
+
+
+def handle_transcript_confirm_submit(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    return transcript_confirm.handle_confirm_submit(
+        args,
+        cli_getter=_cli,
+        require_date_fn=_require_date,
+        build_success_payload=build_success_payload,
+    )
+
+
 ACTION_HANDLERS: dict[str, Callable[[argparse.Namespace], tuple[dict[str, Any], int]]] = {
     "aggregate": handle_aggregate,
     "aggregate.monthly": handle_aggregate_monthly,
@@ -237,6 +255,8 @@ ACTION_HANDLERS: dict[str, Callable[[argparse.Namespace], tuple[dict[str, Any], 
     "day.run": handle_day_run,
     "correction.apply": handle_correction_apply,
     "status.get": handle_status_get,
+    "transcript.confirm.pending": handle_transcript_confirm_pending,
+    "transcript.confirm.submit": handle_transcript_confirm_submit,
     "vocab.init": handle_vocab_init,
 }
 
