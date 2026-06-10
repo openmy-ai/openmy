@@ -93,14 +93,17 @@ class TestGenerateBriefing(unittest.TestCase):
         finally:
             os.unlink(tmp_path)
 
-    def test_briefing_sanitizes_generic_people_phrasing(self):
+    def test_briefing_sanitizes_speaker_label_only(self):
+        """归因式转写后（ADR-0001）：只把"说话人"替换为"我"；
+        "大家/有人"不再强制改写——硬替换会把别人的事错安到"我们"头上，
+        归因语义由蒸馏层的标记读取规则负责，不靠字符串替换。"""
         scenes = {
             "scenes": [
                 {
                     "time_start": "12:00",
                     "time_end": "12:10",
                     "text": "今天大家讨论了一会儿。",
-                    "summary": "今天大家聊了不少事。有人说先别急。",
+                    "summary": "说话人提到先别急。今天大家聊了不少事。",
                     "role": {"addressed_to": "伴侣", "scene_type": "interpersonal"},
                 }
             ],
@@ -113,8 +116,9 @@ class TestGenerateBriefing(unittest.TestCase):
         try:
             briefing = generate_briefing(tmp_path, "2026-04-07")
             payload = json.dumps(asdict(briefing), ensure_ascii=False)
-            self.assertNotIn("大家", payload)
-            self.assertNotIn("有人说", payload)
+            self.assertNotIn("说话人", payload)
+            # "大家"原样保留——不再被硬替换成"我们"
+            self.assertIn("大家", payload)
         finally:
             os.unlink(tmp_path)
 
