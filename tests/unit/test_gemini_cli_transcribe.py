@@ -33,6 +33,25 @@ class GeminiCliTranscribeTest(unittest.TestCase):
         prompt = gemini_cli_transcribe.build_prompt('常见词')
         self.assertNotIn('@', prompt)
 
+    def test_system_instruction_is_attribution_based(self):
+        """冻结的归因式 prompt（ADR-0001）：三类前缀 + 存疑记号，旧过滤式规则不得回潮。"""
+        from openmy.providers.stt.gemini import SYSTEM_INSTRUCTION
+
+        # 三类来源前缀与存疑记号
+        self.assertIn('我：', SYSTEM_INSTRUCTION)
+        self.assertIn('人：', SYSTEM_INSTRUCTION)
+        self.assertIn('外：', SYSTEM_INSTRUCTION)
+        self.assertIn('[?]', SYSTEM_INSTRUCTION)
+        self.assertIn('[无法识别]', SYSTEM_INSTRUCTION)
+        self.assertIn('[无人声]', SYSTEM_INSTRUCTION)
+        # 通话归类规则（通话对方 → 人：）
+        self.assertIn('通话', SYSTEM_INSTRUCTION)
+        # 防复读规则
+        self.assertIn('重复', SYSTEM_INSTRUCTION)
+        # 旧过滤式规则不得回潮
+        self.assertNotIn('不添加说话人标注', SYSTEM_INSTRUCTION)
+        self.assertNotIn('不转写该段', SYSTEM_INSTRUCTION)
+
     def test_run_gemini_cli_backward_compat_requires_api_key(self):
         """向后兼容接口在缺少 API key 时应报错。"""
         with patch.dict('os.environ', {}, clear=True):

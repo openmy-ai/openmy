@@ -20,7 +20,7 @@
     },
     {
       "id": "ktv",
-      "label": "KTV 段",
+      "label": "车内音乐段（旧称 KTV 段，用户确认当日未去 KTV；车内放歌+通话）",
       "audio": "data/2026-06-05/stt_chunks/audio_007_sub_0000.mp3",
       "source": "TX01_MIC022_20260605_210308",
       "time_label": "21:03",
@@ -28,7 +28,7 @@
     },
     {
       "id": "playback",
-      "label": "外放段",
+      "label": "通话段（旧称外放段，实际内容为视频通话；考察通话场景的来源区分）",
       "audio": "data/2026-06-05/stt_chunks/audio_009_TX01_MIC024_20260605_220308_orig.mp3",
       "source": "TX01_MIC024_20260605_220308",
       "time_label": "22:03",
