@@ -12,7 +12,7 @@ import hashlib
 from pathlib import Path
 from typing import Any, Callable
 
-from openmy.services.markers import iter_uncertain_spans
+from openmy.services.markers import UNRECOGNIZED_TAG, iter_uncertain_spans
 from openmy.services.scene_quality import scene_is_usable_for_downstream
 from openmy.skill_handlers.common import (
     SkillDispatchError,
@@ -236,11 +236,9 @@ def handle_confirm_submit(
             stats["confirmed_correct"] += 1
 
         elif resolution == "unknown":
-            # Remove from pending consideration: unwrap [?word] -> word
-            # and append a skip marker so it's no longer uncertain.
-            # Simplest mechanism: just unwrap the marker (same as confirmed_correct
-            # for text treatment). The word stays, the [?] mark is removed,
-            # so iter_uncertain_spans won't return it again. No dictionary writes.
+            # 用户也敲不定 → 按宁漏勿假替换为 [无法识别]：去掉问号保留原词
+            # 会让一个没人确认的词以确定身份进入后续蒸馏，正是要防的假记忆。
+            # [无法识别] 不会被 iter_uncertain_spans 再次返回，也不写词典。
             if not wrong:
                 raise SkillDispatchError(
                     action="transcript.confirm.submit",
@@ -250,20 +248,20 @@ def handle_confirm_submit(
                 )
 
             marker_token = f"[?{wrong}]"
-            transcript_text = transcript_text.replace(marker_token, wrong)
+            transcript_text = transcript_text.replace(marker_token, UNRECOGNIZED_TAG)
             _unclosed = f"[?{wrong}"
             for _line in transcript_text.split("\n"):
                 if _line.rstrip().endswith(_unclosed):
-                    transcript_text = transcript_text.replace(_unclosed, wrong, 1)
+                    transcript_text = transcript_text.replace(_unclosed, UNRECOGNIZED_TAG, 1)
 
             for scene in scene_payload.get("scenes", []):
                 if isinstance(scene, dict) and "text" in scene:
                     scene_text = str(scene["text"])
-                    scene_text = scene_text.replace(marker_token, wrong)
+                    scene_text = scene_text.replace(marker_token, UNRECOGNIZED_TAG)
                     updated_lines = []
                     for sline in scene_text.split("\n"):
                         if sline.rstrip().endswith(_unclosed):
-                            sline = sline.replace(_unclosed, wrong, 1)
+                            sline = sline.replace(_unclosed, UNRECOGNIZED_TAG, 1)
                         updated_lines.append(sline)
                     scene["text"] = "\n".join(updated_lines)
 

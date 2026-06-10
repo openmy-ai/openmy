@@ -125,8 +125,8 @@ Automatic export contract:
 }
 ```
 
-  - `resolution` must be one of: `corrected` (wrong word, provide `right`), `confirmed_correct` (word is correct, unwrap mark), `unknown` (user unsure, unwrap mark, no dictionary writes).
+  - `resolution` must be one of: `corrected` (wrong word, provide `right`), `confirmed_correct` (word is correct, unwrap mark), `unknown` (user unsure, replace the span with `[无法识别]` — an unconfirmed word must not stay as confident content, no dictionary writes).
   - `corrected` upserts `corrections.json`, appends `vocab.txt`, and replaces the marker in `transcript.md` and `scenes.json`.
   - `confirmed_correct` only unwraps the `[?]` mark; no dictionary writes.
-  - `unknown` only unwraps the `[?]` mark; no dictionary writes.
+  - `unknown` replaces the `[?word]` span with `[无法识别]` (宁漏勿假: unconfirmed words must not enter future distillation as confident content); no dictionary writes.
   - Submitting the same item twice is idempotent (upsert semantics, second transcript replace is a no-op).

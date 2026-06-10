@@ -402,9 +402,9 @@ class SubmitConfirmedCorrectTest(unittest.TestCase):
 
 
 class SubmitUnknownTest(unittest.TestCase):
-    """unknown: pending cleared, dictionaries and transcript word untouched."""
+    """unknown: 词替换为 [无法识别]（宁漏勿假），词典不写。"""
 
-    def test_unknown_unwraps_mark_no_dictionary(self):
+    def test_unknown_replaces_with_unrecognized_no_dictionary(self):
         from openmy.skill_handlers.transcript_confirm import handle_confirm_submit
         from openmy.skill_handlers.common import build_success_payload
 
@@ -456,9 +456,10 @@ class SubmitUnknownTest(unittest.TestCase):
             mock_upsert.assert_not_called()
             mock_vocab.assert_not_called()
 
-            # Word stays, mark removed
+            # 宁漏勿假：没人敲定的词不能以确定身份留在转写里 → 替换为 [无法识别]
             transcript_text = transcript_path.read_text(encoding="utf-8")
-            self.assertIn("宿州", transcript_text)
+            self.assertNotIn("宿州", transcript_text)
+            self.assertIn("[无法识别]", transcript_text)
             self.assertNotIn("[?", transcript_text)
 
 
