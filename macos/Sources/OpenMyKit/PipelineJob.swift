@@ -15,9 +15,9 @@ public struct PipelineJob: Decodable, Equatable, Sendable, Identifiable {
 
     public var id: String { jobId }
 
-    /// 是否已进入终态。
+    /// 是否已进入终态。interrupted 是后端重启恢复未完成任务时的终态。
     public var isTerminal: Bool {
-        ["succeeded", "partial", "failed", "cancelled"].contains(status)
+        ["succeeded", "partial", "failed", "cancelled", "interrupted"].contains(status)
     }
 
     enum CodingKeys: String, CodingKey {

@@ -1,6 +1,5 @@
 import SwiftUI
 import OpenMyKit
-import UniformTypeIdentifiers
 
 /// 主界面：左侧日期列表，右侧日报 / 进行中的任务进度。
 struct MainView: View {
@@ -42,8 +41,8 @@ struct MainView: View {
     @ViewBuilder
     private var detail: some View {
         ZStack {
-            if job.isActive || job.job != nil {
-                ProgressPanelView(job: job)
+            if job.job != nil {
+                ProgressPanelView(job: job, onDismiss: dismissJob)
             } else if let briefing = briefings.selectedBriefing {
                 BriefingDetailView(briefing: briefing)
             } else {
@@ -75,11 +74,18 @@ struct MainView: View {
     }
 
     private func startJob(with urls: [URL]) {
-        let paths = urls.map(\.path)
+        // 过滤受支持的格式，并对云端引擎设 5 个批量上限（见 CLAUDE.md 云端批量限制）。
+        let paths = AudioFileFilter.eligible(urls.map(\.path), maxBatch: 5)
         guard !paths.isEmpty else { return }
         Task {
             await job.start(audioFiles: paths)
             job.startPolling()
         }
+    }
+
+    /// 任务终态后：清空任务并刷新日报列表，让刚生成的日报出现。
+    private func dismissJob() {
+        job.clear()
+        Task { await briefings.loadDates() }
     }
 }

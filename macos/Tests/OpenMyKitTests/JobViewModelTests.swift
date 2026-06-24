@@ -78,6 +78,27 @@ final class JobViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isActive)
     }
 
+    // 行为：interrupted 也是终态（后端重启恢复用），轮询应停止
+    func test_interrupted_is_terminal() async {
+        MockURLProtocol.handler = { _ in (200, self.jobJSON(id: "j1", status: "running")) }
+        let vm = makeVM()
+        await vm.start(audioFiles: ["/tmp/a.wav"])
+        MockURLProtocol.handler = { _ in (200, self.jobJSON(id: "j1", status: "interrupted")) }
+        await vm.refresh()
+        XCTAssertFalse(vm.isActive)
+    }
+
+    // 行为：clear 清空当前任务，让界面回到日报浏览
+    func test_clear_resets_job() async {
+        MockURLProtocol.handler = { _ in (200, self.jobJSON(id: "j1", status: "succeeded")) }
+        let vm = makeVM()
+        await vm.start(audioFiles: ["/tmp/a.wav"])
+        XCTAssertNotNil(vm.job)
+        vm.clear()
+        XCTAssertNil(vm.job)
+        XCTAssertNil(vm.errorMessage)
+    }
+
     // 行为：请求失败时记录错误信息，不崩
     func test_start_records_error_on_failure() async {
         MockURLProtocol.handler = { _ in (500, Data("{}".utf8)) }

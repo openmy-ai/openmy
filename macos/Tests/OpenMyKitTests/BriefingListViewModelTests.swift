@@ -37,6 +37,25 @@ final class BriefingListViewModelTests: XCTestCase {
         XCTAssertEqual(vm.selectedDate, "2026-06-05")
     }
 
+    // 行为：快速切换日期时，过期的慢响应不覆盖最新选择
+    func test_stale_response_does_not_overwrite() async {
+        MockURLProtocol.handler = { req in
+            let path = req.url?.path ?? ""
+            if path.contains("2026-01-01") {
+                Thread.sleep(forTimeInterval: 0.2)  // 慢响应，确保晚于快响应返回
+                return (200, Data(#"{"date":"2026-01-01","summary":"旧"}"#.utf8))
+            }
+            return (200, Data(#"{"date":"2026-02-02","summary":"新"}"#.utf8))
+        }
+        let vm = makeVM()
+        let slow = Task { await vm.select(date: "2026-01-01") }
+        try? await Task.sleep(for: .milliseconds(20))  // 确保慢请求先发出
+        await vm.select(date: "2026-02-02")
+        await slow.value
+        XCTAssertEqual(vm.selectedDate, "2026-02-02")
+        XCTAssertEqual(vm.selectedBriefing?.date, "2026-02-02")
+    }
+
     // 行为：日报缺失（404）记录错误且不崩
     func test_select_missing_briefing() async {
         MockURLProtocol.handler = { _ in (404, Data(#"{"error":"no briefing"}"#.utf8)) }

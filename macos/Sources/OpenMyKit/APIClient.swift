@@ -120,6 +120,5 @@ public struct APIClient: Sendable {
 }
 
 public enum APIError: Error, Equatable, Sendable {
-    case notImplemented
     case badStatus(Int)
 }

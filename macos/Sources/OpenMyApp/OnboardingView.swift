@@ -54,15 +54,18 @@ private struct ProviderRow: View {
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 Text(provider.description).font(.subheadline).foregroundStyle(.secondary)
-                if provider.needsApiKey {
-                    Text("需要 API Key").font(.caption).foregroundStyle(.orange)
+                if provider.needsApiKey && !provider.ready {
+                    Text("需要先配置 API Key 才能使用").font(.caption).foregroundStyle(.orange)
+                } else if provider.needsApiKey {
+                    Text("需要 API Key").font(.caption).foregroundStyle(.secondary)
                 }
             }
             Spacer()
             Button(action: onSelect) {
                 Text(provider.isActive ? "已选" : "选这个")
             }
-            .disabled(isWorking || provider.isActive)
+            // 未就绪（云端缺 Key）的引擎不可选，避免选了又失败
+            .disabled(isWorking || provider.isActive || !provider.ready)
             .buttonStyle(.borderedProminent)
         }
         .padding(14)

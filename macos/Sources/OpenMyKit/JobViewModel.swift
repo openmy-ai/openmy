@@ -48,6 +48,13 @@ public final class JobViewModel {
         }
     }
 
+    /// 清空当前任务（终态后让界面回到日报浏览）。
+    public func clear() {
+        stopPolling()
+        job = nil
+        errorMessage = nil
+    }
+
     public func pause() async { await act(.pause) }
     public func resume() async { await act(.resume) }
     public func cancel() async { await act(.cancel) }

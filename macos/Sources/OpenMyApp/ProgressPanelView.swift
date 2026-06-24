@@ -1,9 +1,11 @@
 import SwiftUI
 import OpenMyKit
 
-/// 四阶段进度面板：实时显示转写 / 清洗 / 场景切分 / 蒸馏，并提供暂停 / 取消 / 跳过。
+/// 四阶段进度面板：实时显示转写 / 清洗 / 场景切分 / 蒸馏，并提供暂停 / 继续 / 取消 / 跳过。
 struct ProgressPanelView: View {
     @Bindable var job: JobViewModel
+    /// 终态后点击「查看日报」回调：清空任务并刷新日报列表。
+    var onDismiss: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -32,15 +34,21 @@ struct ProgressPanelView: View {
         .onDisappear { job.stopPolling() }
     }
 
+    @ViewBuilder
     private var controls: some View {
         HStack(spacing: 12) {
-            if job.canPause {
-                Button("暂停") { Task { await job.pause() } }
-            }
-            if job.canSkip {
-                Button("跳过这步") { Task { await job.skip() } }
-            }
-            if job.isActive {
+            if job.job?.isTerminal == true {
+                // 终态：回到日报浏览
+                Button("查看日报", action: onDismiss).buttonStyle(.borderedProminent)
+            } else {
+                if job.job?.status == "paused" {
+                    Button("继续") { Task { await job.resume() } }
+                } else if job.canPause {
+                    Button("暂停") { Task { await job.pause() } }
+                }
+                if job.canSkip {
+                    Button("跳过这步") { Task { await job.skip() } }
+                }
                 Button("取消", role: .destructive) { Task { await job.cancel() } }
             }
         }
