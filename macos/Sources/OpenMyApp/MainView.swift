@@ -7,6 +7,7 @@ struct MainView: View {
     @State private var briefings: BriefingListViewModel
     @State private var job: JobViewModel
     @State private var isDropTargeted = false
+    @State private var dropNote: String?
 
     init(client: APIClient) {
         self.client = client
@@ -67,6 +68,9 @@ struct MainView: View {
             Image(systemName: "square.and.arrow.down.on.square")
                 .font(.system(size: 48)).foregroundStyle(.secondary)
             Text("把录音文件拖到这里开始处理").foregroundStyle(.secondary)
+            if let note = dropNote {
+                Text(note).font(.footnote).foregroundStyle(.orange)
+            }
             if let err = briefings.errorMessage {
                 Text(err).font(.footnote).foregroundStyle(.red)
             }
@@ -75,8 +79,13 @@ struct MainView: View {
 
     private func startJob(with urls: [URL]) {
         // 过滤受支持的格式，并对云端引擎设 5 个批量上限（见 CLAUDE.md 云端批量限制）。
-        let paths = AudioFileFilter.eligible(urls.map(\.path), maxBatch: 5)
-        guard !paths.isEmpty else { return }
+        let dropped = urls.map(\.path)
+        let paths = AudioFileFilter.eligible(dropped, maxBatch: 5)
+        guard !paths.isEmpty else {
+            dropNote = "拖入的文件都不是支持的音频/视频格式"
+            return
+        }
+        dropNote = paths.count < dropped.count ? "已忽略部分文件，只处理前 \(paths.count) 个" : nil
         Task {
             await job.start(audioFiles: paths)
             job.startPolling()

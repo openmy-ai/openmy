@@ -2,3 +2,4 @@
 .swiftpm/
 *.xcodeproj
 DerivedData/
+CODEX_REVIEW*.md

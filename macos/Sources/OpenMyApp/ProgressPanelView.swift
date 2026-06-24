@@ -63,6 +63,7 @@ struct ProgressPanelView: View {
         case "partial": return "部分完成"
         case "failed": return "失败"
         case "cancelled": return "已取消"
+        case "interrupted": return "已中断"
         default: return job.job?.status ?? ""
         }
     }
