@@ -16,10 +16,12 @@ struct OpenMyApp: App {
         WindowGroup {
             RootView(root: root)
                 .frame(minWidth: 880, minHeight: 560)
-                .environment(toastCenter)
                 .tint(AccentColorChoice.parse(accentRaw).color)
                 .preferredColorScheme(AppAppearance.parse(appearanceRaw).colorScheme)
                 .toastHost()
+                // .environment 必须在最外层（最后应用）：toastHost 的浮层也读
+                // @Environment(ToastCenter)，注入若在 toastHost 之内层，浮层读不到会崩溃。
+                .environment(toastCenter)
         }
         .defaultSize(width: 1080, height: 720)
 
