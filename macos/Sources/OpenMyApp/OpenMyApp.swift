@@ -18,8 +18,10 @@ struct OpenMyApp: App {
             Button("打开主窗口") {
                 NSApp.activate(ignoringOtherApps: true)
             }
+            .keyboardShortcut("o")
             Divider()
-            Button("退出") { NSApp.terminate(nil) }
+            Button("退出 OpenMy") { NSApp.terminate(nil) }
+                .keyboardShortcut("q")
         }
     }
 }
@@ -46,6 +48,12 @@ final class RootViewModel {
     func onboardingFinished() {
         phase = .ready
     }
+
+    /// 从主界面回到首次配置（重新选引擎）。
+    func reconfigure() async {
+        await onboarding.load()
+        phase = .onboarding
+    }
 }
 
 struct RootView: View {
@@ -55,13 +63,29 @@ struct RootView: View {
         Group {
             switch root.phase {
             case .loading:
-                ProgressView("正在连接 OpenMy…")
+                loadingView
             case .onboarding:
                 OnboardingView(vm: root.onboarding, onDone: root.onboardingFinished)
             case .ready:
-                MainView(client: root.client)
+                MainView(client: root.client, onReconfigure: { Task { await root.reconfigure() } })
             }
         }
         .task { await root.bootstrap() }
+    }
+
+    /// 启动连接后端时的过渡画面。
+    private var loadingView: some View {
+        VStack(spacing: Theme.Spacing.lg) {
+            Image(systemName: "waveform")
+                .font(.system(size: 44, weight: .light))
+                .foregroundStyle(Theme.Palette.accent)
+                .symbolEffect(.pulse)
+            ProgressView()
+                .controlSize(.small)
+            Text("正在连接 OpenMy…")
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Palette.secondaryText)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

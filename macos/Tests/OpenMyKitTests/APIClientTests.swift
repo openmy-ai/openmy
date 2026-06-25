@@ -60,6 +60,20 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(b.totalWords, 38925)
     }
 
+    // 行为：dateDetail 解码逐段转写
+    func test_dateDetail_decodes_segments() async throws {
+        MockURLProtocol.handler = { req in
+            XCTAssertEqual(req.url?.path, "/api/date/2026-06-05")
+            let json = #"{"date":"2026-06-05","segments":[{"time":"00:01","text":"你好世界","preview":"你好"},{"time":"00:05","text":"第二段","preview":"第二"}],"word_count":4}"#
+            return (200, Data(json.utf8))
+        }
+        let d = try await makeClient().dateDetail(date: "2026-06-05")
+        XCTAssertEqual(d.date, "2026-06-05")
+        XCTAssertEqual(d.segments.count, 2)
+        XCTAssertEqual(d.segments.first?.time, "00:01")
+        XCTAssertEqual(d.segments.first?.text, "你好世界")
+    }
+
     // 行为：briefing 缺省列表字段不报错
     func test_briefing_tolerates_missing_lists() async throws {
         MockURLProtocol.handler = { _ in

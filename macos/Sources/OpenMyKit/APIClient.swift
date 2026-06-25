@@ -48,6 +48,11 @@ public struct APIClient: Sendable {
         try await get("/api/briefing/\(date)")
     }
 
+    /// 某天原始记录（逐段转写），用于从日报下钻。
+    public func dateDetail(date: String) async throws -> DateDetail {
+        try await get("/api/date/\(date)")
+    }
+
     /// onboarding 状态。
     public func onboarding() async throws -> OnboardingState {
         try await get("/api/onboarding")

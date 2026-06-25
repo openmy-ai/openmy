@@ -99,6 +99,22 @@ final class JobViewModelTests: XCTestCase {
         XCTAssertNil(vm.errorMessage)
     }
 
+    // 行为：暂停后 resume 调用动作并把任务切回 running
+    func test_resume_updates_job() async {
+        MockURLProtocol.handler = { _ in (200, self.jobJSON(id: "j1", status: "paused")) }
+        let vm = makeVM()
+        await vm.start(audioFiles: ["/tmp/a.wav"])
+        XCTAssertEqual(vm.job?.status, "paused")
+
+        MockURLProtocol.handler = { req in
+            XCTAssertEqual(req.url?.path, "/api/pipeline/jobs/j1/resume")
+            return (200, self.jobJSON(id: "j1", status: "running"))
+        }
+        await vm.resume()
+        XCTAssertEqual(vm.job?.status, "running")
+        XCTAssertTrue(vm.isActive)
+    }
+
     // 行为：请求失败时记录错误信息，不崩
     func test_start_records_error_on_failure() async {
         MockURLProtocol.handler = { _ in (500, Data("{}".utf8)) }

@@ -8,99 +8,193 @@ struct ProgressPanelView: View {
     var onDismiss: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack {
-                Text("处理进度").font(.title2).bold()
-                Spacer()
-                Text(statusText).font(.subheadline).foregroundStyle(.secondary)
-            }
+        VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+            header
 
-            if let steps = job.job?.steps {
-                VStack(spacing: 10) {
-                    ForEach(steps) { step in
-                        StepRow(step: step)
-                    }
-                }
+            if let steps = job.job?.steps, !steps.isEmpty {
+                stepTimeline(steps)
             }
 
             controls
 
-            if let err = job.errorMessage {
-                Text(err).font(.footnote).foregroundStyle(.red)
-            }
+            OMErrorText(job.errorMessage)
+
             Spacer()
         }
-        .padding(28)
+        .padding(Theme.Spacing.xxl)
         .onDisappear { job.stopPolling() }
     }
 
+    // MARK: - 头部：标题 + 状态徽章 + 总进度条
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.md) {
+                Text("处理进度").font(Theme.Typography.sectionTitle)
+                statusBadge
+                Spacer()
+                if let pct = job.job?.progressPct {
+                    Text("\(pct)%")
+                        .font(Theme.Typography.metric)
+                        .foregroundStyle(Theme.Palette.accent)
+                        .monospacedDigit()
+                }
+            }
+
+            ProgressView(value: Double(job.job?.progressPct ?? 0), total: 100)
+                .tint(progressTint)
+        }
+        .omSection()
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        if let status = job.job?.status {
+            OMBadge(JobStatusText.job(status), kind: isTerminalFailure ? .neutral : .accent)
+        }
+    }
+
+    /// 失败 / 取消 / 中断时进度条转为危险色，否则用强调色。
+    private var progressTint: Color {
+        isTerminalFailure ? Theme.Palette.danger : Theme.Palette.accent
+    }
+
+    private var isTerminalFailure: Bool {
+        guard let status = job.job?.status else { return false }
+        return ["failed", "cancelled", "interrupted"].contains(status)
+    }
+
+    // MARK: - 步骤时间线
+
+    private func stepTimeline(_ steps: [PipelineStep]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
+                StepRow(step: step, isLast: index == steps.count - 1)
+            }
+        }
+        .omSection()
+    }
+
+    // MARK: - 控制按钮
+
     @ViewBuilder
     private var controls: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.Spacing.md) {
             if job.job?.isTerminal == true {
                 // 终态：回到日报浏览
-                Button("查看日报", action: onDismiss).buttonStyle(.borderedProminent)
+                Button("查看日报", action: onDismiss)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
             } else {
                 if job.job?.status == "paused" {
                     Button("继续") { Task { await job.resume() } }
+                        .buttonStyle(.borderedProminent)
                 } else if job.canPause {
                     Button("暂停") { Task { await job.pause() } }
+                        .buttonStyle(.bordered)
                 }
                 if job.canSkip {
                     Button("跳过这步") { Task { await job.skip() } }
+                        .buttonStyle(.bordered)
                 }
+                Spacer()
                 Button("取消", role: .destructive) { Task { await job.cancel() } }
+                    .buttonStyle(.bordered)
             }
         }
-    }
-
-    private var statusText: String {
-        switch job.job?.status {
-        case "queued": return "排队中"
-        case "running": return "处理中"
-        case "paused": return "已暂停"
-        case "succeeded": return "已完成"
-        case "partial": return "部分完成"
-        case "failed": return "失败"
-        case "cancelled": return "已取消"
-        case "interrupted": return "已中断"
-        default: return job.job?.status ?? ""
-        }
+        .controlSize(.regular)
     }
 }
 
+// MARK: - 单个步骤行（时间线样式）
+
 private struct StepRow: View {
     let step: PipelineStep
+    /// 是否为最后一步：决定是否绘制向下连接线。
+    let isLast: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            icon
-            VStack(alignment: .leading, spacing: 2) {
-                Text(step.label).font(.headline)
-                if !step.resultSummary.isEmpty {
-                    Text(step.resultSummary).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            if step.status == "running" {
-                ProgressView().controlSize(.small)
-            }
+        HStack(alignment: .top, spacing: Theme.Spacing.md) {
+            timelineRail
+            content
         }
-        .padding(12)
-        .background(.quaternary.opacity(0.4))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    private var icon: some View {
+    /// 左侧时间线：状态圆点 + 向下连接线。
+    private var timelineRail: some View {
+        VStack(spacing: 0) {
+            indicator
+            if !isLast {
+                Rectangle()
+                    .fill(Theme.Palette.secondaryText.opacity(0.25))
+                    .frame(width: 1.5)
+                    .frame(maxHeight: .infinity)
+            }
+        }
+        .frame(width: 22)
+    }
+
+    @ViewBuilder
+    private var indicator: some View {
         Group {
             switch step.status {
-            case "done": Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-            case "running": Image(systemName: "circle.dotted").foregroundStyle(.tint)
-            case "failed": Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
-            case "skipped": Image(systemName: "forward.circle.fill").foregroundStyle(.secondary)
-            default: Image(systemName: "circle").foregroundStyle(.secondary)
+            case "done":
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(Theme.Palette.success)
+            case "running":
+                ProgressView().controlSize(.small)
+            case "failed":
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(Theme.Palette.danger)
+            case "skipped":
+                Image(systemName: "forward.circle.fill")
+                    .foregroundStyle(Theme.Palette.secondaryText)
+            default:
+                Image(systemName: "circle")
+                    .foregroundStyle(Theme.Palette.secondaryText.opacity(0.5))
             }
         }
         .font(.title3)
+        .frame(width: 22, height: 22)
+    }
+
+    /// 右侧内容卡片：标题 + 状态文案 + 结果摘要。
+    private var content: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            HStack(spacing: Theme.Spacing.sm) {
+                Text(step.label)
+                    .font(Theme.Typography.cardTitle)
+                    .foregroundStyle(titleColor)
+                Spacer()
+                Text(JobStatusText.step(step.status))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(statusColor)
+            }
+            if !step.resultSummary.isEmpty {
+                Text(step.resultSummary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .omCard()
+        .padding(.bottom, isLast ? 0 : Theme.Spacing.sm)
+    }
+
+    /// 进行中的步骤标题用主文字色突出，其余次要色，已完成保持主色。
+    private var titleColor: Color {
+        switch step.status {
+        case "running", "done", "failed": return Theme.Palette.primaryText
+        default: return Theme.Palette.secondaryText
+        }
+    }
+
+    private var statusColor: Color {
+        switch step.status {
+        case "done": return Theme.Palette.success
+        case "running": return Theme.Palette.accent
+        case "failed": return Theme.Palette.danger
+        default: return Theme.Palette.secondaryText
+        }
     }
 }

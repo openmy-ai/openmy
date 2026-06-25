@@ -7,15 +7,11 @@ struct OnboardingView: View {
     var onDone: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text(vm.state?.headline ?? "选择转写引擎")
-                .font(.largeTitle).bold()
-            if let next = vm.state?.nextStep, !next.isEmpty {
-                Text(next).foregroundStyle(.secondary)
-            }
+        VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+            header
 
             ScrollView {
-                VStack(spacing: 12) {
+                VStack(spacing: Theme.Spacing.md) {
                     ForEach(vm.providers) { provider in
                         ProviderRow(provider: provider, isWorking: vm.isWorking) {
                             Task {
@@ -25,14 +21,32 @@ struct OnboardingView: View {
                         }
                     }
                 }
+                // 顶部留内衬，避免第一张推荐卡片被标题区压住/裁切。
+                .padding(.top, Theme.Spacing.sm)
             }
+            // 滚动内容上下各留边距，第一张和最后一张卡片不贴边。
+            .contentMargins(.vertical, Theme.Spacing.sm, for: .scrollContent)
+            .scrollClipDisabled(false)
 
-            if let err = vm.errorMessage {
-                Text(err).font(.footnote).foregroundStyle(.red)
+            OMErrorText(vm.errorMessage)
+        }
+        .padding(Theme.Spacing.xxl)
+        .task { if vm.state == nil { await vm.load() } }
+    }
+
+    // 页头：大标题 + 下一步说明。
+    private var header: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text(vm.state?.headline ?? "选择转写引擎")
+                .font(Theme.Typography.pageTitle)
+                .foregroundStyle(Theme.Palette.primaryText)
+            if let next = vm.state?.nextStep, !next.isEmpty {
+                Text(next)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Palette.secondaryText)
             }
         }
-        .padding(28)
-        .task { if vm.state == nil { await vm.load() } }
+        .omSection()
     }
 }
 
@@ -41,35 +55,71 @@ private struct ProviderRow: View {
     let isWorking: Bool
     let onSelect: () -> Void
 
+    // 云端缺 Key 等未就绪状态不可选，避免选了又失败。
+    private var selectable: Bool { !isWorking && !provider.isActive && provider.ready }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(provider.label).font(.headline)
-                    if provider.isRecommended {
-                        Text("推荐").font(.caption2).padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(.tint.opacity(0.18)).clipShape(Capsule())
-                    }
-                    Text(provider.type == "local" ? "本地" : "云端")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-                Text(provider.description).font(.subheadline).foregroundStyle(.secondary)
-                if provider.needsApiKey && !provider.ready {
-                    Text("需要先配置 API Key 才能使用").font(.caption).foregroundStyle(.orange)
-                } else if provider.needsApiKey {
-                    Text("需要 API Key").font(.caption).foregroundStyle(.secondary)
-                }
+        HStack(alignment: .top, spacing: Theme.Spacing.md) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                titleLine
+                Text(provider.description)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Palette.secondaryText)
+                keyHint
             }
-            Spacer()
-            Button(action: onSelect) {
-                Text(provider.isActive ? "已选" : "选这个")
-            }
-            // 未就绪（云端缺 Key）的引擎不可选，避免选了又失败
-            .disabled(isWorking || provider.isActive || !provider.ready)
-            .buttonStyle(.borderedProminent)
+            Spacer(minLength: Theme.Spacing.md)
+            selectButton
         }
-        .padding(14)
-        .background(.quaternary.opacity(0.4))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .omCard()
+        .overlay(
+            // 当前选中的引擎用强调色描边，给出明确的“已选”视觉。
+            RoundedRectangle(cornerRadius: Theme.Radius.card)
+                .strokeBorder(
+                    provider.isActive ? Theme.Palette.accent : Color.clear,
+                    lineWidth: provider.isActive ? 1.5 : 0
+                )
+        )
+        .opacity(provider.ready ? 1 : 0.6)
+    }
+
+    // 标题行：名称 + 推荐徽章 + 本地/云端标记。
+    private var titleLine: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            Text(provider.label)
+                .font(Theme.Typography.cardTitle)
+                .foregroundStyle(Theme.Palette.primaryText)
+            if provider.isRecommended {
+                OMBadge("推荐", kind: .accent)
+            }
+            OMBadge(provider.type == "local" ? "本地" : "云端", kind: .neutral)
+        }
+    }
+
+    // API Key 状态提示。
+    @ViewBuilder
+    private var keyHint: some View {
+        if provider.needsApiKey && !provider.ready {
+            Label("需要先配置 API Key 才能使用", systemImage: "key.fill")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Palette.warning)
+        } else if provider.needsApiKey {
+            Label("需要 API Key", systemImage: "key")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Palette.secondaryText)
+        }
+    }
+
+    // 选择按钮。当前选中显示对勾态。
+    private var selectButton: some View {
+        Button(action: onSelect) {
+            if provider.isActive {
+                Label("已选", systemImage: "checkmark")
+            } else {
+                Text("选这个")
+            }
+        }
+        .disabled(!selectable)
+        .buttonStyle(.borderedProminent)
+        .tint(Theme.Palette.accent)
     }
 }
