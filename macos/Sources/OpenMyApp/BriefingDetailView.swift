@@ -425,9 +425,9 @@ struct BriefingDetailView: View {
 
     // MARK: - 时段热度
 
-    /// 24 小时活跃分桶（下标即小时）。从逐段时间串计数。
+    /// 24 小时活跃分桶（下标即小时）。按每段文本字数加权，对齐网页版时段热度。
     private var hourCounts: [Int] {
-        HourHistogram.counts(times: segmentTimes)
+        HourHistogram.counts(weighted: segments.map { ($0.time, $0.text.count) })
     }
 
     /// 是否有可画的活跃数据：任一小时桶非空。空则整个区块不渲染。
@@ -435,12 +435,12 @@ struct BriefingDetailView: View {
         hourCounts.contains { $0 > 0 }
     }
 
-    /// 24 小时活跃柱状图：每根柱代表一个整点小时的段落数。
+    /// 24 小时活跃柱状图：每根柱代表一个整点小时的活跃字数（按段落文本长度加权）。
     private var hourHeatmap: some View {
         Chart(Array(hourCounts.enumerated()), id: \.offset) { hour, count in
             BarMark(
                 x: .value("小时", Double(hour)),
-                y: .value("段落数", count)
+                y: .value("活跃字数", count)
             )
             .foregroundStyle(Theme.Palette.accent)
             .cornerRadius(2)
