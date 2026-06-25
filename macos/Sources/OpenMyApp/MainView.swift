@@ -155,6 +155,10 @@ struct MainView: View {
                 currentDate: briefings.selectedDate,
                 onClose: { reloadAfterCorrections() }
             )
+            // 显式重注入：macOS 下 sheet/窗口恢复不可靠继承 .environment(@Observable)，
+            // 不注入则 sheet 读 @Environment 会触发缺失断言崩溃。
+            .environment(correctionsVM)
+            .environment(toastCenter)
         }
         .sheet(isPresented: $showContext) {
             // 记忆库面板从环境取 contextVM 与 toastCenter（上面 .environment 已注入）。
@@ -163,6 +167,8 @@ struct MainView: View {
                 onClose: { showContext = false },
                 onJumpToEvidence: { focus in jumpFromContext(focus) }
             )
+            .environment(contextVM)
+            .environment(toastCenter)
         }
         .sheet(isPresented: $showReport) {
             // 报告聚合纯逻辑：openReport() 已用当前 dates / projects / 基准日期填好 reportVM。
@@ -196,6 +202,7 @@ struct MainView: View {
                     Task { await loadCurrentEngine() }
                 }
             )
+            .environment(toastCenter)
         }
         .fileImporter(
             isPresented: $showImporter,

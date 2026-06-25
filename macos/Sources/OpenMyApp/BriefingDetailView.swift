@@ -135,6 +135,9 @@ struct BriefingDetailView: View {
                 client: client,
                 onClose: { reviewScene = nil }
             )
+            // 显式重注入：macOS sheet 不可靠继承 .environment(@Observable)，否则读环境崩溃。
+            .environment(correctionsVM)
+            .environment(toastCenter)
         }
     }
 

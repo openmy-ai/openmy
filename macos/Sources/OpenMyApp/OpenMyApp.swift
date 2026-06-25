@@ -21,6 +21,7 @@ struct OpenMyApp: App {
                 .preferredColorScheme(AppAppearance.parse(appearanceRaw).colorScheme)
                 .toastHost()
         }
+        .defaultSize(width: 1080, height: 720)
 
         // 菜单栏常驻入口
         MenuBarExtra("OpenMy", systemImage: "waveform") {
