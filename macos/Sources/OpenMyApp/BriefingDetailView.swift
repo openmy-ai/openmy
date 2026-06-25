@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import OpenMyKit
 
 /// 日报详情。用设计系统 token 重做：头部统计卡片 + 分区块卡片，
@@ -18,9 +19,14 @@ struct BriefingDetailView: View {
 
     /// 下钻：逐段原始转写。展开时懒加载。
     @State private var segments: [TranscriptSegment] = []
+    /// 场景列表（与 segments 同一次 dateDetail 拉取）。仅含有音频引用的可回放。
+    @State private var scenes: [TranscriptScene] = []
     @State private var transcriptExpanded = false
     @State private var loadingTranscript = false
     @State private var transcriptError: String?
+
+    /// 当前打开字幕复核的场景：非空时弹出 SubtitleReviewView 浮层。
+    @State private var reviewScene: TranscriptScene?
 
     /// 当前打开的纠错表单：非空时弹出 CorrectionSheet。
     /// 由某段转写的「纠错」入口触发，把该段文本预填为 context。
@@ -104,6 +110,16 @@ struct BriefingDetailView: View {
                     onCorrectionApplied()
                 },
                 onCancel: { correctionTarget = nil }
+            )
+        }
+        // 字幕复核浮层：逐句对照转写、跟读高亮、底部波形 + 播放控件、逐句纠错。
+        // SubtitleReviewView 内部自持 AudioPlayerModel，并复用环境里的 CorrectionsViewModel。
+        .sheet(item: $reviewScene) { scene in
+            SubtitleReviewView(
+                scene: scene,
+                date: briefing.date,
+                client: client,
+                onClose: { reviewScene = nil }
             )
         }
     }
@@ -199,6 +215,11 @@ struct BriefingDetailView: View {
                             }
                         }
                     }
+
+                    if !playableScenes.isEmpty {
+                        scenesBlock
+                    }
+
                     Button("收起") { transcriptExpanded = false }
                         .buttonStyle(.borderless)
                         .font(Theme.Typography.caption)
@@ -212,6 +233,32 @@ struct BriefingDetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: - 场景回放
+
+    /// 可回放场景区块：每个场景一张卡片，含播放原声内联播放器 + 字幕复核入口。
+    private var scenesBlock: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            Divider()
+            HStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: "waveform")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.Palette.accent)
+                Text("场景原声")
+                    .font(Theme.Typography.cardTitle)
+                    .foregroundStyle(Theme.Palette.primaryText)
+            }
+            ForEach(playableScenes) { scene in
+                SceneRowView(
+                    scene: scene,
+                    date: briefing.date,
+                    client: client,
+                    onReview: { reviewScene = scene }
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// 段内关键词高亮：focus 命中本日报时，把段落文本里命中 query 的子串上色。
@@ -245,7 +292,9 @@ struct BriefingDetailView: View {
         loadingTranscript = true
         defer { loadingTranscript = false }
         do {
-            segments = try await client.dateDetail(date: briefing.date).segments
+            let detail = try await client.dateDetail(date: briefing.date)
+            segments = detail.segments
+            scenes = detail.scenes
         } catch {
             transcriptError = "加载失败：\(error)"
         }
@@ -259,10 +308,17 @@ struct BriefingDetailView: View {
         loadingTranscript = true
         defer { loadingTranscript = false }
         do {
-            segments = try await client.dateDetail(date: briefing.date).segments
+            let detail = try await client.dateDetail(date: briefing.date)
+            segments = detail.segments
+            scenes = detail.scenes
         } catch {
             transcriptError = "加载失败：\(error)"
         }
+    }
+
+    /// 有音频可回放的场景子集。
+    private var playableScenes: [TranscriptScene] {
+        scenes.filter { $0.audioRef != nil }
     }
 
     // MARK: - 头部
@@ -414,5 +470,152 @@ private struct SectionCard<Content: View>: View {
                 .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.container))
         }
         .omSection()
+    }
+}
+
+// MARK: - 场景行（播放原声 + 字幕复核）
+
+/// 单个可回放场景：摘要/文本预览 + 内联播放器 + 字幕复核按钮。
+/// 播放器（AudioPlayerModel）首次点「播放原声」时才 load，避免一次性为所有场景建 AVPlayerItem。
+private struct SceneRowView: View {
+    let scene: TranscriptScene
+    let date: String
+    let client: APIClient
+    /// 打开字幕复核浮层。
+    let onReview: () -> Void
+
+    /// 该场景独立的播放器实例。
+    @State private var playerModel = AudioPlayerModel()
+    /// 是否已对该场景调用过 load（决定是否展示内联播放器条）。
+    @State private var loaded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            // 顶部：时间区间 + 角色徽章。
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                Text(timeLabel)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Palette.accent)
+                    .monospacedDigit()
+                if !scene.roleCategory.isEmpty {
+                    OMBadge(scene.roleCategory, kind: .neutral)
+                }
+                Spacer(minLength: 0)
+            }
+
+            // 文本预览：优先摘要，否则正文。
+            let preview = scene.summary.isEmpty ? scene.text : scene.summary
+            if !preview.isEmpty {
+                Text(preview)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Palette.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(3)
+            }
+
+            // 操作行：播放原声 + 字幕复核。
+            HStack(spacing: Theme.Spacing.md) {
+                Button { togglePlay() } label: {
+                    Label(
+                        playerModel.isPlaying ? "暂停" : "播放原声",
+                        systemImage: playerModel.isPlaying ? "pause.fill" : "play.fill"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .help("播放这段场景对应的原始录音")
+
+                Button { onReview() } label: {
+                    Label("字幕复核", systemImage: "text.badge.checkmark")
+                }
+                .buttonStyle(.borderless)
+                .font(Theme.Typography.caption)
+                .help("逐句对照字幕，发现错字可跳到纠错")
+
+                Spacer(minLength: 0)
+            }
+
+            // 内联播放器条：仅在已 load 后展示进度与倍速。
+            if loaded {
+                playerBar
+            }
+
+            OMErrorText(playerModel.errorMessage)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Spacing.md)
+        .omCard()
+        // 折叠转写 / 离开日报详情时停播，避免被移除后 AVPlayer 还在出声。
+        .onDisappear { playerModel.pause() }
+    }
+
+    /// 时间区间标签，如 "00:05 – 00:42"；缺一端时只显示存在的一端。
+    private var timeLabel: String {
+        switch (scene.timeStart.isEmpty, scene.timeEnd.isEmpty) {
+        case (false, false): return "\(scene.timeStart) – \(scene.timeEnd)"
+        case (false, true): return scene.timeStart
+        case (true, false): return scene.timeEnd
+        case (true, true): return ""
+        }
+    }
+
+    /// 进度条 + 倍速切换。
+    private var playerBar: some View {
+        HStack(spacing: Theme.Spacing.md) {
+            Slider(
+                value: Binding(
+                    get: { playerModel.sceneDuration > 0 ? playerModel.progress / playerModel.sceneDuration : 0 },
+                    set: { playerModel.seek(toFraction: $0) }
+                ),
+                in: 0...1
+            )
+            Text(progressLabel)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Palette.secondaryText)
+                .monospacedDigit()
+            Button {
+                playerModel.setRate(PlaybackRate.next(after: playerModel.rate))
+            } label: {
+                Text(rateLabel)
+                    .font(Theme.Typography.caption)
+                    .monospacedDigit()
+            }
+            .buttonStyle(.bordered)
+            .help("切换播放速度")
+        }
+    }
+
+    /// 进度文本：当前/总时长，按 m:ss。
+    private var progressLabel: String {
+        "\(formatTime(playerModel.progress)) / \(formatTime(playerModel.sceneDuration))"
+    }
+
+    /// 倍速文本，如 "1x" / "1.25x"。整数倍速不带小数。
+    private var rateLabel: String {
+        let r = playerModel.rate
+        if r == r.rounded() {
+            return "\(Int(r))x"
+        }
+        return "\(r)x"
+    }
+
+    /// 秒数格式化为 m:ss。
+    private func formatTime(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    /// 播放/暂停切换。首次播放时先 load 音频区间。
+    private func togglePlay() {
+        guard let ref = scene.audioRef else { return }
+        if !loaded {
+            let url = client.audioURL(date: date, chunkId: ref.chunkId)
+            playerModel.load(url: url, ref: ref, rate: playerModel.rate)
+            loaded = true
+        }
+        if playerModel.isPlaying {
+            playerModel.pause()
+        } else {
+            playerModel.play()
+        }
     }
 }

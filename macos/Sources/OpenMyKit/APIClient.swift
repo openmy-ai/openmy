@@ -136,6 +136,16 @@ public struct APIClient: Sendable {
         try await get("/api/date/\(date)")
     }
 
+    /// 拼出某天某 chunk 的音频流地址 /api/audio/{date}/{chunk_id}，供 AVPlayer 直接播放。
+    /// 后端支持 HTTP Range(206)，AVPlayer 可按需 seek。
+    public func audioURL(date: String, chunkId: String) -> URL {
+        // 对 path 段做百分号编码，避免 chunkId/date 含特殊字符时拼出非法 URL（对齐 Web encodeURIComponent）。
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+        let d = date.addingPercentEncoding(withAllowedCharacters: allowed) ?? date
+        let c = chunkId.addingPercentEncoding(withAllowedCharacters: allowed) ?? chunkId
+        return makeURL("/api/audio/\(d)/\(c)")
+    }
+
     /// 全局搜索。空 query 后端返回 []，最多 20 条。
     /// 这里对空 query 直接短路返回 []，省掉一次必为空的请求。
     public func search(query: String) async throws -> [SearchResult] {

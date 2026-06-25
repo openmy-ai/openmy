@@ -74,6 +74,53 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(d.segments.first?.text, "你好世界")
     }
 
+    // 行为：dateDetail 解码 scenes（含嵌套 role 与 audio_ref）
+    func test_dateDetail_decodes_scenes() async throws {
+        MockURLProtocol.handler = { req in
+            XCTAssertEqual(req.url?.path, "/api/date/2026-06-05")
+            let json = """
+            {"date":"2026-06-05","segments":[],
+             "scenes":[
+               {"scene_id":"s1","time_start":"16:50","time_end":"16:55",
+                "text":"第一句。第二句！","summary":"摘要","role":{"category":"会议","extra":"忽略"},
+                "audio_ref":{"chunk_id":"chunk_0001","offset_start":3.5,"offset_end":12.0,
+                  "duration_seconds":60.0,"speech_segments":[[3.5,8.0],[9.0,12.0]],"segment_ids":["x"]}},
+               {"scene_id":"s2","time_start":"17:00","time_end":"17:01","text":"无音频","summary":"","role":{}}
+             ]}
+            """
+            return (200, Data(json.utf8))
+        }
+        let d = try await makeClient().dateDetail(date: "2026-06-05")
+        XCTAssertEqual(d.scenes.count, 2)
+        let s1 = d.scenes[0]
+        XCTAssertEqual(s1.sceneId, "s1")
+        XCTAssertEqual(s1.timeStart, "16:50")
+        XCTAssertEqual(s1.roleCategory, "会议")
+        XCTAssertEqual(s1.audioRef?.chunkId, "chunk_0001")
+        XCTAssertEqual(s1.audioRef?.offsetStart, 3.5)
+        XCTAssertEqual(s1.audioRef?.offsetEnd, 12.0)
+        XCTAssertEqual(s1.audioRef?.durationSeconds, 60.0)
+        XCTAssertEqual(s1.audioRef?.speechSegments.count, 2)
+        // 无 audio_ref 的场景降级为 nil，role 空对象 → 空 category
+        XCTAssertNil(d.scenes[1].audioRef)
+        XCTAssertEqual(d.scenes[1].roleCategory, "")
+    }
+
+    // 行为：dateDetail 缺 scenes 字段时降级为空
+    func test_dateDetail_tolerates_missing_scenes() async throws {
+        MockURLProtocol.handler = { _ in
+            (200, Data(#"{"date":"2026-06-05","segments":[]}"#.utf8))
+        }
+        let d = try await makeClient().dateDetail(date: "2026-06-05")
+        XCTAssertEqual(d.scenes, [])
+    }
+
+    // 行为：audioURL 拼出 /api/audio/{date}/{chunk_id}
+    func test_audioURL_builds_path() {
+        let url = makeClient().audioURL(date: "2026-06-05", chunkId: "chunk_0001")
+        XCTAssertEqual(url.absoluteString, "http://localhost:8420/api/audio/2026-06-05/chunk_0001")
+    }
+
     // 行为：briefing 缺省列表字段不报错
     func test_briefing_tolerates_missing_lists() async throws {
         MockURLProtocol.handler = { _ in
