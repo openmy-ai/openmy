@@ -37,6 +37,72 @@ public struct UploadResult: Decodable, Equatable, Sendable {
     }
 }
 
+/// 全局搜索命中：GET /api/search?q={query} 列表项。
+/// context 把命中词用 <mark>词</mark> 包裹（HTML 标记），rawContext 是不带标记的原文。
+public struct SearchResult: Decodable, Equatable, Sendable, Identifiable {
+    /// 命中所在日期，如 "2026-06-05"。
+    public let date: String
+    /// 命中所在段落的时间标记，如 "00:05"，可能为空。
+    public let time: String
+    /// 带 <mark> 标记的上下文片段，用于高亮渲染。
+    public let context: String
+    /// 不带标记的原文，用于无标记场景兜底。
+    public let rawContext: String
+
+    /// date+time+context 组合保证同一日期多命中项的稳定标识。
+    public var id: String { "\(date)|\(time)|\(context)" }
+
+    enum CodingKeys: String, CodingKey {
+        case date, time, context
+        case rawContext = "raw_context"
+    }
+
+    public init(date: String, time: String, context: String, rawContext: String) {
+        self.date = date
+        self.time = time
+        self.context = context
+        self.rawContext = rawContext
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        time = try c.decodeIfPresent(String.self, forKey: .time) ?? ""
+        context = try c.decodeIfPresent(String.self, forKey: .context) ?? ""
+        rawContext = try c.decodeIfPresent(String.self, forKey: .rawContext) ?? ""
+    }
+}
+
+/// 全局统计：GET /api/stats。供侧栏顶部展示天/条/字与角色分布。
+public struct Stats: Decodable, Equatable, Sendable {
+    public let totalDates: Int
+    public let totalWords: Int
+    public let totalSegments: Int
+    public let roleDistribution: [String: Int]
+
+    enum CodingKeys: String, CodingKey {
+        case totalDates = "total_dates"
+        case totalWords = "total_words"
+        case totalSegments = "total_segments"
+        case roleDistribution = "role_distribution"
+    }
+
+    public init(totalDates: Int, totalWords: Int, totalSegments: Int, roleDistribution: [String: Int]) {
+        self.totalDates = totalDates
+        self.totalWords = totalWords
+        self.totalSegments = totalSegments
+        self.roleDistribution = roleDistribution
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        totalDates = try c.decodeIfPresent(Int.self, forKey: .totalDates) ?? 0
+        totalWords = try c.decodeIfPresent(Int.self, forKey: .totalWords) ?? 0
+        totalSegments = try c.decodeIfPresent(Int.self, forKey: .totalSegments) ?? 0
+        roleDistribution = try c.decodeIfPresent([String: Int].self, forKey: .roleDistribution) ?? [:]
+    }
+}
+
 /// OpenMy 后端 HTTP 客户端。对接 localhost:8420 的现有 Python 服务。
 public struct APIClient: Sendable {
     let baseURL: URL
@@ -68,6 +134,20 @@ public struct APIClient: Sendable {
     /// 某天原始记录（逐段转写），用于从日报下钻。
     public func dateDetail(date: String) async throws -> DateDetail {
         try await get("/api/date/\(date)")
+    }
+
+    /// 全局搜索。空 query 后端返回 []，最多 20 条。
+    /// 这里对空 query 直接短路返回 []，省掉一次必为空的请求。
+    public func search(query: String) async throws -> [SearchResult] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed
+        return try await get("/api/search?q=\(encoded)")
+    }
+
+    /// 全局统计（侧栏顶部天/条/字与角色分布）。
+    public func stats() async throws -> Stats {
+        try await get("/api/stats")
     }
 
     /// onboarding 状态。

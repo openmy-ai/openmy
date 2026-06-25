@@ -14,6 +14,8 @@ struct MainView: View {
 
     @State private var briefings: BriefingListViewModel
     @State private var job: JobViewModel
+    /// 全局搜索状态机：检索逻辑、防过期、选中序号都在这里，SpotlightView 只负责呈现。
+    @State private var searchVM: SearchViewModel
     @State private var isDropTargeted = false
     @State private var dropNote: String?
     @State private var search = ""
@@ -21,12 +23,19 @@ struct MainView: View {
     @State private var currentEngine: String?
     /// 上一帧是否已是终态：用于在任务进入终态的那一刻只触发一次完成 / 失败的 toast 与跳转。
     @State private var lastJobTerminal = false
+    /// ⌘K 全局搜索浮层是否呈现。
+    @State private var showSpotlight = false
+    /// 搜索命中后的跳转焦点，透传给 BriefingDetailView 做段内定位 + 关键词高亮。
+    @State private var searchFocus: SearchFocus?
+    /// 全局统计（天 / 条 / 字），启动时拉取，展示在侧栏底部。
+    @State private var stats: Stats?
 
     init(client: APIClient, onReconfigure: @escaping () -> Void = {}) {
         self.client = client
         self.onReconfigure = onReconfigure
         _briefings = State(initialValue: BriefingListViewModel(client: client))
         _job = State(initialValue: JobViewModel(client: client))
+        _searchVM = State(initialValue: SearchViewModel(client: client))
     }
 
     /// 按搜索词过滤日期（匹配日期或摘要）。
@@ -45,12 +54,34 @@ struct MainView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
+                    showSpotlight = true
+                } label: {
+                    Label("搜索", systemImage: "magnifyingglass")
+                }
+                .help("全局搜索（⌘K）")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
                     showImporter = true
                 } label: {
                     Label("处理录音", systemImage: "waveform.badge.plus")
                 }
                 .help("选择录音文件开始转写")
             }
+        }
+        // ⌘K 打开全局搜索浮层。用隐藏按钮承载快捷键，避免与可见控件状态耦合。
+        .background {
+            Button("") { showSpotlight = true }
+                .keyboardShortcut("k", modifiers: .command)
+                .hidden()
+        }
+        .sheet(isPresented: $showSpotlight) {
+            SpotlightView(
+                viewModel: searchVM,
+                onSelect: { focus in handleSearchSelect(focus) },
+                onClose: { showSpotlight = false },
+                recentDates: briefings.dates
+            )
         }
         .fileImporter(
             isPresented: $showImporter,
@@ -62,6 +93,7 @@ struct MainView: View {
         .task {
             await briefings.loadDates()
             await loadCurrentEngine()
+            await loadStats()
         }
     }
 
@@ -103,6 +135,9 @@ struct MainView: View {
     private var sidebarFooter: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             OMErrorText(briefings.errorMessage)
+            if let stats {
+                statsOverview(stats)
+            }
             Divider()
             HStack(spacing: Theme.Spacing.sm) {
                 Image(systemName: "cpu")
@@ -123,6 +158,28 @@ struct MainView: View {
         }
         .padding(.horizontal, Theme.Spacing.lg)
         .padding(.bottom, Theme.Spacing.sm)
+    }
+
+    /// 侧栏底部统计概览：天 / 条 / 字三项紧凑展示。
+    private func statsOverview(_ stats: Stats) -> some View {
+        HStack(spacing: Theme.Spacing.md) {
+            statsItem(value: "\(stats.totalDates)", label: "天")
+            statsItem(value: "\(stats.totalSegments)", label: "条")
+            statsItem(value: "\(stats.totalWords)", label: "字")
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func statsItem(value: String, label: String) -> some View {
+        VStack(spacing: 0) {
+            Text(value)
+                .font(Theme.Typography.cardTitle)
+                .foregroundStyle(Theme.Palette.primaryText)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(Theme.Palette.secondaryText)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func sidebarRow(_ entry: DayEntry) -> some View {
@@ -148,7 +205,12 @@ struct MainView: View {
             if job.job != nil {
                 ProgressPanelView(job: job, onDismiss: viewBriefingFromJob, onReconfigure: onReconfigure)
             } else if let briefing = briefings.selectedBriefing {
-                BriefingDetailView(briefing: briefing, client: client)
+                // 仅当焦点日期与当前日报一致时透传，避免切换日期后旧焦点串到别的日报。
+                BriefingDetailView(
+                    briefing: briefing,
+                    client: client,
+                    focus: searchFocus?.date == briefing.date ? searchFocus : nil
+                )
             } else {
                 dropPrompt
             }
@@ -290,6 +352,19 @@ struct MainView: View {
                 await briefings.select(date: date)
             }
         }
+    }
+
+    /// 搜索命中后：切到目标日期、记下焦点供详情区定位 + 高亮、关闭浮层。
+    private func handleSearchSelect(_ focus: SearchFocus) {
+        searchFocus = focus
+        showSpotlight = false
+        // 命中可能落在尚未处理过任务的旧日期；正在进行的任务面板会盖住详情，先不强切。
+        Task { await briefings.select(date: focus.date) }
+    }
+
+    /// 拉取全局统计（天 / 条 / 字），失败则保持空，侧栏不展示该行。
+    private func loadStats() async {
+        stats = try? await client.stats()
     }
 
     /// 读取当前 STT 引擎名（用于侧栏展示）。

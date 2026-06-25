@@ -6,6 +6,8 @@ import OpenMyKit
 struct BriefingDetailView: View {
     let briefing: Briefing
     let client: APIClient
+    /// 来自搜索的跳转焦点。date 命中本日报时自动展开转写、滚动定位并段内高亮。
+    var focus: SearchFocus?
 
     /// 下钻：逐段原始转写。展开时懒加载。
     @State private var segments: [TranscriptSegment] = []
@@ -13,50 +15,96 @@ struct BriefingDetailView: View {
     @State private var loadingTranscript = false
     @State private var transcriptError: String?
 
+    /// 已消费的焦点：同一个 focus 只触发一次定位，避免无限重触发。
+    @State private var consumedFocus: SearchFocus?
+    /// 待滚动到的段落时间标记。转写加载完成后由 onChange 触发滚动并清空。
+    @State private var pendingScrollTime: String?
+
+    /// 当前生效的段内高亮关键词：仅当 focus 命中本日报时非空。
+    private var activeQuery: String? {
+        guard let focus, focus.date == briefing.date else { return nil }
+        let q = focus.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return q.isEmpty ? nil : focus.query
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
-                header
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+                    header
 
-                if !briefing.summary.isEmpty {
-                    SectionCard(title: "摘要", systemImage: "text.alignleft") {
-                        Text(briefing.summary)
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Palette.primaryText)
-                            .fixedSize(horizontal: false, vertical: true)
+                    if !briefing.summary.isEmpty {
+                        SectionCard(title: "摘要", systemImage: "text.alignleft") {
+                            Text(briefing.summary)
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(Theme.Palette.primaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
-                }
 
-                if !briefing.timeBlocks.isEmpty {
-                    SectionCard(title: "时间线", systemImage: "clock") {
-                        timeline
+                    if !briefing.timeBlocks.isEmpty {
+                        SectionCard(title: "时间线", systemImage: "clock") {
+                            timeline
+                        }
                     }
-                }
 
-                if !briefing.keyEvents.isEmpty {
-                    SectionCard(title: "关键事件", systemImage: "star") {
-                        bullets(briefing.keyEvents, marker: .dot)
+                    if !briefing.keyEvents.isEmpty {
+                        SectionCard(title: "关键事件", systemImage: "star") {
+                            bullets(briefing.keyEvents, marker: .dot)
+                        }
                     }
-                }
 
-                if !briefing.todosOpen.isEmpty {
-                    SectionCard(title: "待办", systemImage: "checklist") {
-                        bullets(briefing.todosOpen, marker: .checkbox)
+                    if !briefing.todosOpen.isEmpty {
+                        SectionCard(title: "待办", systemImage: "checklist") {
+                            bullets(briefing.todosOpen, marker: .checkbox)
+                        }
                     }
-                }
 
-                if !briefing.insights.isEmpty {
-                    SectionCard(title: "洞察", systemImage: "lightbulb") {
-                        insights
+                    if !briefing.insights.isEmpty {
+                        SectionCard(title: "洞察", systemImage: "lightbulb") {
+                            insights
+                        }
                     }
-                }
 
-                transcriptSection
+                    transcriptSection
+                }
+                .padding(Theme.Spacing.xxl)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(Theme.Spacing.xxl)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // 焦点命中本日报：进入时一次性消费，自动展开并加载转写。
+            .onAppear { consumeFocusIfNeeded() }
+            .onChange(of: focus) { _, _ in consumeFocusIfNeeded() }
+            // 转写加载完成后再滚动：此时目标段已渲染，id 才可命中。
+            .onChange(of: segments) { _, _ in performPendingScroll(proxy) }
+            .onChange(of: pendingScrollTime) { _, _ in performPendingScroll(proxy) }
         }
     }
+
+    // MARK: - 焦点定位
+
+    /// 一次性消费 focus：date 命中本日报时展开转写、加载、登记待滚动段。
+    private func consumeFocusIfNeeded() {
+        guard let focus, focus.date == briefing.date else { return }
+        guard consumedFocus != focus else { return }  // 已消费过同一焦点，不重触发
+        consumedFocus = focus
+        if !focus.time.isEmpty {
+            pendingScrollTime = focus.time
+        }
+        Task { await loadTranscript() }
+    }
+
+    /// 若有待滚动段且转写已就绪，滚动到对应段并清空待滚动标记。
+    private func performPendingScroll(_ proxy: ScrollViewProxy) {
+        guard let time = pendingScrollTime, !segments.isEmpty else { return }
+        guard segments.contains(where: { $0.time == time }) else { return }
+        withAnimation(.easeInOut) {
+            proxy.scrollTo(transcriptRowID(time), anchor: .center)
+        }
+        pendingScrollTime = nil
+    }
+
+    /// 段落行的稳定 id：用时间标记，供 ScrollViewReader 定位。
+    private func transcriptRowID(_ time: String) -> String { "transcript-\(time)" }
 
     // MARK: - 原始记录下钻
 
@@ -84,12 +132,13 @@ struct BriefingDetailView: View {
                                     .font(Theme.Typography.caption)
                                     .foregroundStyle(Theme.Palette.accent)
                                     .monospacedDigit()
-                                Text(seg.text)
+                                Text(highlightedText(seg.text))
                                     .font(Theme.Typography.body)
                                     .foregroundStyle(Theme.Palette.primaryText)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .id(transcriptRowID(seg.time))
                         }
                     }
                     Button("收起") { transcriptExpanded = false }
@@ -105,6 +154,30 @@ struct BriefingDetailView: View {
                 }
             }
         }
+    }
+
+    /// 段内关键词高亮：focus 命中本日报时，把段落文本里命中 query 的子串上色。
+    /// segments 来自 dateDetail 是无标记原文，故对 rawText 做大小写不敏感匹配。
+    private func highlightedText(_ text: String) -> AttributedString {
+        guard let query = activeQuery else { return AttributedString(text) }
+
+        var attributed = AttributedString(text)
+        var searchStart = text.startIndex
+        while searchStart < text.endIndex,
+              let range = text.range(
+                of: query,
+                options: .caseInsensitive,
+                range: searchStart..<text.endIndex
+              ) {
+            if let lower = AttributedString.Index(range.lowerBound, within: attributed),
+               let upper = AttributedString.Index(range.upperBound, within: attributed) {
+                attributed[lower..<upper].backgroundColor = Theme.Palette.accent.opacity(0.28)
+                attributed[lower..<upper].foregroundColor = Theme.Palette.primaryText
+            }
+            // 命中长度为 0 时强制前移，避免死循环
+            searchStart = range.upperBound > range.lowerBound ? range.upperBound : text.index(after: range.lowerBound)
+        }
+        return attributed
     }
 
     private func loadTranscript() async {
