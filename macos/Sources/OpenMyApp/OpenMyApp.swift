@@ -8,12 +8,17 @@ struct OpenMyApp: App {
     @State private var root = RootViewModel()
     /// 全局 Toast 中心，注入环境供所有界面复用。
     @State private var toastCenter = ToastCenter()
+    /// 外观偏好（@AppStorage）：真正应用到根 Scene，让设置里的主题/强调色生效。
+    @AppStorage(PreferenceKeys.appAppearance) private var appearanceRaw = AppAppearance.default.rawValue
+    @AppStorage(PreferenceKeys.accent) private var accentRaw = AccentColorChoice.default.rawValue
 
     var body: some Scene {
         WindowGroup {
             RootView(root: root)
                 .frame(minWidth: 880, minHeight: 560)
                 .environment(toastCenter)
+                .tint(AccentColorChoice.parse(accentRaw).color)
+                .preferredColorScheme(AppAppearance.parse(appearanceRaw).colorScheme)
                 .toastHost()
         }
 
@@ -91,5 +96,32 @@ struct RootView: View {
                 .foregroundStyle(Theme.Palette.secondaryText)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - 外观偏好 → SwiftUI 映射（在 App 层做，因为 OpenMyKit 不依赖 SwiftUI 颜色）
+
+extension AppAppearance {
+    /// 映射到根 Scene 的 preferredColorScheme：system 返回 nil（跟随系统）。
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
+extension AccentColorChoice {
+    /// 映射到强调色，供根 Scene .tint 使用。
+    var color: Color {
+        switch self {
+        case .blue: return .blue
+        case .purple: return .purple
+        case .pink: return .pink
+        case .orange: return .orange
+        case .green: return .green
+        case .graphite: return .gray
+        }
     }
 }

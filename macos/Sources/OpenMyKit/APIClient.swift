@@ -299,6 +299,18 @@ public struct APIClient: Sendable {
         return resp.success
     }
 
+    /// 屏幕上下文设置（GET /api/settings/screen-context）。
+    public func screenContextSettings() async throws -> ScreenContextSettings {
+        try await get("/api/settings/screen-context")
+    }
+
+    /// 更新屏幕上下文设置（POST /api/settings/screen-context，部分字段合并）。
+    /// `partial` 只需包含要改的字段（后端按字段合并保存），返回合并后的完整设置。
+    @discardableResult
+    public func updateScreenContextSettings(_ partial: sending [String: Any]) async throws -> ScreenContextSettings {
+        try await post("/api/settings/screen-context", body: partial)
+    }
+
     /// 任务列表。
     public func jobs() async throws -> [PipelineJob] {
         try await get("/api/pipeline/jobs")
