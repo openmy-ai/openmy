@@ -188,7 +188,9 @@ public enum OMButtonVariant {
     case outline
     /// 幽灵：透明底，hover 才有底（图标 / 文字按钮）。
     case ghost
-    /// 危险：红底。
+    /// 幽灵危险：透明底 + 红字，行内低调的破坏操作（移除 / 拒绝），比红实底克制。
+    case ghostDanger
+    /// 危险：红底，用于 sheet / 弹层级的破坏主操作。
     case destructive
 }
 
@@ -235,6 +237,7 @@ public struct OMButtonStyle: ButtonStyle {
         case .primary: return Theme.Palette.primaryForeground
         case .secondary: return Theme.Palette.secondaryForeground
         case .outline, .ghost: return Theme.Palette.primaryText
+        case .ghostDanger: return Theme.Palette.danger
         case .destructive: return Color(omRGBA: 0xFAFAFAFF)
         }
     }
@@ -244,7 +247,7 @@ public struct OMButtonStyle: ButtonStyle {
         case .primary: return Theme.Palette.primary
         case .secondary: return Theme.Palette.secondary
         case .destructive: return Theme.Palette.danger
-        case .outline, .ghost: return .clear
+        case .outline, .ghost, .ghostDanger: return .clear
         }
     }
 
@@ -265,7 +268,7 @@ public struct OMButtonStyle: ButtonStyle {
             .background(background)
             // 按下 / hover 反馈：透明变体叠 accentSurface，实底变体压暗一层。
             .background(
-                (variant == .outline || variant == .ghost)
+                (variant == .outline || variant == .ghost || variant == .ghostDanger)
                     ? Theme.Palette.accentSurface.opacity(configuration.isPressed ? 1 : 0)
                     : Color.black.opacity(configuration.isPressed ? 0.16 : 0)
             )

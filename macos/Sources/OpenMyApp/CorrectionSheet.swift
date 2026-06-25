@@ -65,10 +65,11 @@ struct CorrectionSheet: View {
             HStack(spacing: Theme.Spacing.md) {
                 Spacer()
                 Button("取消", role: .cancel) { onCancel() }
+                    .omButton(.secondary)
                     .keyboardShortcut(.cancelAction)
                 Button("保存") { submit() }
+                    .omButton(.primary)
                     .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
                     .disabled(!canSubmit || submitting)
             }
         }

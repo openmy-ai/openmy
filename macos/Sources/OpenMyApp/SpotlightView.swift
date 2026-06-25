@@ -61,12 +61,12 @@ struct SpotlightView: View {
     private var searchField: some View {
         HStack(spacing: Theme.Spacing.md) {
             Image(systemName: "magnifyingglass")
-                .font(.title3)
+                .font(Theme.Typography.sectionTitle)
                 .foregroundStyle(Theme.Palette.secondaryText)
 
             TextField("搜索所有记录", text: $viewModel.query)
                 .textFieldStyle(.plain)
-                .font(.title3)
+                .font(Theme.Typography.sectionTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
                 .focused($searchFocused)
                 .onSubmit { submitSelection() }
@@ -80,7 +80,7 @@ struct SpotlightView: View {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(Theme.Palette.secondaryText)
                 }
-                .buttonStyle(.borderless)
+                .omButton(.ghost, size: .icon)
                 .help("清空")
             }
         }
@@ -102,7 +102,7 @@ struct SpotlightView: View {
         } else if let error = viewModel.errorMessage {
             VStack(spacing: Theme.Spacing.sm) {
                 Image(systemName: "exclamationmark.triangle")
-                    .font(.title)
+                    .font(Theme.Typography.sectionTitle)
                     .foregroundStyle(Theme.Palette.danger)
                 OMErrorText("搜索失败：\(error)")
             }

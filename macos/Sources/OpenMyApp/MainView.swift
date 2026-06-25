@@ -282,10 +282,10 @@ struct MainView: View {
             }
             HStack(spacing: Theme.Spacing.sm) {
                 Image(systemName: "cpu")
-                    .font(.caption)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Palette.secondaryText)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("当前引擎").font(.caption2).foregroundStyle(Theme.Palette.secondaryText)
+                    Text("当前引擎").font(Theme.Typography.caption2).foregroundStyle(Theme.Palette.secondaryText)
                     Text(currentEngine ?? "未配置")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Palette.primaryText)
@@ -293,8 +293,7 @@ struct MainView: View {
                 }
                 Spacer()
                 Button("重新配置", action: onReconfigure)
-                    .buttonStyle(.borderless)
-                    .font(.caption)
+                    .omButton(.ghost, size: .small)
             }
         }
         .padding(.horizontal, Theme.Spacing.lg)
@@ -322,7 +321,7 @@ struct MainView: View {
                     .lineLimit(1)
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.caption2)
+                    .font(Theme.Typography.caption2)
                     .foregroundStyle(Theme.Palette.secondaryText)
             }
             .contentShape(Rectangle())
@@ -346,7 +345,7 @@ struct MainView: View {
                 .font(Theme.Typography.cardTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
             Text(label)
-                .font(.caption2)
+                .font(Theme.Typography.caption2)
                 .foregroundStyle(Theme.Palette.secondaryText)
         }
         .frame(maxWidth: .infinity)
@@ -363,7 +362,7 @@ struct MainView: View {
                     .foregroundStyle(Theme.Palette.primaryText)
                 if friendly != entry.date {
                     Text(entry.date)
-                        .font(.caption2)
+                        .font(Theme.Typography.caption2)
                         .foregroundStyle(Theme.Palette.secondaryText)
                 }
             }
@@ -540,7 +539,7 @@ struct MainView: View {
             }
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.caption)
+                .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Palette.secondaryText)
         }
         .contentShape(Rectangle())
@@ -573,8 +572,7 @@ struct MainView: View {
             } label: {
                 Label("选择录音文件", systemImage: "folder")
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .omButton(.primary)
             .disabled(job.isUploading)
 
             if job.isUploading {

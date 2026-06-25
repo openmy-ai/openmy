@@ -118,8 +118,7 @@ private struct ProviderRow: View {
                 Text("选这个")
             }
         }
+        .omButton(provider.isActive ? .ghost : .primary, size: .small)
         .disabled(!selectable)
-        .buttonStyle(.borderedProminent)
-        .tint(Theme.Palette.accent)
     }
 }

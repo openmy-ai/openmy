@@ -74,8 +74,9 @@ struct CorrectionsView: View {
             } label: {
                 Label("新增校正", systemImage: "plus")
             }
-            .buttonStyle(.borderedProminent)
+            .omButton(.primary, size: .small)
             Button("关闭", role: .cancel) { onClose() }
+                .omButton(.ghost)
                 .keyboardShortcut(.cancelAction)
         }
     }
@@ -99,7 +100,7 @@ struct CorrectionsView: View {
                     .font(Theme.Typography.cardTitle)
                     .foregroundStyle(Theme.Palette.danger)
                 Image(systemName: "arrow.right")
-                    .font(.caption)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Palette.secondaryText)
                 Text(correction.right)
                     .font(Theme.Typography.cardTitle)

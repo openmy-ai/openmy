@@ -213,8 +213,7 @@ struct BriefingDetailView: View {
                                         Label("纠错", systemImage: "pencil.line")
                                             .labelStyle(.titleAndIcon)
                                     }
-                                    .buttonStyle(.borderless)
-                                    .font(Theme.Typography.caption)
+                                    .omButton(.ghost, size: .small)
                                     .help("修正这段文字里的识别错误")
                                 }
                                 Text(highlightedText(seg.text))
@@ -239,15 +238,14 @@ struct BriefingDetailView: View {
                     }
 
                     Button("收起") { transcriptExpanded = false }
-                        .buttonStyle(.borderless)
-                        .font(Theme.Typography.caption)
+                        .omButton(.secondary, size: .small)
                 } else {
                     Button {
                         Task { await loadTranscript() }
                     } label: {
                         Label("查看逐段转写", systemImage: "chevron.down")
                     }
-                    .buttonStyle(.bordered)
+                    .omButton(.secondary)
                 }
             }
         }
@@ -695,14 +693,13 @@ private struct SceneRowView: View {
                         systemImage: playerModel.isPlaying ? "pause.fill" : "play.fill"
                     )
                 }
-                .buttonStyle(.bordered)
+                .omButton(.primary, size: .small)
                 .help("播放这段场景对应的原始录音")
 
                 Button { onReview() } label: {
                     Label("字幕复核", systemImage: "text.badge.checkmark")
                 }
-                .buttonStyle(.borderless)
-                .font(Theme.Typography.caption)
+                .omButton(.secondary, size: .small)
                 .help("逐句对照字幕，发现错字可跳到纠错")
 
                 Spacer(minLength: 0)
@@ -750,10 +747,9 @@ private struct SceneRowView: View {
                 playerModel.setRate(PlaybackRate.next(after: playerModel.rate))
             } label: {
                 Text(rateLabel)
-                    .font(Theme.Typography.caption)
                     .monospacedDigit()
             }
-            .buttonStyle(.bordered)
+            .omButton(.secondary, size: .small)
             .help("切换播放速度")
         }
     }

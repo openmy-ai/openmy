@@ -93,6 +93,7 @@ struct ContextView: View {
             OMBadge("\(viewModel.loops.count + viewModel.projects.count + viewModel.decisions.count) 条")
             Spacer()
             Button("关闭", role: .cancel) { onClose() }
+                .omButton(.ghost)
                 .keyboardShortcut(.cancelAction)
         }
     }
@@ -147,16 +148,16 @@ struct ContextView: View {
                 } label: {
                     Label("标记完成", systemImage: "checkmark.circle")
                 }
-                .buttonStyle(.borderless)
+                .omButton(.ghost, size: .small)
 
                 Button(role: .destructive) {
                     pendingReason = .rejectLoop(loop)
                 } label: {
                     Label("移除", systemImage: "trash")
                 }
-                .buttonStyle(.borderless)
+                .omButton(.ghostDanger, size: .small)
             }
-            .font(.caption)
+            .font(Theme.Typography.caption)
             .padding(.top, Theme.Spacing.xs / 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -200,7 +201,7 @@ struct ContextView: View {
                 } label: {
                     Label("合并到…", systemImage: "arrow.triangle.merge")
                 }
-                .buttonStyle(.borderless)
+                .omButton(.ghost, size: .small)
                 // 只有一个项目时无处可并，禁用。
                 .disabled(viewModel.projects.count < 2)
 
@@ -209,9 +210,9 @@ struct ContextView: View {
                 } label: {
                     Label("移除", systemImage: "trash")
                 }
-                .buttonStyle(.borderless)
+                .omButton(.ghostDanger, size: .small)
             }
-            .font(.caption)
+            .font(Theme.Typography.caption)
             .padding(.top, Theme.Spacing.xs / 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -254,9 +255,9 @@ struct ContextView: View {
                 } label: {
                     Label("移除", systemImage: "trash")
                 }
-                .buttonStyle(.borderless)
+                .omButton(.ghostDanger, size: .small)
             }
-            .font(.caption)
+            .font(Theme.Typography.caption)
             .padding(.top, Theme.Spacing.xs / 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -287,8 +288,7 @@ struct ContextView: View {
                     } label: {
                         Text(preset.label)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .omButton(.outline, size: .small)
                     .disabled(viewModel.isQuerying)
                 }
             }
@@ -354,7 +354,7 @@ struct ContextView: View {
                 Spacer()
                 if !hit.date.isEmpty {
                     Text(hit.date)
-                        .font(.caption2)
+                        .font(Theme.Typography.caption2)
                         .foregroundStyle(Theme.Palette.secondaryText)
                 }
             }
@@ -387,7 +387,7 @@ struct ContextView: View {
         } label: {
             HStack(alignment: .top, spacing: Theme.Spacing.sm) {
                 Image(systemName: "quote.opening")
-                    .font(.caption)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Palette.accent)
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs / 2) {
                     Text(item.quote.isEmpty ? item.sceneSummary : item.quote)
@@ -403,12 +403,12 @@ struct ContextView: View {
                             Text(item.timeRange)
                         }
                     }
-                    .font(.caption2)
+                    .font(Theme.Typography.caption2)
                     .foregroundStyle(Theme.Palette.secondaryText)
                 }
                 Spacer()
                 Image(systemName: "arrow.up.right.square")
-                    .font(.caption)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Palette.secondaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -461,7 +461,7 @@ struct ContextView: View {
     private func metaLine(icon: String, text: String) -> some View {
         HStack(spacing: Theme.Spacing.xs) {
             Image(systemName: icon)
-                .font(.caption2)
+                .font(Theme.Typography.caption2)
                 .foregroundStyle(Theme.Palette.secondaryText)
             Text(text)
                 .font(Theme.Typography.caption)
@@ -624,7 +624,7 @@ private struct ReasonSheet: View {
 
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text("原因（可选）")
-                    .font(.caption)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Palette.secondaryText)
                 TextField("不填也可以直接确认", text: $reason)
                     .textFieldStyle(.roundedBorder)
@@ -633,11 +633,12 @@ private struct ReasonSheet: View {
             HStack {
                 Spacer()
                 Button("取消", role: .cancel) { onCancel() }
+                    .omButton(.secondary)
                     .keyboardShortcut(.cancelAction)
                 Button(confirmLabel, role: .destructive) {
                     onConfirm(reason.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
-                .buttonStyle(.borderedProminent)
+                .omButton(.destructive)
                 .keyboardShortcut(.defaultAction)
             }
         }
@@ -682,7 +683,7 @@ private struct MergeTargetSheet: View {
 
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text("原因（可选）")
-                        .font(.caption)
+                        .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Palette.secondaryText)
                     TextField("不填也可以直接确认", text: $reason)
                         .textFieldStyle(.roundedBorder)
@@ -692,12 +693,13 @@ private struct MergeTargetSheet: View {
             HStack {
                 Spacer()
                 Button("取消", role: .cancel) { onCancel() }
+                    .omButton(.secondary)
                     .keyboardShortcut(.cancelAction)
                 Button("合并") {
                     guard let target = candidates.first(where: { $0.id == selectedId }) else { return }
                     onConfirm(target, reason.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
-                .buttonStyle(.borderedProminent)
+                .omButton(.primary)
                 .disabled(selectedId == nil)
             }
         }

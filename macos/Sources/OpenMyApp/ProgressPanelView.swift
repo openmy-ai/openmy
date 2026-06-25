@@ -157,36 +157,33 @@ struct ProgressPanelView: View {
             if isTerminalFailure {
                 // 失败终态：重试 + 去重新选转写引擎，外加回到日报浏览。
                 Button("重试") { Task { await job.retry() } }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+                    .omButton(.primary)
                 Button("去选转写引擎", action: onReconfigure)
-                    .buttonStyle(.bordered)
+                    .omButton(.secondary)
                 Spacer()
                 Button("返回", action: onDismiss)
-                    .buttonStyle(.bordered)
+                    .omButton(.secondary)
             } else if job.job?.isTerminal == true {
                 // 成功终态：onDismiss 由 MainView 注入，内部读 target_date 跳转到对应日报。
                 Button("查看日报", action: onDismiss)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+                    .omButton(.primary)
             } else {
                 if job.job?.status == "paused" {
                     Button("继续") { Task { await job.resume() } }
-                        .buttonStyle(.borderedProminent)
+                        .omButton(.primary)
                 } else if job.canPause {
                     Button("暂停") { Task { await job.pause() } }
-                        .buttonStyle(.bordered)
+                        .omButton(.primary)
                 }
                 if job.canSkip {
                     Button("跳过这步") { Task { await job.skip() } }
-                        .buttonStyle(.bordered)
+                        .omButton(.secondary)
                 }
                 Spacer()
                 Button("取消", role: .destructive) { Task { await job.cancel() } }
-                    .buttonStyle(.bordered)
+                    .omButton(.destructive)
             }
         }
-        .controlSize(.regular)
     }
 }
 

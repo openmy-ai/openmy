@@ -120,11 +120,9 @@ struct SubtitleReviewView: View {
                 player.pause()
                 onClose()
             } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(Theme.Palette.secondaryText)
+                Image(systemName: "xmark")
             }
-            .buttonStyle(.plain)
+            .omButton(.ghost, size: .icon)
             .help("关闭复核")
         }
         .padding(Theme.Spacing.xl)
@@ -207,7 +205,7 @@ struct SubtitleReviewView: View {
                 Label("纠错", systemImage: "pencil.line")
                     .labelStyle(.iconOnly)
             }
-            .buttonStyle(.borderless)
+            .omButton(.ghost, size: .icon)
             .help("修正这句话里的识别错误")
         }
         .padding(Theme.Spacing.sm)
