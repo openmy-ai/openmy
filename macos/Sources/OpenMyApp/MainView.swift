@@ -163,12 +163,19 @@ struct MainView: View {
         .sheet(isPresented: $showContext) {
             // 记忆库面板从环境取 contextVM 与 toastCenter（上面 .environment 已注入）。
             // 证据回链复用波次1 地基：转跳焦点交给 handleSearchSelect（切日期 + 定位段落 + 高亮），并关闭面板。
-            ContextView(
-                onClose: { showContext = false },
-                onJumpToEvidence: { focus in jumpFromContext(focus) }
-            )
-            .environment(contextVM)
-            .environment(toastCenter)
+            // 用撑满的 ZStack 蒙层托住固定尺寸面板使其居中（修 issue #14：macOS 下裸固定 frame
+            // 的 sheet 会贴左上）。对齐 SpotlightView 的撑满居中做法；点蒙层空白处关闭。
+            ZStack {
+                Color.black.opacity(0.42).ignoresSafeArea()
+                    .onTapGesture { showContext = false }
+                ContextView(
+                    onClose: { showContext = false },
+                    onJumpToEvidence: { focus in jumpFromContext(focus) }
+                )
+                .environment(contextVM)
+                .environment(toastCenter)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .sheet(isPresented: $showReport) {
             // 报告聚合纯逻辑：openReport() 已用当前 dates / projects / 基准日期填好 reportVM。
@@ -194,15 +201,24 @@ struct MainView: View {
             // 设置面板：转写引擎（settingsOnboardingVM）+ 屏幕上下文（settingsVM）+ 外观 / 个人资料（@AppStorage）。
             // SettingsView 自带头部「完成」与自身的 .task 加载，这里只负责注入两个 VM 与关闭回调。
             // 关闭时重拉当前引擎名，把面板内可能的切换同步到侧栏展示。
-            SettingsView(
-                onboarding: settingsOnboardingVM,
-                settings: settingsVM,
-                onClose: {
-                    showSettings = false
-                    Task { await loadCurrentEngine() }
-                }
-            )
-            .environment(toastCenter)
+            // 撑满的 ZStack 蒙层托住固定尺寸面板使其居中（修 issue #14：裸固定 frame 的 sheet 贴左上）。
+            ZStack {
+                Color.black.opacity(0.42).ignoresSafeArea()
+                    .onTapGesture {
+                        showSettings = false
+                        Task { await loadCurrentEngine() }
+                    }
+                SettingsView(
+                    onboarding: settingsOnboardingVM,
+                    settings: settingsVM,
+                    onClose: {
+                        showSettings = false
+                        Task { await loadCurrentEngine() }
+                    }
+                )
+                .environment(toastCenter)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .fileImporter(
             isPresented: $showImporter,

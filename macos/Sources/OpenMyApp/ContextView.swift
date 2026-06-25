@@ -55,7 +55,8 @@ struct ContextView: View {
             }
         }
         .padding(Theme.Spacing.xl)
-        .frame(width: 640, height: 680)
+        // 弹性上限而非固定尺寸：让外层 sheet 的 ZStack 蒙层能撑满父窗口、本面板居中（issue #14）。
+        .frame(maxWidth: 640, maxHeight: 680)
         .task { await viewModel.load() }
         .sheet(item: $pendingReason) { action in
             ReasonSheet(

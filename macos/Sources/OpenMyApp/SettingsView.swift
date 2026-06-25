@@ -64,7 +64,8 @@ struct SettingsView: View {
                     .tag(Tab.profile)
             }
         }
-        .frame(width: 520, height: 560)
+        // 弹性上限而非固定尺寸：让外层 sheet 的 ZStack 蒙层撑满父窗口、本面板居中（issue #14）。
+        .frame(maxWidth: 520, maxHeight: 560)
         .task {
             if onboarding.state == nil { await onboarding.load() }
             if settings.settings == nil { await settings.load() }
