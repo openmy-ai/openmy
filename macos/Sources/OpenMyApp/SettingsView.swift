@@ -81,6 +81,7 @@ struct SettingsView: View {
                 .foregroundStyle(Theme.Palette.primaryText)
             Spacer()
             Button("完成", action: onClose)
+                .omButton(.ghost)
                 .keyboardShortcut(.cancelAction)
         }
         .padding(Theme.Spacing.lg)
@@ -192,9 +193,8 @@ private struct EngineRow: View {
                 Text("切换")
             }
         }
+        .omButton(provider.isActive ? .ghost : .primary, size: .small)
         .disabled(!selectable)
-        .buttonStyle(.borderedProminent)
-        .tint(Theme.Palette.accent)
     }
 }
 
@@ -380,8 +380,7 @@ private struct ExclusionEditor: View {
             HStack {
                 Spacer()
                 Button("保存") { commit() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .omButton(.secondary, size: .small)
                     .disabled(disabled || normalized == committed)
             }
         }
