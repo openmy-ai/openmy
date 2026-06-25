@@ -6,11 +6,15 @@ import OpenMyKit
 @main
 struct OpenMyApp: App {
     @State private var root = RootViewModel()
+    /// 全局 Toast 中心，注入环境供所有界面复用。
+    @State private var toastCenter = ToastCenter()
 
     var body: some Scene {
         WindowGroup {
             RootView(root: root)
                 .frame(minWidth: 880, minHeight: 560)
+                .environment(toastCenter)
+                .toastHost()
         }
 
         // 菜单栏常驻入口

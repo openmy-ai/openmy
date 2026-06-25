@@ -9,6 +9,9 @@ struct MainView: View {
     /// 回到首次配置（重新选引擎）。
     var onReconfigure: () -> Void
 
+    /// 全局 Toast 中心：建任务 / 失败 / 完成时给反馈，对齐 Web 的 showToast。
+    @Environment(ToastCenter.self) private var toastCenter
+
     @State private var briefings: BriefingListViewModel
     @State private var job: JobViewModel
     @State private var isDropTargeted = false
@@ -16,6 +19,8 @@ struct MainView: View {
     @State private var search = ""
     @State private var showImporter = false
     @State private var currentEngine: String?
+    /// 上一帧是否已是终态：用于在任务进入终态的那一刻只触发一次完成 / 失败的 toast 与跳转。
+    @State private var lastJobTerminal = false
 
     init(client: APIClient, onReconfigure: @escaping () -> Void = {}) {
         self.client = client
@@ -141,7 +146,7 @@ struct MainView: View {
     private var detail: some View {
         ZStack {
             if job.job != nil {
-                ProgressPanelView(job: job, onDismiss: dismissJob)
+                ProgressPanelView(job: job, onDismiss: viewBriefingFromJob, onReconfigure: onReconfigure)
             } else if let briefing = briefings.selectedBriefing {
                 BriefingDetailView(briefing: briefing, client: client)
             } else {
@@ -154,6 +159,7 @@ struct MainView: View {
             return true
         } isTargeted: { isDropTargeted = $0 }
         .overlay { dropHighlight }
+        .onChange(of: job.job?.status) { _, _ in handleJobStatusChange() }
     }
 
     /// 拖拽悬停时的高亮边框 + 蒙层。
@@ -203,6 +209,16 @@ struct MainView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+            .disabled(job.isUploading)
+
+            if job.isUploading {
+                HStack(spacing: Theme.Spacing.sm) {
+                    ProgressView().controlSize(.small)
+                    Text("正在上传…")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Palette.secondaryText)
+                }
+            }
 
             if let note = dropNote {
                 Text(note)
@@ -224,19 +240,56 @@ struct MainView: View {
 
     private func startJob(with urls: [URL]) {
         // 过滤受支持的格式，并对云端引擎设 5 个批量上限（见 CLAUDE.md 云端批量限制）。
+        // 注意：过滤按路径判断格式，真正建任务走上传流程（job.start(uploading:)），
+        // 让外置盘 / 任意位置的文件都先 copy 到后端 inbox 再处理（对齐 Web upload.py）。
         let result = AudioFileFilter.evaluate(urls.map(\.path), maxBatch: 5)
         dropNote = result.note
         guard !result.isEmpty else { return }
+        // 用保留下来的合法路径回到 URL，交给上传流程。
+        let validURLs = urls.filter { result.paths.contains($0.path) }
+        guard !validURLs.isEmpty else { return }
+
+        lastJobTerminal = false
+        toastCenter.show("正在上传 \(validURLs.count) 个文件…")
         Task {
-            await job.start(audioFiles: result.paths)
+            await job.start(uploading: validURLs)
+            if let error = job.errorMessage {
+                toastCenter.show("建任务失败：\(error)")
+                return
+            }
+            toastCenter.show("开始处理")
             job.startPolling()
         }
     }
 
-    /// 任务终态后：清空任务并刷新日报列表，让刚生成的日报出现。
-    private func dismissJob() {
+    /// 任务状态每次变化时检查是否刚进入终态，只在边沿触发一次完成 / 失败反馈。
+    private func handleJobStatusChange() {
+        let nowTerminal = job.job?.isTerminal == true
+        defer { lastJobTerminal = nowTerminal }
+        guard nowTerminal, !lastJobTerminal, let finished = job.job else { return }
+
+        switch finished.status {
+        case "succeeded", "partial":
+            let dateText = finished.targetDate.map { "（\($0)）" } ?? ""
+            toastCenter.show("处理完成\(dateText)")
+        default:
+            let detail = finished.error.isEmpty ? "" : "：\(finished.error)"
+            toastCenter.show("处理未完成\(detail)")
+        }
+    }
+
+    /// 进度面板「查看日报」：成功则跳到任务的 target_date 日报，否则仅回到浏览。
+    private func viewBriefingFromJob() {
+        let targetDate = job.job?.targetDate
+        let succeeded = job.job.map { ["succeeded", "partial"].contains($0.status) } ?? false
         job.clear()
-        Task { await briefings.loadDates() }
+        lastJobTerminal = false
+        Task {
+            await briefings.loadDates()
+            if succeeded, let date = targetDate {
+                await briefings.select(date: date)
+            }
+        }
     }
 
     /// 读取当前 STT 引擎名（用于侧栏展示）。

@@ -4,12 +4,20 @@ import OpenMyKit
 /// 四阶段进度面板：实时显示转写 / 清洗 / 场景切分 / 蒸馏，并提供暂停 / 继续 / 取消 / 跳过。
 struct ProgressPanelView: View {
     @Bindable var job: JobViewModel
-    /// 终态后点击「查看日报」回调：清空任务并刷新日报列表。
+    /// 终态后点击「查看日报 / 返回」回调：由调用方负责跳到目标日期日报或清空任务。
     var onDismiss: () -> Void
+    /// 失败态点击「去选转写引擎」时回到首次配置（重新选引擎）。
+    var onReconfigure: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
             header
+
+            metaRow
+
+            if isTerminalFailure {
+                failureBanner
+            }
 
             if let steps = job.job?.steps, !steps.isEmpty {
                 stepTimeline(steps)
@@ -43,7 +51,73 @@ struct ProgressPanelView: View {
 
             ProgressView(value: Double(job.job?.progressPct ?? 0), total: 100)
                 .tint(progressTint)
+
+            // 进行中（非终态）显示预估剩余时间，对齐 Web 首页卡片。
+            if job.job?.isTerminal == false {
+                Label(etaText, systemImage: "clock")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Palette.secondaryText)
+                    .monospacedDigit()
+            }
         }
+        .omSection()
+    }
+
+    // MARK: - 元信息：源文件名 + 目标日期
+
+    /// 源文件名与目标日期一行展示，对齐 Web `源文件 · 日期` 格式。无信息则不渲染。
+    @ViewBuilder
+    private var metaRow: some View {
+        let parts = [sourceFileName, job.targetDate].compactMap { $0 }
+        if !parts.isEmpty {
+            HStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: "waveform")
+                    .font(.caption)
+                    .foregroundStyle(Theme.Palette.secondaryText)
+                Text(parts.joined(separator: " · "))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Palette.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+            }
+        }
+    }
+
+    /// 源文件名（空串归一为 nil，让 metaRow 判空一致）。
+    private var sourceFileName: String? {
+        let name = job.sourceFile
+        return name.isEmpty ? nil : name
+    }
+
+    /// 预估剩余时间文案，1:1 对齐 Web `formatEtaSeconds`：
+    /// nil 或 <=0 → 预估中…；<60 → N 秒；否则 m:ss。
+    private var etaText: String {
+        guard let seconds = job.etaSeconds, seconds > 0 else { return "预估中…" }
+        if seconds < 60 { return "\(seconds) 秒" }
+        let minutes = seconds / 60
+        let remain = seconds % 60
+        return String(format: "%d:%02d", minutes, remain)
+    }
+
+    // MARK: - 失败态红条
+
+    /// 失败 / 取消 / 中断时的红色提示条，显示后端 error（无则给兜底文案）。
+    private var failureBanner: some View {
+        let detail = job.job?.error ?? ""
+        return HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Theme.Palette.danger)
+            Text(detail.isEmpty ? "处理失败，请重试。" : detail)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Palette.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Palette.danger.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
         .omSection()
     }
 
@@ -80,8 +154,18 @@ struct ProgressPanelView: View {
     @ViewBuilder
     private var controls: some View {
         HStack(spacing: Theme.Spacing.md) {
-            if job.job?.isTerminal == true {
-                // 终态：回到日报浏览
+            if isTerminalFailure {
+                // 失败终态：重试 + 去重新选转写引擎，外加回到日报浏览。
+                Button("重试") { Task { await job.retry() } }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                Button("去选转写引擎", action: onReconfigure)
+                    .buttonStyle(.bordered)
+                Spacer()
+                Button("返回", action: onDismiss)
+                    .buttonStyle(.bordered)
+            } else if job.job?.isTerminal == true {
+                // 成功终态：onDismiss 由 MainView 注入，内部读 target_date 跳转到对应日报。
                 Button("查看日报", action: onDismiss)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)

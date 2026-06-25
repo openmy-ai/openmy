@@ -123,4 +123,131 @@ final class JobViewModelTests: XCTestCase {
         XCTAssertNil(vm.job)
         XCTAssertNotNil(vm.errorMessage)
     }
+
+    /// 写一个临时音频文件，返回 URL；调用方负责清理。
+    func makeTempAudio() -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("om_vm_\(UUID().uuidString).wav")
+        try? Data("audio".utf8).write(to: url)
+        return url
+    }
+
+    // 行为：start(uploading:) 先上传拿 file_path，再用它建任务
+    func test_start_uploading_then_creates_job() async {
+        let url = makeTempAudio()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        MockURLProtocol.handler = { req in
+            switch req.url?.path {
+            case "/api/upload":
+                return (200, Data(#"{"file_path":"/data/inbox/r.wav","filename":"r.wav","size_bytes":5}"#.utf8))
+            case "/api/pipeline/jobs":
+                // 确认建任务用的是上传返回的 file_path，并带上 source 字段
+                let obj = try JSONSerialization.jsonObject(with: req.bodyData ?? Data()) as! [String: Any]
+                XCTAssertEqual(obj["audio_files"] as? [String], ["/data/inbox/r.wav"])
+                XCTAssertEqual(obj["source_file"] as? String, "r.wav")
+                return (200, self.jobJSON(id: "up1", status: "queued"))
+            default:
+                XCTFail("意外路径 \(req.url?.path ?? "")")
+                return (500, Data())
+            }
+        }
+        let vm = makeVM()
+        await vm.start(uploading: [url])
+        XCTAssertEqual(vm.job?.jobId, "up1")
+        XCTAssertFalse(vm.isUploading)
+        XCTAssertNil(vm.errorMessage)
+    }
+
+    // 行为：上传失败时记录错误且不建任务
+    func test_start_uploading_records_error_on_upload_failure() async {
+        let url = makeTempAudio()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        MockURLProtocol.handler = { req in
+            if req.url?.path == "/api/pipeline/jobs" { XCTFail("上传失败不应建任务") }
+            return (400, Data(#"{"error":"unsupported file type"}"#.utf8))
+        }
+        let vm = makeVM()
+        await vm.start(uploading: [url])
+        XCTAssertNil(vm.job)
+        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertFalse(vm.isUploading)
+    }
+
+    // 行为：空文件列表不发请求、不报错
+    func test_start_uploading_noop_on_empty() async {
+        MockURLProtocol.handler = { _ in XCTFail("不应发请求"); return (200, Data()) }
+        let vm = makeVM()
+        await vm.start(uploading: [])
+        XCTAssertNil(vm.job)
+        XCTAssertNil(vm.errorMessage)
+    }
+
+    // 行为：retry 用上次同样的输入重建任务
+    func test_retry_recreates_with_same_input() async {
+        MockURLProtocol.handler = { req in
+            let obj = try JSONSerialization.jsonObject(with: req.bodyData ?? Data()) as! [String: Any]
+            XCTAssertEqual(obj["audio_files"] as? [String], ["/tmp/a.wav"])
+            return (200, self.jobJSON(id: "r1", status: "queued"))
+        }
+        let vm = makeVM()
+        await vm.start(audioFiles: ["/tmp/a.wav"])
+        vm.clear()
+        await vm.retry()
+        XCTAssertEqual(vm.job?.jobId, "r1")
+    }
+
+    // 行为：上传式启动后 retry 复用已上传路径，不再重复上传到 inbox
+    func test_retry_reuses_uploaded_paths() async {
+        let url = makeTempAudio()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        final class Counter: @unchecked Sendable { var uploads = 0; var creates = 0 }
+        let counter = Counter()
+        MockURLProtocol.handler = { req in
+            switch req.url?.path {
+            case "/api/upload":
+                counter.uploads += 1
+                return (200, Data(#"{"file_path":"/data/inbox/r.wav","filename":"r.wav","size_bytes":5}"#.utf8))
+            case "/api/pipeline/jobs":
+                counter.creates += 1
+                let obj = try JSONSerialization.jsonObject(with: req.bodyData ?? Data()) as! [String: Any]
+                // 重建仍用已上传的 file_path，不是原始本地路径
+                XCTAssertEqual(obj["audio_files"] as? [String], ["/data/inbox/r.wav"])
+                return (200, self.jobJSON(id: "up1", status: "failed"))
+            default:
+                return (500, Data())
+            }
+        }
+        let vm = makeVM()
+        await vm.start(uploading: [url])
+        await vm.retry()
+        XCTAssertEqual(counter.uploads, 1, "retry 不应再次上传")
+        XCTAssertEqual(counter.creates, 2, "retry 应重新建任务")
+    }
+
+    // 行为：未启动过时 retry 不发请求
+    func test_retry_noop_without_prior_start() async {
+        MockURLProtocol.handler = { _ in XCTFail("不应发请求"); return (200, Data()) }
+        let vm = makeVM()
+        await vm.retry()
+        XCTAssertNil(vm.job)
+    }
+
+    // 行为：暴露 target_date / source_file / eta / log_lines 给视图
+    func test_exposes_job_metadata() async {
+        MockURLProtocol.handler = { _ in
+            (200, Data("""
+            {"job_id":"m1","kind":"run","status":"running","current_step":"transcribe",
+             "error":"","can_pause":true,"can_skip":false,"eta_seconds":90,
+             "source_file":"会议.m4a","target_date":"2026-06-25","log_lines":["L1","L2"],"steps":[]}
+            """.utf8))
+        }
+        let vm = makeVM()
+        await vm.start(audioFiles: ["/tmp/a.wav"])
+        XCTAssertEqual(vm.targetDate, "2026-06-25")
+        XCTAssertEqual(vm.sourceFile, "会议.m4a")
+        XCTAssertEqual(vm.etaSeconds, 90)
+        XCTAssertEqual(vm.logLines, ["L1", "L2"])
+    }
 }

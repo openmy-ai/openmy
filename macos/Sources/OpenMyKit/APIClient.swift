@@ -20,6 +20,23 @@ public struct DayEntry: Decodable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// 上传结果：POST /api/upload 的成功返回。后端把文件复制到 inbox 后回传落地路径。
+/// 外置盘 copy-first 的关键：先上传拿到本地 file_path，再用它建任务。
+public struct UploadResult: Decodable, Equatable, Sendable {
+    /// 后端落地后的本地绝对路径，用于建任务。
+    public let filePath: String
+    /// 原始文件名，用于卡片展示。
+    public let filename: String
+    /// 落地后字节数。
+    public let sizeBytes: Int
+
+    enum CodingKeys: String, CodingKey {
+        case filePath = "file_path"
+        case filename
+        case sizeBytes = "size_bytes"
+    }
+}
+
 /// OpenMy 后端 HTTP 客户端。对接 localhost:8420 的现有 Python 服务。
 public struct APIClient: Sendable {
     let baseURL: URL
@@ -76,10 +93,41 @@ public struct APIClient: Sendable {
         try await get("/api/pipeline/jobs/\(id)")
     }
 
-    /// 创建转写任务。
-    public func createJob(audioFiles: [String], targetDate: String? = nil) async throws -> PipelineJob {
+    /// 上传单个音频文件到后端 inbox。返回落地路径，供建任务用。
+    /// multipart/form-data，字段名固定为 `file`，对齐 Web 的 fetch('/api/upload')。
+    public func upload(fileURL: URL) async throws -> UploadResult {
+        let fileData = try Data(contentsOf: fileURL)
+        let filename = fileURL.lastPathComponent
+        let boundary = "Boundary-\(UUID().uuidString)"
+
+        var body = Data()
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
+        body.append("Content-Type: application/octet-stream\r\n\r\n")
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n")
+
+        var request = URLRequest(url: makeURL("/api/upload"))
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+
+        let (data, response) = try await session.data(for: request)
+        try Self.checkStatus(response)
+        return try JSONDecoder().decode(UploadResult.self, from: data)
+    }
+
+    /// 创建转写任务。sourceFile/sourceSizeBytes 来自上传结果，供首页卡片展示。
+    public func createJob(
+        audioFiles: [String],
+        targetDate: String? = nil,
+        sourceFile: String? = nil,
+        sourceSizeBytes: Int? = nil
+    ) async throws -> PipelineJob {
         var body: [String: Any] = ["audio_files": audioFiles, "kind": "run"]
         if let targetDate { body["target_date"] = targetDate }
+        if let sourceFile { body["source_file"] = sourceFile }
+        if let sourceSizeBytes { body["source_size_bytes"] = sourceSizeBytes }
         return try await post("/api/pipeline/jobs", body: body)
     }
 
@@ -126,4 +174,11 @@ public struct APIClient: Sendable {
 
 public enum APIError: Error, Equatable, Sendable {
     case badStatus(Int)
+}
+
+private extension Data {
+    /// 追加 UTF-8 字符串，构造 multipart body 用。
+    mutating func append(_ string: String) {
+        if let data = string.data(using: .utf8) { append(data) }
+    }
 }

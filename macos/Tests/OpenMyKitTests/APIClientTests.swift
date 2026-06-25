@@ -182,6 +182,88 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(job.status, "paused")
     }
 
+    // 行为：upload 发 multipart POST 到 /api/upload，解码落地路径
+    func test_upload_posts_multipart_and_decodes() async throws {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("om_upload_\(UUID().uuidString).wav")
+        try Data("fake-audio".utf8).write(to: tmp)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        MockURLProtocol.handler = { req in
+            XCTAssertEqual(req.url?.path, "/api/upload")
+            XCTAssertEqual(req.httpMethod, "POST")
+            let contentType = req.value(forHTTPHeaderField: "Content-Type") ?? ""
+            XCTAssertTrue(contentType.hasPrefix("multipart/form-data; boundary="))
+            let body = String(data: req.bodyData ?? Data(), encoding: .utf8) ?? ""
+            XCTAssertTrue(body.contains("name=\"file\""))
+            XCTAssertTrue(body.contains("fake-audio"))
+            return (200, Data(#"{"file_path":"/data/inbox/20260625T101010_x.wav","filename":"x.wav","size_bytes":10}"#.utf8))
+        }
+        let result = try await makeClient().upload(fileURL: tmp)
+        XCTAssertEqual(result.filePath, "/data/inbox/20260625T101010_x.wav")
+        XCTAssertEqual(result.filename, "x.wav")
+        XCTAssertEqual(result.sizeBytes, 10)
+    }
+
+    // 行为：upload 失败（后端报错）抛 badStatus
+    func test_upload_throws_on_error() async throws {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("om_upload_\(UUID().uuidString).wav")
+        try Data("x".utf8).write(to: tmp)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        MockURLProtocol.handler = { _ in (400, Data(#"{"error":"unsupported file type"}"#.utf8)) }
+        do {
+            _ = try await makeClient().upload(fileURL: tmp)
+            XCTFail("应抛错")
+        } catch {
+            XCTAssertEqual(error as? APIError, .badStatus(400))
+        }
+    }
+
+    // 行为：createJob 带 source_file / source_size_bytes 时一并发出
+    func test_createJob_posts_source_fields() async throws {
+        MockURLProtocol.handler = { req in
+            let obj = try JSONSerialization.jsonObject(with: req.bodyData ?? Data()) as! [String: Any]
+            XCTAssertEqual(obj["source_file"] as? String, "rec.m4a")
+            XCTAssertEqual(obj["source_size_bytes"] as? Int, 2048)
+            return (200, Data(#"{"job_id":"j2","kind":"run","status":"queued","steps":[]}"#.utf8))
+        }
+        let job = try await makeClient().createJob(
+            audioFiles: ["/data/inbox/rec.m4a"], targetDate: nil,
+            sourceFile: "rec.m4a", sourceSizeBytes: 2048
+        )
+        XCTAssertEqual(job.jobId, "j2")
+    }
+
+    // 行为：PipelineJob 解码 eta_seconds / source_file / target_date / log_lines
+    func test_job_decodes_extended_fields() async throws {
+        MockURLProtocol.handler = { _ in
+            let json = """
+            {"job_id":"abc","kind":"run","status":"running","current_step":"transcribe",
+             "error":"","can_pause":true,"can_skip":false,"progress_pct":40,
+             "eta_seconds":125,"source_file":"晨会.m4a","target_date":"2026-06-25",
+             "log_lines":["开始转写","进度 40%"],"steps":[]}
+            """
+            return (200, Data(json.utf8))
+        }
+        let job = try await makeClient().job(id: "abc")
+        XCTAssertEqual(job.etaSeconds, 125)
+        XCTAssertEqual(job.sourceFile, "晨会.m4a")
+        XCTAssertEqual(job.targetDate, "2026-06-25")
+        XCTAssertEqual(job.logLines, ["开始转写", "进度 40%"])
+    }
+
+    // 行为：扩展字段缺省时安全降级（eta=nil，target_date 空串归一为 nil，列表为空）
+    func test_job_tolerates_missing_extended_fields() async throws {
+        MockURLProtocol.handler = { _ in
+            (200, Data(#"{"job_id":"abc","kind":"run","status":"queued","target_date":"","steps":[]}"#.utf8))
+        }
+        let job = try await makeClient().job(id: "abc")
+        XCTAssertNil(job.etaSeconds)
+        XCTAssertNil(job.targetDate)
+        XCTAssertEqual(job.sourceFile, "")
+        XCTAssertEqual(job.logLines, [])
+    }
+
     // 行为：非 2xx 状态码抛 badStatus
     func test_get_throws_on_non2xx() async {
         MockURLProtocol.handler = { _ in (500, Data("{}".utf8)) }
