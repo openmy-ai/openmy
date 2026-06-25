@@ -37,6 +37,40 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(result[0].summary, "忙碌的一天")
     }
 
+    // 行为：dates() lenient 解码 timeline/decisions/todos/events（对象项抽文本），缺失降级空
+    func test_dates_decodes_extended_fields() async throws {
+        MockURLProtocol.handler = { _ in
+            let json = """
+            [{"date":"2026-06-25","segments":3,"word_count":120,"summary":"忙",
+              "timeline":[{"time":"09:00","preview":"开头"},{"time":"10:00","preview":"中段"}],
+              "decisions":[{"decision":"用本地引擎"},{"what":"另一个决定"}],
+              "todos":[{"task":"买菜"},{"what":"打电话"}],
+              "events":[{"summary":"发生了A"},"裸字符串事件"]}]
+            """
+            return (200, Data(json.utf8))
+        }
+        let result = try await makeClient().dates()
+        let d = result[0]
+        XCTAssertEqual(d.timeline.count, 2)
+        XCTAssertEqual(d.timeline.first?.time, "09:00")
+        XCTAssertEqual(d.timeline.first?.preview, "开头")
+        XCTAssertEqual(d.decisions, ["用本地引擎", "另一个决定"])
+        XCTAssertEqual(d.todos, ["买菜", "打电话"])
+        XCTAssertEqual(d.events, ["发生了A", "裸字符串事件"])
+    }
+
+    // 行为：dates() 缺扩展字段时降级为空，不破坏既有解码
+    func test_dates_tolerates_missing_extended_fields() async throws {
+        MockURLProtocol.handler = { _ in
+            (200, Data(#"[{"date":"2026-06-25","segments":1,"word_count":10,"summary":"x"}]"#.utf8))
+        }
+        let d = try await makeClient().dates()[0]
+        XCTAssertEqual(d.timeline, [])
+        XCTAssertEqual(d.decisions, [])
+        XCTAssertEqual(d.todos, [])
+        XCTAssertEqual(d.events, [])
+    }
+
     // 行为：briefing(date) 解码日报，含对象列表
     func test_briefing_decodes() async throws {
         MockURLProtocol.handler = { req in

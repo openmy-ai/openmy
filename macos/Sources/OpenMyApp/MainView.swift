@@ -1,6 +1,7 @@
 import SwiftUI
 import OpenMyKit
 import UniformTypeIdentifiers
+import Charts
 
 /// 主界面：左侧日期列表（可搜索 + 当前引擎 + 重新配置），右侧日报 / 进行中的任务进度。
 /// 开始新任务有两条路：工具栏「处理录音」按钮（文件选择器）或直接把文件拖进详情区。
@@ -22,6 +23,8 @@ struct MainView: View {
     /// 记忆库状态机：三类记忆条目（待办/项目/决策）+ 查询工作台。
     /// 与 correctionsVM 一样在 NavigationSplitView 上 .environment 注入，记忆库面板从环境读取同一份实例。
     @State private var contextVM: ContextViewModel
+    /// 报告状态机：周报（7天）/月报（30天）聚合，纯逻辑无网络，数据由视图从 dates 与 projects 取好后传入。
+    @State private var reportVM = ReportViewModel()
     @State private var isDropTargeted = false
     @State private var dropNote: String?
     @State private var search = ""
@@ -39,6 +42,8 @@ struct MainView: View {
     @State private var showCorrections = false
     /// 「记忆库」面板是否呈现。
     @State private var showContext = false
+    /// 「报告」面板是否呈现（默认周视图）。
+    @State private var showReport = false
 
     init(client: APIClient, onReconfigure: @escaping () -> Void = {}) {
         self.client = client
@@ -94,6 +99,14 @@ struct MainView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
+                    openReport()
+                } label: {
+                    Label("报告", systemImage: "chart.bar.doc.horizontal")
+                }
+                .help("查看周报 / 月报（活跃天 · 段数 · 字数 · 决策 · 待办）")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
                     showImporter = true
                 } label: {
                     Label("处理录音", systemImage: "waveform.badge.plus")
@@ -130,6 +143,26 @@ struct MainView: View {
                 onClose: { showContext = false },
                 onJumpToEvidence: { focus in jumpFromContext(focus) }
             )
+        }
+        .sheet(isPresented: $showReport) {
+            // 报告聚合纯逻辑：openReport() 已用当前 dates / projects / 基准日期填好 reportVM。
+            // onOpenDate 接到日报选择：切到该天并关闭报告（对齐 reports.js 点日期回看当天日报）。
+            // 用 NavigationStack 包一层只为给 macOS sheet 留一个「完成」关闭入口（ReportView 自身不渲染关闭按钮）。
+            NavigationStack {
+                ReportView(
+                    viewModel: reportVM,
+                    dates: briefings.dates,
+                    today: reportToday(),
+                    onOpenDate: { date in openDateFromReport(date) }
+                )
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("完成") { showReport = false }
+                            .keyboardShortcut(.cancelAction)
+                    }
+                }
+            }
+            .frame(minWidth: 560, minHeight: 520)
         }
         .fileImporter(
             isPresented: $showImporter,
@@ -413,6 +446,26 @@ struct MainView: View {
         if let date = briefings.selectedDate {
             Task { await briefings.select(date: date) }
         }
+    }
+
+    /// 打开报告：先用当前 dates 与活跃项目算好周报/月报，再呈现面板（默认周视图）。
+    /// 「今天」基准日期不读系统时钟：优先取当前选中日期，否则取已有日期里的最大值（对齐聚合器外部传入约定）。
+    private func openReport() {
+        let activeProjects = contextVM.projects.filter { $0.status == "active" }
+        reportVM.load(dates: briefings.dates, activeProjects: activeProjects, today: reportToday())
+        showReport = true
+    }
+
+    /// 报告里点某天：切到该天日报并关闭报告面板。
+    private func openDateFromReport(_ date: String) {
+        showReport = false
+        Task { await briefings.select(date: date) }
+    }
+
+    /// 报告基准「今天」：选中日期优先，否则取已有日期的最大值，再退到空串（聚合器对非法日期安全降级）。
+    private func reportToday() -> String {
+        if let selected = briefings.selectedDate { return selected }
+        return briefings.dates.map(\.date).max() ?? ""
     }
 
     /// 记忆库证据回链：先关闭记忆库面板，再复用搜索跳转（切日期 + 定位段落 + 高亮）。

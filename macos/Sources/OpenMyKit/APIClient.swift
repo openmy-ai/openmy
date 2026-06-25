@@ -5,18 +5,144 @@ public struct HealthStatus: Decodable, Equatable, Sendable {
     public let status: String
 }
 
+/// 时间线条目：GET /api/dates 列表项的 timeline 元素 {time, preview}。缺字段降级空串。
+public struct TimelineEntry: Decodable, Equatable, Sendable {
+    public let time: String
+    public let preview: String
+
+    enum CodingKeys: String, CodingKey {
+        case time, preview
+    }
+
+    public init(time: String, preview: String) {
+        self.time = time
+        self.preview = preview
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        time = try c.decodeIfPresent(String.self, forKey: .time) ?? ""
+        preview = try c.decodeIfPresent(String.self, forKey: .preview) ?? ""
+    }
+}
+
 /// 已处理日期条目：GET /api/dates 列表项。未用字段忽略。
+/// meta 来源的 events/decisions/todos 实测常为空，按 lenient 处理（缺失/异型降级空）。
 public struct DayEntry: Decodable, Equatable, Sendable, Identifiable {
     public let date: String
     public let segments: Int
     public let wordCount: Int
     public let summary: String
+    /// 决策文本列表。后端项是对象（含 decision/what 等异型键），这里抽成可显示文本。缺失降级空。
+    public let decisions: [String]
+    /// 待办文本列表。后端项是对象（含 task/what 等异型键），抽成可显示文本。缺失降级空。
+    public let todos: [String]
+    /// 发生事件文本列表。抽成可显示文本，缺失降级空。
+    public let events: [String]
+    /// 逐段时间线 {time, preview}，用于摘要兜底。缺失降级空。
+    public let timeline: [TimelineEntry]
 
     public var id: String { date }
 
     enum CodingKeys: String, CodingKey {
-        case date, segments, summary
+        case date, segments, summary, decisions, todos, events, timeline
         case wordCount = "word_count"
+    }
+
+    public init(
+        date: String, segments: Int, wordCount: Int, summary: String,
+        decisions: [String] = [], todos: [String] = [], events: [String] = [],
+        timeline: [TimelineEntry] = []
+    ) {
+        self.date = date
+        self.segments = segments
+        self.wordCount = wordCount
+        self.summary = summary
+        self.decisions = decisions
+        self.todos = todos
+        self.events = events
+        self.timeline = timeline
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        date = try c.decode(String.self, forKey: .date)
+        segments = try c.decodeIfPresent(Int.self, forKey: .segments) ?? 0
+        wordCount = try c.decodeIfPresent(Int.self, forKey: .wordCount) ?? 0
+        summary = try c.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        // decisions 项取 decision/what，对齐 reports.js item.decisions[].decision || .what
+        decisions = MetaText.extractList(c, key: .decisions, keys: ["decision", "what"])
+        // todos 项取 task/what，对齐 reports.js item.todos[].task || .what
+        todos = MetaText.extractList(c, key: .todos, keys: ["task", "what"])
+        // events 项取 summary/what/content 等通用键
+        events = MetaText.extractList(c, key: .events, keys: ["summary", "what", "content", "event"])
+        timeline = ((try? c.decodeIfPresent([TimelineEntry].self, forKey: .timeline)) ?? []) ?? []
+    }
+}
+
+/// meta 异型条目的文本抽取工具：项可能是字符串，也可能是对象（候选键里取第一个非空）。
+enum MetaText {
+    /// 从某个 key 下解码一个异型条目列表，每项抽成可显示文本，空文本丢弃。
+    /// 兼容三种形态：字符串数组、对象数组（按 candidateKeys 取文本）、缺失（返回空）。
+    static func extractList(
+        _ container: KeyedDecodingContainer<DayEntry.CodingKeys>,
+        key: DayEntry.CodingKeys,
+        keys candidateKeys: [String]
+    ) -> [String] {
+        guard let items = try? container.decodeIfPresent([MetaItem].self, forKey: key) else {
+            return []
+        }
+        return items.compactMap { $0.text(preferring: candidateKeys) }
+    }
+
+    /// 从任意可显示字段抽文本，供 DateMeta 等复用（候选键顺序固定，对齐 daily.js）。
+    static let displayKeys = [
+        "summary", "what", "task", "content", "decision", "fact", "intent",
+    ]
+}
+
+/// 单个 meta 条目：可能是裸字符串或对象。对象按候选键取第一个非空文本。
+struct MetaItem: Decodable, Equatable, Sendable {
+    private let raw: String
+    private let fields: [String: String]
+
+    init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(),
+           let s = try? single.decode(String.self) {
+            raw = s
+            fields = [:]
+            return
+        }
+        raw = ""
+        var collected: [String: String] = [:]
+        if let c = try? decoder.container(keyedBy: DynamicKey.self) {
+            for k in c.allKeys {
+                if let v = try? c.decode(String.self, forKey: k) {
+                    collected[k.stringValue] = v
+                }
+            }
+        }
+        fields = collected
+    }
+
+    /// 按候选键顺序取第一个非空文本；都没有时回退到通用展示键；再没有回退裸字符串。
+    func text(preferring candidateKeys: [String]) -> String? {
+        if !raw.isEmpty { return raw }
+        for key in candidateKeys {
+            if let v = fields[key], !v.isEmpty { return v }
+        }
+        for key in MetaText.displayKeys {
+            if let v = fields[key], !v.isEmpty { return v }
+        }
+        return nil
+    }
+
+    /// 任意字符串键（动态解码用）。
+    struct DynamicKey: CodingKey {
+        var stringValue: String
+        var intValue: Int? { nil }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { nil }
     }
 }
 

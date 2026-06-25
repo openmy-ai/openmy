@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import Charts
 import OpenMyKit
 
 /// 日报详情。用设计系统 token 重做：头部统计卡片 + 分区块卡片，
@@ -27,6 +28,9 @@ struct BriefingDetailView: View {
 
     /// 当前打开字幕复核的场景：非空时弹出 SubtitleReviewView 浮层。
     @State private var reviewScene: TranscriptScene?
+
+    /// 本日 meta 四分区（发生/打算/记住/决定）。进入时拉取，缺失/为空全降级空数组。
+    @State private var dateMeta: DateMeta?
 
     /// 当前打开的纠错表单：非空时弹出 CorrectionSheet。
     /// 由某段转写的「纠错」入口触发，把该段文本预填为 context。
@@ -65,6 +69,14 @@ struct BriefingDetailView: View {
                         }
                     }
 
+                    if hasHourActivity {
+                        SectionCard(title: "时段热度", systemImage: "chart.bar") {
+                            hourHeatmap
+                        }
+                    }
+
+                    metaSection
+
                     if !briefing.keyEvents.isEmpty {
                         SectionCard(title: "关键事件", systemImage: "star") {
                             bullets(briefing.keyEvents, marker: .dot)
@@ -88,6 +100,8 @@ struct BriefingDetailView: View {
                 .padding(Theme.Spacing.xxl)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            // 进入时加载头部统计/时段热度所需的逐段转写与 meta（不展开原始记录区块）。
+            .task(id: briefing.date) { await loadStatsData() }
             // 焦点命中本日报：进入时一次性消费，自动展开并加载转写。
             .onAppear { consumeFocusIfNeeded() }
             .onChange(of: focus) { _, _ in consumeFocusIfNeeded() }
@@ -321,6 +335,25 @@ struct BriefingDetailView: View {
         scenes.filter { $0.audioRef != nil }
     }
 
+    /// 进入时为头部统计与时段热度预取数据：逐段转写（取 time 算跨度/分桶）+ meta 四分区。
+    /// 不展开「原始记录」区块；失败静默（这些只是增强信息，不阻断主体渲染）。
+    private func loadStatsData() async {
+        if segments.isEmpty {
+            if let detail = try? await client.dateDetail(date: briefing.date) {
+                segments = detail.segments
+                scenes = detail.scenes
+            }
+        }
+        if dateMeta == nil {
+            dateMeta = try? await client.dateMeta(date: briefing.date)
+        }
+    }
+
+    /// 逐段时间串（用于首末跨度与时段分桶）。
+    private var segmentTimes: [String] {
+        segments.map(\.time)
+    }
+
     // MARK: - 头部
 
     private var header: some View {
@@ -333,6 +366,9 @@ struct BriefingDetailView: View {
                 metricCard("\(briefing.totalScenes)", "场景")
                 metricCard("\(briefing.totalWords)", "字")
                 metricCard(String(format: "%.1f", briefing.voiceHours), "小时语音")
+                if let span = TimeSpan.span(times: segmentTimes) {
+                    metricCard("\(span.first)–\(span.last)", "时间跨度")
+                }
             }
         }
         .omSection()
@@ -379,6 +415,107 @@ struct BriefingDetailView: View {
 
                     Spacer(minLength: 0)
                 }
+            }
+        }
+    }
+
+    // MARK: - 时段热度
+
+    /// 24 小时活跃分桶（下标即小时）。从逐段时间串计数。
+    private var hourCounts: [Int] {
+        HourHistogram.counts(times: segmentTimes)
+    }
+
+    /// 是否有可画的活跃数据：任一小时桶非空。空则整个区块不渲染。
+    private var hasHourActivity: Bool {
+        hourCounts.contains { $0 > 0 }
+    }
+
+    /// 24 小时活跃柱状图：每根柱代表一个整点小时的段落数。
+    private var hourHeatmap: some View {
+        Chart(Array(hourCounts.enumerated()), id: \.offset) { hour, count in
+            BarMark(
+                x: .value("小时", Double(hour)),
+                y: .value("段落数", count)
+            )
+            .foregroundStyle(Theme.Palette.accent)
+            .cornerRadius(2)
+        }
+        .chartXScale(domain: -0.5...23.5)
+        .chartXAxis {
+            AxisMarks(values: [0.0, 6.0, 12.0, 18.0, 23.0]) { value in
+                AxisGridLine()
+                AxisValueLabel {
+                    if let hour = value.as(Double.self) {
+                        Text(String(format: "%02d", Int(hour)))
+                            .font(Theme.Typography.caption)
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading)
+        }
+        .frame(height: 160)
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - meta 四分区（发生/打算/记住/决定）
+
+    /// meta 四分区卡片：仅当对应类目非空才显示。四类全空时整个区块不渲染。
+    @ViewBuilder
+    private var metaSection: some View {
+        if let meta = dateMeta {
+            if !meta.events.isEmpty {
+                SectionCard(title: "发生", systemImage: "sparkles") {
+                    metaEntries(meta.events)
+                }
+            }
+            if !meta.intents.isEmpty {
+                SectionCard(title: "打算", systemImage: "flag") {
+                    metaEntries(meta.intents)
+                }
+            }
+            if !meta.facts.isEmpty {
+                SectionCard(title: "记住", systemImage: "brain") {
+                    metaEntries(meta.facts)
+                }
+            }
+            if !meta.decisions.isEmpty {
+                SectionCard(title: "决定", systemImage: "checkmark.seal") {
+                    metaEntries(meta.decisions)
+                }
+            }
+        }
+    }
+
+    /// 一组 meta 项渲染：每项一行，时间/项目标签在前，文本在后。
+    private func metaEntries(_ entries: [MetaEntry]) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    if !entry.time.isEmpty || !entry.project.isEmpty {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            if !entry.time.isEmpty {
+                                Text(entry.time)
+                                    .font(Theme.Typography.caption)
+                                    .foregroundStyle(Theme.Palette.accent)
+                                    .monospacedDigit()
+                            }
+                            if !entry.project.isEmpty {
+                                OMBadge(entry.project, kind: .neutral)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                    }
+                    if !entry.text.isEmpty {
+                        Text(entry.text)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Palette.primaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -444,6 +581,39 @@ private struct CorrectionTarget: Identifiable, Equatable {
     var id: String { time }
 }
 
+// MARK: - 角色徽章（按 RoleColorKey 配色）
+
+/// 场景角色徽章：把原始 role.category 归一到 RoleColorKey，按类目取色。
+/// 原始文案照常展示，仅底色/前景色随角色类别变化，便于一眼区分对话对象。
+private struct RoleBadge: View {
+    let role: String
+
+    var body: some View {
+        let key = RoleColorKey.from(role)
+        let color = RoleBadge.color(for: key)
+        Text(role)
+            .font(.caption2)
+            .padding(.horizontal, Theme.Spacing.sm)
+            .padding(.vertical, Theme.Spacing.xs / 2)
+            .foregroundStyle(color)
+            .background(color.opacity(0.18))
+            .clipShape(Capsule())
+    }
+
+    /// 角色类别 → 展示色。rawValue 稳定，便于映射。
+    static func color(for key: RoleColorKey) -> Color {
+        switch key {
+        case .ai: return .blue
+        case .merchant: return .orange
+        case .pet: return .pink
+        case .self: return .purple
+        case .interpersonal: return .green
+        case .uncertain: return Theme.Palette.secondaryText
+        case .other: return Theme.Palette.secondaryText
+        }
+    }
+}
+
 // MARK: - 区块卡片容器
 
 /// 带强调色标题条的区块卡片：图标 + 标题在上，内容在卡片内。
@@ -498,7 +668,7 @@ private struct SceneRowView: View {
                     .foregroundStyle(Theme.Palette.accent)
                     .monospacedDigit()
                 if !scene.roleCategory.isEmpty {
-                    OMBadge(scene.roleCategory, kind: .neutral)
+                    RoleBadge(role: scene.roleCategory)
                 }
                 Spacer(minLength: 0)
             }
