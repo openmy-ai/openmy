@@ -16,7 +16,21 @@ public struct DateDetail: Decodable, Equatable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         date = try c.decode(String.self, forKey: .date)
         segments = try c.decodeIfPresent([TranscriptSegment].self, forKey: .segments) ?? []
-        scenes = try c.decodeIfPresent([TranscriptScene].self, forKey: .scenes) ?? []
+        // scenes 是后端对象 {scenes:[...], stats:{...}}（不改后端：网页版 data.scenes.scenes 依赖此形状）。
+        // 解信封取内层数组；字段缺失 / null / 空对象 / 无内层数组时安全降级为空。
+        let scenesEnvelope = (try? c.decodeIfPresent(ScenesEnvelope.self, forKey: .scenes)) ?? nil
+        scenes = scenesEnvelope?.scenes ?? []
+    }
+}
+
+/// 后端 GET /api/date/{date} 的 scenes 字段是对象 {scenes:[...], stats:{...}}（网页版 data.scenes.scenes 依赖此形状）。
+/// 此信封只取内层 scenes 数组；内层缺失 / 异型时降级为空，绝不让外层 DateDetail 解码崩溃。
+private struct ScenesEnvelope: Decodable {
+    let scenes: [TranscriptScene]
+    enum CodingKeys: String, CodingKey { case scenes }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        scenes = ((try? c.decodeIfPresent([TranscriptScene].self, forKey: .scenes)) ?? nil) ?? []
     }
 }
 
