@@ -76,7 +76,7 @@ public struct DayEntry: Decodable, Equatable, Sendable, Identifiable {
         todos = MetaText.extractList(c, key: .todos, keys: ["task", "what"])
         // events 项取 summary/what/content 等通用键
         events = MetaText.extractList(c, key: .events, keys: ["summary", "what", "content", "event"])
-        timeline = ((try? c.decodeIfPresent([TimelineEntry].self, forKey: .timeline)) ?? []) ?? []
+        timeline = (try? c.decode([TimelineEntry].self, forKey: .timeline)) ?? []
     }
 }
 
@@ -277,8 +277,11 @@ public struct APIClient: Sendable {
     public func search(query: String) async throws -> [SearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed
-        return try await get("/api/search?q=\(encoded)")
+        // 用 URLComponents 编码，避免 & = ? 等保留字符把 q 参数拼错导致关键词截断。
+        var comps = URLComponents()
+        comps.queryItems = [URLQueryItem(name: "q", value: trimmed)]
+        let qs = comps.percentEncodedQuery ?? "q=\(trimmed)"
+        return try await get("/api/search?\(qs)")
     }
 
     /// 全局统计（侧栏顶部天/条/字与角色分布）。

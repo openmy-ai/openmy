@@ -30,8 +30,9 @@ public final class AudioPlayerModel {
 
     public init() {}
 
-    // 不在 deinit 里手动移除 observer：player 随本对象一同释放，token 由 player 自行回收。
-    // load 时会先 removeObserver 再重挂，避免重复回调。
+    // 不在 deinit 里手动移除 observer：@MainActor 隔离属性无法在 nonisolated deinit 访问
+    // （Swift 6 严格并发）。观察器闭包用 [weak self]，self 释放后回调直接 no-op；
+    // 且 timeObserver token 随 player 一同释放，无悬挂回调风险。load 时先 removeObserver 再重挂。
 
     /// 加载某段 chunk 音频的一个场景区间，seek 到场景起点，记忆倍速但不自动播放。
     /// - ref: 场景音频引用，决定起点/终点/时长。

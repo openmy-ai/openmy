@@ -165,15 +165,16 @@ struct BriefingDetailView: View {
     /// 若有待滚动段且转写已就绪，滚动到对应段并清空待滚动标记。
     private func performPendingScroll(_ proxy: ScrollViewProxy) {
         guard let time = pendingScrollTime, !segments.isEmpty else { return }
-        guard segments.contains(where: { $0.time == time }) else { return }
+        // 定位到第一个匹配该时间的段（与 Web 取首个一致），用 time+index 保证重复时间码也唯一。
+        guard let index = segments.firstIndex(where: { $0.time == time }) else { return }
         withAnimation(.easeInOut) {
-            proxy.scrollTo(transcriptRowID(time), anchor: .center)
+            proxy.scrollTo(transcriptRowID(time, index), anchor: .center)
         }
         pendingScrollTime = nil
     }
 
-    /// 段落行的稳定 id：用时间标记，供 ScrollViewReader 定位。
-    private func transcriptRowID(_ time: String) -> String { "transcript-\(time)" }
+    /// 段落行的稳定 id：时间 + 序号，供 ScrollViewReader 定位；同一时间多段也唯一。
+    private func transcriptRowID(_ time: String, _ index: Int) -> String { "transcript-\(time)-\(index)" }
 
     /// 打开某段的纠错表单：该段文本预填为上下文，原文待用户填入。
     private func openCorrection(for seg: TranscriptSegment) {
@@ -200,7 +201,7 @@ struct BriefingDetailView: View {
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Palette.secondaryText)
                     } else {
-                        ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
+                        ForEach(Array(segments.enumerated()), id: \.offset) { index, seg in
                             VStack(alignment: .leading, spacing: Theme.Spacing.xs / 2) {
                                 HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
                                     Text(seg.time)
@@ -223,7 +224,7 @@ struct BriefingDetailView: View {
                                     .textSelection(.enabled)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .id(transcriptRowID(seg.time))
+                            .id(transcriptRowID(seg.time, index))
                             // 右键也能进纠错，与小按钮等价。
                             .contextMenu {
                                 Button { openCorrection(for: seg) } label: {

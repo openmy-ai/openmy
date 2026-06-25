@@ -80,7 +80,7 @@ public struct MetaEntry: Decodable, Equatable, Sendable {
         }
         func str(_ k: String) -> String {
             guard let key = DynamicKey(stringValue: k) else { return "" }
-            return ((try? c.decodeIfPresent(String.self, forKey: key)) ?? "") ?? ""
+            return (try? c.decode(String.self, forKey: key)) ?? ""
         }
         var resolvedText = ""
         for key in MetaEntry.textKeys {
