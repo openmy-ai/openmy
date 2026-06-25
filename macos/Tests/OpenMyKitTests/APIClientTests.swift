@@ -114,13 +114,13 @@ final class APIClientTests: XCTestCase {
             XCTAssertEqual(req.url?.path, "/api/date/2026-06-05")
             let json = """
             {"date":"2026-06-05","segments":[],
-             "scenes":[
+             "scenes":{"scenes":[
                {"scene_id":"s1","time_start":"16:50","time_end":"16:55",
                 "text":"第一句。第二句！","summary":"摘要","role":{"category":"会议","extra":"忽略"},
                 "audio_ref":{"chunk_id":"chunk_0001","offset_start":3.5,"offset_end":12.0,
                   "duration_seconds":60.0,"speech_segments":[[3.5,8.0],[9.0,12.0]],"segment_ids":["x"]}},
                {"scene_id":"s2","time_start":"17:00","time_end":"17:01","text":"无音频","summary":"","role":{}}
-             ]}
+             ]}}
             """
             return (200, Data(json.utf8))
         }
