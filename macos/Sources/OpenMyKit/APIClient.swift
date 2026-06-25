@@ -235,7 +235,7 @@ public struct APIClient: Sendable {
     let session: URLSession
 
     public init(
-        baseURL: URL = URL(string: "http://localhost:8420")!,
+        baseURL: URL = URL(string: "http://127.0.0.1:8420")!,
         session: URLSession = .shared
     ) {
         self.baseURL = baseURL
