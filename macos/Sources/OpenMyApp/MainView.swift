@@ -19,6 +19,9 @@ struct MainView: View {
     /// 校正词典状态机：侧栏词典面板、划选纠错、新增校正共读同一份 corrections。
     /// 像 ToastCenter 一样在 NavigationSplitView 上 .environment 注入，详情区与纠错弹层都能读到。
     @State private var correctionsVM: CorrectionsViewModel
+    /// 记忆库状态机：三类记忆条目（待办/项目/决策）+ 查询工作台。
+    /// 与 correctionsVM 一样在 NavigationSplitView 上 .environment 注入，记忆库面板从环境读取同一份实例。
+    @State private var contextVM: ContextViewModel
     @State private var isDropTargeted = false
     @State private var dropNote: String?
     @State private var search = ""
@@ -34,6 +37,8 @@ struct MainView: View {
     @State private var stats: Stats?
     /// 「校正词典」面板是否呈现。
     @State private var showCorrections = false
+    /// 「记忆库」面板是否呈现。
+    @State private var showContext = false
 
     init(client: APIClient, onReconfigure: @escaping () -> Void = {}) {
         self.client = client
@@ -42,6 +47,7 @@ struct MainView: View {
         _job = State(initialValue: JobViewModel(client: client))
         _searchVM = State(initialValue: SearchViewModel(client: client))
         _correctionsVM = State(initialValue: CorrectionsViewModel(client: client))
+        _contextVM = State(initialValue: ContextViewModel(client: client))
     }
 
     /// 按搜索词过滤日期（匹配日期或摘要）。
@@ -59,6 +65,8 @@ struct MainView: View {
         }
         // 校正词典共享给详情区（划选纠错）与「校正词典」面板，同一份 corrections。
         .environment(correctionsVM)
+        // 记忆库状态机注入：记忆库面板从环境读取同一份 contextVM（条目 + 查询工作台）。
+        .environment(contextVM)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -75,6 +83,14 @@ struct MainView: View {
                     Label("校正词典", systemImage: "character.book.closed")
                 }
                 .help("查看校正词典并新增校正")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showContext = true
+                } label: {
+                    Label("记忆库", systemImage: "brain")
+                }
+                .help("查看记忆库（待办 / 项目 / 决策）并检索证据")
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -107,6 +123,14 @@ struct MainView: View {
                 onClose: { reloadAfterCorrections() }
             )
         }
+        .sheet(isPresented: $showContext) {
+            // 记忆库面板从环境取 contextVM 与 toastCenter（上面 .environment 已注入）。
+            // 证据回链复用波次1 地基：转跳焦点交给 handleSearchSelect（切日期 + 定位段落 + 高亮），并关闭面板。
+            ContextView(
+                onClose: { showContext = false },
+                onJumpToEvidence: { focus in jumpFromContext(focus) }
+            )
+        }
         .fileImporter(
             isPresented: $showImporter,
             allowedContentTypes: [.audio, .movie, .mpeg4Movie],
@@ -119,6 +143,7 @@ struct MainView: View {
             await loadCurrentEngine()
             await loadStats()
             await correctionsVM.load()
+            await contextVM.load()
         }
     }
 
@@ -388,6 +413,13 @@ struct MainView: View {
         if let date = briefings.selectedDate {
             Task { await briefings.select(date: date) }
         }
+    }
+
+    /// 记忆库证据回链：先关闭记忆库面板，再复用搜索跳转（切日期 + 定位段落 + 高亮）。
+    /// 焦点已由 contextVM.focus(for:) 从证据组装好（date + time_range 起点 + query），这里直接转交。
+    private func jumpFromContext(_ focus: SearchFocus) {
+        showContext = false
+        handleSearchSelect(focus)
     }
 
     /// 搜索命中后：切到目标日期、记下焦点供详情区定位 + 高亮、关闭浮层。
