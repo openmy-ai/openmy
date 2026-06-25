@@ -16,6 +16,9 @@ struct MainView: View {
     @State private var job: JobViewModel
     /// 全局搜索状态机：检索逻辑、防过期、选中序号都在这里，SpotlightView 只负责呈现。
     @State private var searchVM: SearchViewModel
+    /// 校正词典状态机：侧栏词典面板、划选纠错、新增校正共读同一份 corrections。
+    /// 像 ToastCenter 一样在 NavigationSplitView 上 .environment 注入，详情区与纠错弹层都能读到。
+    @State private var correctionsVM: CorrectionsViewModel
     @State private var isDropTargeted = false
     @State private var dropNote: String?
     @State private var search = ""
@@ -29,6 +32,8 @@ struct MainView: View {
     @State private var searchFocus: SearchFocus?
     /// 全局统计（天 / 条 / 字），启动时拉取，展示在侧栏底部。
     @State private var stats: Stats?
+    /// 「校正词典」面板是否呈现。
+    @State private var showCorrections = false
 
     init(client: APIClient, onReconfigure: @escaping () -> Void = {}) {
         self.client = client
@@ -36,6 +41,7 @@ struct MainView: View {
         _briefings = State(initialValue: BriefingListViewModel(client: client))
         _job = State(initialValue: JobViewModel(client: client))
         _searchVM = State(initialValue: SearchViewModel(client: client))
+        _correctionsVM = State(initialValue: CorrectionsViewModel(client: client))
     }
 
     /// 按搜索词过滤日期（匹配日期或摘要）。
@@ -51,6 +57,8 @@ struct MainView: View {
         } detail: {
             detail
         }
+        // 校正词典共享给详情区（划选纠错）与「校正词典」面板，同一份 corrections。
+        .environment(correctionsVM)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -59,6 +67,14 @@ struct MainView: View {
                     Label("搜索", systemImage: "magnifyingglass")
                 }
                 .help("全局搜索（⌘K）")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showCorrections = true
+                } label: {
+                    Label("校正词典", systemImage: "character.book.closed")
+                }
+                .help("查看校正词典并新增校正")
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -83,6 +99,14 @@ struct MainView: View {
                 recentDates: briefings.dates
             )
         }
+        .sheet(isPresented: $showCorrections) {
+            // 词典面板从环境里取 correctionsVM 与 toastCenter（上面 .environment 已注入）。
+            // 自身负责提交成功的 toast；当天日报的重载在面板关闭时按当前日期触发（对齐 Web loadDate）。
+            CorrectionsView(
+                currentDate: briefings.selectedDate,
+                onClose: { reloadAfterCorrections() }
+            )
+        }
         .fileImporter(
             isPresented: $showImporter,
             allowedContentTypes: [.audio, .movie, .mpeg4Movie],
@@ -94,6 +118,7 @@ struct MainView: View {
             await briefings.loadDates()
             await loadCurrentEngine()
             await loadStats()
+            await correctionsVM.load()
         }
     }
 
@@ -209,7 +234,8 @@ struct MainView: View {
                 BriefingDetailView(
                     briefing: briefing,
                     client: client,
-                    focus: searchFocus?.date == briefing.date ? searchFocus : nil
+                    focus: searchFocus?.date == briefing.date ? searchFocus : nil,
+                    onCorrectionApplied: reloadAfterCorrections
                 )
             } else {
                 dropPrompt
@@ -351,6 +377,16 @@ struct MainView: View {
             if succeeded, let date = targetDate {
                 await briefings.select(date: date)
             }
+        }
+    }
+
+    /// 关闭校正词典面板后：重载当前日期的日报（对齐 Web 提交后 loadDate）。
+    /// 面板内提交时后端已就地替换当天 transcript，关闭时重拉让详情区即时反映替换结果。
+    /// 词典面板自身已弹提交成功 toast，这里只负责重载，不重复反馈。
+    private func reloadAfterCorrections() {
+        showCorrections = false
+        if let date = briefings.selectedDate {
+            Task { await briefings.select(date: date) }
         }
     }
 

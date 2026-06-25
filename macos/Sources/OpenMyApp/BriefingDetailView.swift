@@ -8,12 +8,23 @@ struct BriefingDetailView: View {
     let client: APIClient
     /// 来自搜索的跳转焦点。date 命中本日报时自动展开转写、滚动定位并段内高亮。
     var focus: SearchFocus?
+    /// 行内纠错应用成功后上抛：让 MainView 整日重载（纠错也改写蒸馏正文，对齐 Web loadDate）。
+    var onCorrectionApplied: () -> Void = {}
+
+    /// 共享校正状态机（与侧栏词典、新增校正同一实例，App 根注入）。
+    @Environment(CorrectionsViewModel.self) private var correctionsVM
+    /// 全局 Toast 中心，提交成功后弹一条提示。
+    @Environment(ToastCenter.self) private var toastCenter
 
     /// 下钻：逐段原始转写。展开时懒加载。
     @State private var segments: [TranscriptSegment] = []
     @State private var transcriptExpanded = false
     @State private var loadingTranscript = false
     @State private var transcriptError: String?
+
+    /// 当前打开的纠错表单：非空时弹出 CorrectionSheet。
+    /// 由某段转写的「纠错」入口触发，把该段文本预填为 context。
+    @State private var correctionTarget: CorrectionTarget?
 
     /// 已消费的焦点：同一个 focus 只触发一次定位，避免无限重触发。
     @State private var consumedFocus: SearchFocus?
@@ -78,6 +89,31 @@ struct BriefingDetailView: View {
             .onChange(of: segments) { _, _ in performPendingScroll(proxy) }
             .onChange(of: pendingScrollTime) { _, _ in performPendingScroll(proxy) }
         }
+        // 段落纠错表单：把该段文本预填为上下文，wrong 留空待填。
+        .sheet(item: $correctionTarget) { target in
+            CorrectionSheet(
+                viewModel: correctionsVM,
+                currentDate: briefing.date,
+                prefillWrong: "",
+                prefillContext: target.context,
+                onSubmitted: { result in
+                    correctionTarget = nil
+                    toastCenter.show(correctionToastText(result))
+                    Task { await reloadTranscript() }
+                    // 纠错会就地改写蒸馏日报正文，上抛让 MainView 整日重载刷新摘要/时间线等。
+                    onCorrectionApplied()
+                },
+                onCancel: { correctionTarget = nil }
+            )
+        }
+    }
+
+    /// 提交成功后的 Toast 文案：当天文件有替换时附上替换处数，否则仅提示已保存。
+    private func correctionToastText(_ result: CorrectionResult) -> String {
+        if result.replacedInFile > 0 {
+            return "已保存校正，当天替换 \(result.replacedInFile) 处"
+        }
+        return "已保存校正"
     }
 
     // MARK: - 焦点定位
@@ -106,6 +142,11 @@ struct BriefingDetailView: View {
     /// 段落行的稳定 id：用时间标记，供 ScrollViewReader 定位。
     private func transcriptRowID(_ time: String) -> String { "transcript-\(time)" }
 
+    /// 打开某段的纠错表单：该段文本预填为上下文，原文待用户填入。
+    private func openCorrection(for seg: TranscriptSegment) {
+        correctionTarget = CorrectionTarget(time: seg.time, context: seg.text)
+    }
+
     // MARK: - 原始记录下钻
 
     private var transcriptSection: some View {
@@ -128,17 +169,34 @@ struct BriefingDetailView: View {
                     } else {
                         ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
                             VStack(alignment: .leading, spacing: Theme.Spacing.xs / 2) {
-                                Text(seg.time)
+                                HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                                    Text(seg.time)
+                                        .font(Theme.Typography.caption)
+                                        .foregroundStyle(Theme.Palette.accent)
+                                        .monospacedDigit()
+                                    Spacer(minLength: 0)
+                                    Button { openCorrection(for: seg) } label: {
+                                        Label("纠错", systemImage: "pencil.line")
+                                            .labelStyle(.titleAndIcon)
+                                    }
+                                    .buttonStyle(.borderless)
                                     .font(Theme.Typography.caption)
-                                    .foregroundStyle(Theme.Palette.accent)
-                                    .monospacedDigit()
+                                    .help("修正这段文字里的识别错误")
+                                }
                                 Text(highlightedText(seg.text))
                                     .font(Theme.Typography.body)
                                     .foregroundStyle(Theme.Palette.primaryText)
                                     .fixedSize(horizontal: false, vertical: true)
+                                    .textSelection(.enabled)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .id(transcriptRowID(seg.time))
+                            // 右键也能进纠错，与小按钮等价。
+                            .contextMenu {
+                                Button { openCorrection(for: seg) } label: {
+                                    Label("纠错这段", systemImage: "pencil.line")
+                                }
+                            }
                         }
                     }
                     Button("收起") { transcriptExpanded = false }
@@ -184,6 +242,20 @@ struct BriefingDetailView: View {
         transcriptExpanded = true
         transcriptError = nil
         if !segments.isEmpty { return }  // 已加载过，直接展开
+        loadingTranscript = true
+        defer { loadingTranscript = false }
+        do {
+            segments = try await client.dateDetail(date: briefing.date).segments
+        } catch {
+            transcriptError = "加载失败：\(error)"
+        }
+    }
+
+    /// 纠错提交成功后强制重拉逐段转写：后端已就地替换当天文件，刷新展示替换后的文本。
+    /// 与 loadTranscript 不同——不因 segments 非空提前返回。
+    private func reloadTranscript() async {
+        guard transcriptExpanded else { return }
+        transcriptError = nil
         loadingTranscript = true
         defer { loadingTranscript = false }
         do {
@@ -304,6 +376,16 @@ struct BriefingDetailView: View {
             }
         }
     }
+}
+
+// MARK: - 纠错目标
+
+/// 某段转写的纠错入口数据：驱动 .sheet(item:) 弹出 CorrectionSheet。
+/// time 既是稳定 id，也对应转写行；context 是该段原文，预填到表单的上下文框。
+private struct CorrectionTarget: Identifiable, Equatable {
+    let time: String
+    let context: String
+    var id: String { time }
 }
 
 // MARK: - 区块卡片容器
