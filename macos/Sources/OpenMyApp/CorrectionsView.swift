@@ -44,6 +44,13 @@ struct CorrectionsView: View {
         }
         .padding(Theme.Spacing.xl)
         .frame(width: 460, height: 520)
+        // 弹层表面：popover 实色底 + 1px 细描边 + 大圆角，靠底色差分层而非阴影。
+        .background(Theme.Palette.popover)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.xl)
+                .strokeBorder(Theme.Palette.border, lineWidth: 1)
+        )
         .task { await viewModel.load() }
         .sheet(isPresented: $showAddSheet) {
             CorrectionSheet(
@@ -64,6 +71,7 @@ struct CorrectionsView: View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
             Text("校正词典")
                 .font(Theme.Typography.sectionTitle)
+                .tracking(Theme.Tracking.sectionTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
             if !viewModel.corrections.isEmpty {
                 OMBadge("\(viewModel.corrections.count) 条")
@@ -85,9 +93,14 @@ struct CorrectionsView: View {
 
     private var list: some View {
         ScrollView {
-            LazyVStack(spacing: Theme.Spacing.sm) {
-                ForEach(viewModel.corrections) { correction in
+            // 扁平行：spacing 0，行间靠细分隔线，整面板只保留外层一个容器描边。
+            LazyVStack(spacing: 0) {
+                ForEach(Array(viewModel.corrections.enumerated()), id: \.element.id) { index, correction in
                     row(correction)
+                    if index < viewModel.corrections.count - 1 {
+                        Divider()
+                            .overlay(Theme.Palette.borderSubtle)
+                    }
                 }
             }
         }
@@ -96,15 +109,20 @@ struct CorrectionsView: View {
     private func row(_ correction: Correction) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             HStack(spacing: Theme.Spacing.sm) {
+                // 原文降噪：次文 + 删除线，弱化「错的词」。
                 Text(correction.wrong)
-                    .font(Theme.Typography.cardTitle)
-                    .foregroundStyle(Theme.Palette.danger)
+                    .font(Theme.Typography.body)
+                    .fontWeight(.medium)
+                    .strikethrough()
+                    .foregroundStyle(Theme.Palette.secondaryText)
                 Image(systemName: "arrow.right")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Palette.secondaryText)
+                // 改成：主文承载「对的词」。
                 Text(correction.right)
-                    .font(Theme.Typography.cardTitle)
-                    .foregroundStyle(Theme.Palette.success)
+                    .font(Theme.Typography.body)
+                    .fontWeight(.medium)
+                    .foregroundStyle(Theme.Palette.primaryText)
                 Spacer()
                 if correction.count > 0 {
                     OMBadge("\(correction.count) 次")
@@ -118,8 +136,7 @@ struct CorrectionsView: View {
                     .lineLimit(2)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .omCard()
+        .omRow(minHeight: Theme.RowHeight.correction)
     }
 
     // MARK: - 空状态
@@ -127,16 +144,23 @@ struct CorrectionsView: View {
     private var emptyState: some View {
         VStack(spacing: Theme.Spacing.md) {
             Image(systemName: "character.book.closed")
-                .font(.system(size: 36, weight: .light))
+                .font(.system(size: 28, weight: .light))
                 .foregroundStyle(Theme.Palette.secondaryText)
             Text("还没有校正记录")
                 .font(Theme.Typography.cardTitle)
+                .tracking(Theme.Tracking.cardTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
-            Text("识别错的词改对一次，下次就会自动替换。点「新增校正」加第一条。")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.secondaryText)
-                .multilineTextAlignment(.center)
+            // 内置 CTA：直接触发「新增校正」表单（与头部按钮同一绑定）。
+            Button {
+                showAddSheet = true
+            } label: {
+                Label("新增校正", systemImage: "plus")
+            }
+            .omButton(.primary, size: .small)
+            .padding(.top, Theme.Spacing.xs)
         }
+        // 自然高度、限宽约 320，在面板中居中。
+        .frame(maxWidth: 320)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(Theme.Spacing.xl)
     }

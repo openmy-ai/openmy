@@ -10,7 +10,7 @@ struct ProgressPanelView: View {
     var onReconfigure: () -> Void = {}
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             header
 
             metaRow
@@ -29,38 +29,55 @@ struct ProgressPanelView: View {
 
             Spacer()
         }
-        .padding(Theme.Spacing.xxl)
+        .padding(Theme.Spacing.xl)
         .onDisappear { job.stopPolling() }
     }
 
     // MARK: - 头部：标题 + 状态徽章 + 总进度条
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.md) {
-                Text("处理进度").font(Theme.Typography.sectionTitle)
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            OMSectionHeader("处理进度") {
                 statusBadge
-                Spacer()
-                if let pct = job.job?.progressPct {
-                    Text("\(pct)%")
-                        .font(Theme.Typography.metric)
-                        .foregroundStyle(Theme.Palette.accent)
-                        .monospacedDigit()
-                }
             }
 
-            ProgressView(value: Double(job.job?.progressPct ?? 0), total: 100)
-                .tint(progressTint)
+            progressBar
 
-            // 进行中（非终态）显示预估剩余时间，对齐 Web 首页卡片。
-            if job.job?.isTerminal == false {
-                Label(etaText, systemImage: "clock")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.secondaryText)
-                    .monospacedDigit()
+            // 数值弱化：百分比降到 label + 次文，与预估剩余时间同处一行（元数据走灰阶）。
+            HStack(spacing: Theme.Spacing.sm) {
+                if let pct = job.job?.progressPct {
+                    Text("\(pct)%")
+                        .font(Theme.Typography.label)
+                        .foregroundStyle(Theme.Palette.secondaryText)
+                        .monospacedDigit()
+                }
+                // 进行中（非终态）显示预估剩余时间，对齐 Web 首页卡片。
+                if job.job?.isTerminal == false {
+                    Label(etaText, systemImage: "clock")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Palette.secondaryText)
+                        .monospacedDigit()
+                }
+                Spacer(minLength: 0)
             }
         }
         .omSection()
+    }
+
+    /// 自绘细进度条（高 4pt）：muted 轨道 + accent/danger 填充 + 胶囊圆角，替代默认 ProgressView。
+    private var progressBar: some View {
+        let pct = max(0, min(100, job.job?.progressPct ?? 0))
+        return GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Theme.Palette.muted)
+                Capsule()
+                    .fill(progressTint)
+                    .frame(width: geo.size.width * CGFloat(pct) / 100)
+            }
+        }
+        .frame(height: 4)
+        .animation(.easeOut(duration: 0.2), value: pct)
     }
 
     // MARK: - 元信息：源文件名 + 目标日期
@@ -124,8 +141,15 @@ struct ProgressPanelView: View {
     @ViewBuilder
     private var statusBadge: some View {
         if let status = job.job?.status {
-            OMBadge(JobStatusText.job(status), kind: isTerminalFailure ? .neutral : .accent)
+            OMStatusBadge(JobStatusText.job(status), status: statusBadgeStatus)
         }
+    }
+
+    /// 语义状态映射：失败/取消/中断 → danger，成功终态 → success，进行中 → accent。
+    private var statusBadgeStatus: OMStatusBadge.Status {
+        if isTerminalFailure { return .danger }
+        if job.job?.isTerminal == true { return .success }
+        return .accent
     }
 
     /// 失败 / 取消 / 中断时进度条转为危险色，否则用强调色。
@@ -141,11 +165,21 @@ struct ProgressPanelView: View {
     // MARK: - 步骤时间线
 
     private func stepTimeline(_ steps: [PipelineStep]) -> some View {
+        // 整组一个容器（去逐行盒化）：内部扁平行 + borderSubtle 细分隔。
         VStack(spacing: 0) {
             ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
-                StepRow(step: step, isLast: index == steps.count - 1)
+                StepRow(step: step)
+                if index < steps.count - 1 {
+                    Divider().overlay(Theme.Palette.borderSubtle)
+                }
             }
         }
+        .background(Theme.Palette.card)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.lg)
+                .strokeBorder(Theme.Palette.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.lg))
         .omSection()
     }
 
@@ -181,7 +215,7 @@ struct ProgressPanelView: View {
                 }
                 Spacer()
                 Button("取消", role: .destructive) { Task { await job.cancel() } }
-                    .omButton(.destructive)
+                    .omButton(.ghostDanger)
             }
         }
     }
@@ -191,30 +225,25 @@ struct ProgressPanelView: View {
 
 private struct StepRow: View {
     let step: PipelineStep
-    /// 是否为最后一步：决定是否绘制向下连接线。
-    let isLast: Bool
+    @State private var hovering = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.md) {
-            timelineRail
+        HStack(alignment: .center, spacing: Theme.Spacing.md) {
+            indicator
             content
         }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
+        .frame(minHeight: 36)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // 容器内扁平行：仅 hover 微底，无逐行盒化、无描边。
+        .background(hovering ? Theme.Palette.rowHover : .clear)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
     }
 
-    /// 左侧时间线：状态圆点 + 向下连接线。
-    private var timelineRail: some View {
-        VStack(spacing: 0) {
-            indicator
-            if !isLast {
-                Rectangle()
-                    .fill(Theme.Palette.secondaryText.opacity(0.25))
-                    .frame(width: 1.5)
-                    .frame(maxHeight: .infinity)
-            }
-        }
-        .frame(width: 22)
-    }
-
+    /// 左侧状态指示符（去时间线连接线，仅留状态图标 / 转圈）。
     @ViewBuilder
     private var indicator: some View {
         Group {
@@ -232,16 +261,16 @@ private struct StepRow: View {
                     .foregroundStyle(Theme.Palette.secondaryText)
             default:
                 Image(systemName: "circle")
-                    .foregroundStyle(Theme.Palette.secondaryText.opacity(0.5))
+                    .foregroundStyle(Theme.Palette.tertiaryText)
             }
         }
-        .font(.title3)
-        .frame(width: 22, height: 22)
+        .font(.system(size: 15))
+        .frame(width: 18, height: 18)
     }
 
-    /// 右侧内容卡片：标题 + 状态文案 + 结果摘要。
+    /// 右侧内容：标题 + 状态文案 + 结果摘要（去卡片）。
     private var content: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
             HStack(spacing: Theme.Spacing.sm) {
                 Text(step.label)
                     .font(Theme.Typography.cardTitle)
@@ -258,8 +287,6 @@ private struct StepRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .omCard()
-        .padding(.bottom, isLast ? 0 : Theme.Spacing.sm)
     }
 
     /// 进行中的步骤标题用主文字色突出，其余次要色，已完成保持主色。

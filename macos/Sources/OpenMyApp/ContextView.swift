@@ -15,6 +15,9 @@ import OpenMyKit
 ///
 /// 查询工作台预设按钮一键 `runQuery`，结果按时态分桶（current/future/past/closed）展示；
 /// 证据条目点了走 `onJumpToEvidence(vm.focus(for:))`，复用 MainView.handleSearchSelect 的证据回链。
+///
+/// 视觉对齐 Linear：三类条目用统一扁平行（去卡片化）+ 行间细分隔 + hover 行操作；
+/// 元数据走三级灰阶，accent 仅留选中态，空状态克制。
 struct ContextView: View {
     /// 共享上下文记忆状态机（修整 / 查询 / 证据回链都在这里）。
     @Environment(ContextViewModel.self) private var viewModel
@@ -31,6 +34,8 @@ struct ContextView: View {
     @State private var pendingReason: PendingReasonAction?
     /// 「合并到…」目标选择弹层的源项目（nil 表示未弹）。
     @State private var mergingSource: Project?
+    /// 查询工作台当前激活的预设（仅驱动按钮选中态高亮，不影响查询逻辑）。
+    @State private var activePreset: QueryPreset?
 
     init(
         onClose: @escaping () -> Void = {},
@@ -48,7 +53,7 @@ struct ContextView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
                     memorySections
-                    Divider()
+                    Divider().overlay(Theme.Palette.borderSubtle)
                     queryWorkbench
                 }
                 .padding(.bottom, Theme.Spacing.lg)
@@ -57,6 +62,13 @@ struct ContextView: View {
         .padding(Theme.Spacing.xl)
         // 弹性上限而非固定尺寸：让外层 sheet 的 ZStack 蒙层能撑满父窗口、本面板居中（issue #14）。
         .frame(maxWidth: 640, maxHeight: 680)
+        // 面板实底卡片：对齐 SettingsView，避免透出外层蒙层灰底。
+        .background(Theme.Palette.popover)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.xl)
+                .strokeBorder(Theme.Palette.border, lineWidth: 1)
+        )
         .task { await viewModel.load() }
         .sheet(item: $pendingReason) { action in
             ReasonSheet(
@@ -89,8 +101,12 @@ struct ContextView: View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
             Text("记忆库")
                 .font(Theme.Typography.sectionTitle)
+                .tracking(Theme.Tracking.sectionTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
-            OMBadge("\(viewModel.loops.count + viewModel.projects.count + viewModel.decisions.count) 条")
+            OMStatusBadge(
+                "\(viewModel.loops.count + viewModel.projects.count + viewModel.decisions.count) 条",
+                status: .neutral
+            )
             Spacer()
             Button("关闭", role: .cancel) { onClose() }
                 .omButton(.ghost)
@@ -113,13 +129,15 @@ struct ContextView: View {
     private var loopsSection: some View {
         sectionContainer(
             title: "待办",
-            systemImage: "checklist",
-            count: viewModel.loops.count,
-            emptyHint: "暂无未关闭的待办。处理录音后，对话里的待办事项会自动收集到这里。"
+            count: viewModel.loops.count
         ) {
             if !viewModel.loops.isEmpty {
-                VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(viewModel.loops) { loop in
+                // 扁平行 + 行间 borderSubtle 细分隔，去掉卡片间距。
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.loops.enumerated()), id: \.element.id) { index, loop in
+                        if index > 0 {
+                            Divider().overlay(Theme.Palette.borderSubtle)
+                        }
                         loopRow(loop)
                     }
                 }
@@ -128,40 +146,37 @@ struct ContextView: View {
     }
 
     private func loopRow(_ loop: Loop) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            HStack(spacing: Theme.Spacing.sm) {
-                Text(loop.title.isEmpty ? "（未命名待办）" : loop.title)
-                    .font(Theme.Typography.cardTitle)
-                    .foregroundStyle(Theme.Palette.primaryText)
-                priorityBadge(loop.priority)
-                Spacer()
-            }
-            if !loop.waitingOn.isEmpty {
-                metaLine(icon: "hourglass", text: "等待：\(loop.waitingOn)")
-            }
-            if !loop.closeCondition.isEmpty {
-                metaLine(icon: "flag.checkered", text: "完成条件：\(loop.closeCondition)")
-            }
-            HStack(spacing: Theme.Spacing.sm) {
-                Button {
-                    Task { await performCloseLoop(loop) }
-                } label: {
-                    Label("标记完成", systemImage: "checkmark.circle")
+        MemoryRow {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Text(loop.title.isEmpty ? "（未命名待办）" : loop.title)
+                        .font(Theme.Typography.cardTitle)
+                        .tracking(Theme.Tracking.cardTitle)
+                        .foregroundStyle(Theme.Palette.primaryText)
+                    priorityBadge(loop.priority)
                 }
-                .omButton(.ghost, size: .small)
+                if !loop.waitingOn.isEmpty {
+                    metaLine(icon: "hourglass", text: "等待：\(loop.waitingOn)")
+                }
+                if !loop.closeCondition.isEmpty {
+                    metaLine(icon: "flag.checkered", text: "完成条件：\(loop.closeCondition)")
+                }
+            }
+        } actions: {
+            Button {
+                Task { await performCloseLoop(loop) }
+            } label: {
+                Label("标记完成", systemImage: "checkmark.circle")
+            }
+            .omButton(.ghost, size: .small)
 
-                Button(role: .destructive) {
-                    pendingReason = .rejectLoop(loop)
-                } label: {
-                    Label("移除", systemImage: "trash")
-                }
-                .omButton(.ghostDanger, size: .small)
+            Button(role: .destructive) {
+                pendingReason = .rejectLoop(loop)
+            } label: {
+                Label("移除", systemImage: "trash")
             }
-            .font(Theme.Typography.caption)
-            .padding(.top, Theme.Spacing.xs / 2)
+            .omButton(.ghostDanger, size: .small)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .omCard()
     }
 
     // MARK: 项目
@@ -169,13 +184,14 @@ struct ContextView: View {
     private var projectsSection: some View {
         sectionContainer(
             title: "项目",
-            systemImage: "folder",
-            count: viewModel.projects.count,
-            emptyHint: "暂无活跃项目。多次提到的事会被归拢成项目，出现在这里。"
+            count: viewModel.projects.count
         ) {
             if !viewModel.projects.isEmpty {
-                VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(viewModel.projects) { project in
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.projects.enumerated()), id: \.element.id) { index, project in
+                        if index > 0 {
+                            Divider().overlay(Theme.Palette.borderSubtle)
+                        }
                         projectRow(project)
                     }
                 }
@@ -184,39 +200,36 @@ struct ContextView: View {
     }
 
     private func projectRow(_ project: Project) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            HStack(spacing: Theme.Spacing.sm) {
-                Text(project.title.isEmpty ? "（未命名项目）" : project.title)
-                    .font(Theme.Typography.cardTitle)
-                    .foregroundStyle(Theme.Palette.primaryText)
-                priorityBadge(project.priority)
-                Spacer()
-            }
-            if !project.currentGoal.isEmpty {
-                metaLine(icon: "target", text: project.currentGoal)
-            }
-            HStack(spacing: Theme.Spacing.sm) {
-                Button {
-                    mergingSource = project
-                } label: {
-                    Label("合并到…", systemImage: "arrow.triangle.merge")
+        MemoryRow {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Text(project.title.isEmpty ? "（未命名项目）" : project.title)
+                        .font(Theme.Typography.cardTitle)
+                        .tracking(Theme.Tracking.cardTitle)
+                        .foregroundStyle(Theme.Palette.primaryText)
+                    priorityBadge(project.priority)
                 }
-                .omButton(.ghost, size: .small)
-                // 只有一个项目时无处可并，禁用。
-                .disabled(viewModel.projects.count < 2)
+                if !project.currentGoal.isEmpty {
+                    metaLine(icon: "target", text: project.currentGoal)
+                }
+            }
+        } actions: {
+            Button {
+                mergingSource = project
+            } label: {
+                Label("合并到…", systemImage: "arrow.triangle.merge")
+            }
+            .omButton(.ghost, size: .small)
+            // 只有一个项目时无处可并，禁用。
+            .disabled(viewModel.projects.count < 2)
 
-                Button(role: .destructive) {
-                    pendingReason = .rejectProject(project)
-                } label: {
-                    Label("移除", systemImage: "trash")
-                }
-                .omButton(.ghostDanger, size: .small)
+            Button(role: .destructive) {
+                pendingReason = .rejectProject(project)
+            } label: {
+                Label("移除", systemImage: "trash")
             }
-            .font(Theme.Typography.caption)
-            .padding(.top, Theme.Spacing.xs / 2)
+            .omButton(.ghostDanger, size: .small)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .omCard()
     }
 
     // MARK: 决策
@@ -224,13 +237,14 @@ struct ContextView: View {
     private var decisionsSection: some View {
         sectionContainer(
             title: "决策",
-            systemImage: "gavel",
-            count: viewModel.decisions.count,
-            emptyHint: "暂无近期决策。明确拍板的事会记录在这里，附带证据出处。"
+            count: viewModel.decisions.count
         ) {
             if !viewModel.decisions.isEmpty {
-                VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(viewModel.decisions) { decision in
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.decisions.enumerated()), id: \.element.id) { index, decision in
+                        if index > 0 {
+                            Divider().overlay(Theme.Palette.borderSubtle)
+                        }
                         decisionRow(decision)
                     }
                 }
@@ -239,62 +253,83 @@ struct ContextView: View {
     }
 
     private func decisionRow(_ decision: Decision) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Text(decision.decision.isEmpty ? "（未记录内容）" : decision.decision)
-                .font(Theme.Typography.cardTitle)
-                .foregroundStyle(Theme.Palette.primaryText)
-            if !decision.topic.isEmpty {
-                metaLine(icon: "text.bubble", text: "主题：\(decision.topic)")
-            }
-            if !decision.effectiveFrom.isEmpty {
-                metaLine(icon: "calendar", text: "生效：\(decision.effectiveFrom)")
-            }
-            HStack(spacing: Theme.Spacing.sm) {
-                Button(role: .destructive) {
-                    pendingReason = .rejectDecision(decision)
-                } label: {
-                    Label("移除", systemImage: "trash")
+        MemoryRow {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text(decision.decision.isEmpty ? "（未记录内容）" : decision.decision)
+                    .font(Theme.Typography.cardTitle)
+                    .tracking(Theme.Tracking.cardTitle)
+                    .foregroundStyle(Theme.Palette.primaryText)
+                if !decision.topic.isEmpty {
+                    metaLine(icon: "text.bubble", text: "主题：\(decision.topic)")
                 }
-                .omButton(.ghostDanger, size: .small)
+                if !decision.effectiveFrom.isEmpty {
+                    metaLine(icon: "calendar", text: "生效：\(decision.effectiveFrom)")
+                }
             }
-            .font(Theme.Typography.caption)
-            .padding(.top, Theme.Spacing.xs / 2)
+        } actions: {
+            Button(role: .destructive) {
+                pendingReason = .rejectDecision(decision)
+            } label: {
+                Label("移除", systemImage: "trash")
+            }
+            .omButton(.ghostDanger, size: .small)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .omCard()
     }
 
     // MARK: - 查询工作台
 
     private var queryWorkbench: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(spacing: Theme.Spacing.sm) {
-                Image(systemName: "magnifyingglass.circle")
-                    .foregroundStyle(Theme.Palette.accent)
-                Text("查询工作台")
-                    .font(Theme.Typography.cardTitle)
-                    .foregroundStyle(Theme.Palette.primaryText)
-                Spacer()
+            OMSectionHeader("查询工作台") {
                 if viewModel.isQuerying {
                     ProgressView().controlSize(.small)
                 }
             }
 
-            // 预设按钮：一键填 kind 并查询。
+            // 预设按钮：一键填 kind 并查询；当前激活项高亮（selectedSurface 底 + accent 文字）。
             HStack(spacing: Theme.Spacing.sm) {
                 ForEach(QueryPreset.allCases) { preset in
-                    Button {
-                        Task { await viewModel.runQuery(kind: preset.kind, query: "") }
-                    } label: {
-                        Text(preset.label)
-                    }
-                    .omButton(.outline, size: .small)
-                    .disabled(viewModel.isQuerying)
+                    presetButton(preset)
                 }
             }
 
             queryResultView
         }
+    }
+
+    /// 预设查询按钮：激活态走 `selectedSurface` 底 + accent 文字，其余为 ghost。
+    @ViewBuilder
+    private func presetButton(_ preset: QueryPreset) -> some View {
+        if activePreset == preset {
+            Button {
+                runPreset(preset)
+            } label: {
+                Text(preset.label)
+                    .font(Theme.Typography.label)
+                    .foregroundStyle(Theme.Palette.accent)
+                    .frame(height: 26)
+                    .padding(.horizontal, Theme.Spacing.sm)
+                    .background(Theme.Palette.selectedSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.isQuerying)
+        } else {
+            Button {
+                runPreset(preset)
+            } label: {
+                Text(preset.label)
+            }
+            .omButton(.ghost, size: .small)
+            .disabled(viewModel.isQuerying)
+        }
+    }
+
+    /// 记录激活预设并发起查询（激活态仅为视觉高亮，查询逻辑不变）。
+    private func runPreset(_ preset: QueryPreset) {
+        activePreset = preset
+        Task { await viewModel.runQuery(kind: preset.kind, query: "") }
     }
 
     @ViewBuilder
@@ -324,23 +359,22 @@ struct ContextView: View {
                     evidenceSection(result.evidence)
                 }
             }
-        } else if !viewModel.isQuerying {
-            Text("点上面的预设查一类记忆，结果会按时间段分组列在这里。")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.secondaryText)
         }
     }
 
     private func bucketView(_ bucket: TemporalBucket) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            HStack(spacing: Theme.Spacing.xs) {
-                Text(bucket.label)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.secondaryText)
-                OMBadge("\(bucket.hits.count)")
+            HStack(spacing: Theme.Spacing.sm) {
+                OMGroupLabel(bucket.label)
+                OMStatusBadge("\(bucket.hits.count)", status: .neutral)
             }
-            ForEach(bucket.hits) { hit in
-                hitRow(hit)
+            VStack(spacing: 0) {
+                ForEach(Array(bucket.hits.enumerated()), id: \.element.id) { index, hit in
+                    if index > 0 {
+                        Divider().overlay(Theme.Palette.borderSubtle)
+                    }
+                    hitRow(hit)
+                }
             }
         }
     }
@@ -355,7 +389,7 @@ struct ContextView: View {
                 if !hit.date.isEmpty {
                     Text(hit.date)
                         .font(Theme.Typography.caption2)
-                        .foregroundStyle(Theme.Palette.secondaryText)
+                        .foregroundStyle(Theme.Palette.tertiaryText)
                 }
             }
             let detail = hit.currentState.isEmpty ? hit.summary : hit.currentState
@@ -366,17 +400,19 @@ struct ContextView: View {
                     .lineLimit(2)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .omCard()
+        .omRow(minHeight: 36)
     }
 
     private func evidenceSection(_ evidence: [ContextEvidence]) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Text("证据")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.secondaryText)
-            ForEach(evidence) { item in
-                evidenceRow(item)
+            OMGroupLabel("证据")
+            VStack(spacing: 0) {
+                ForEach(Array(evidence.enumerated()), id: \.element.id) { index, item in
+                    if index > 0 {
+                        Divider().overlay(Theme.Palette.borderSubtle)
+                    }
+                    evidenceRow(item)
+                }
             }
         }
     }
@@ -388,7 +424,7 @@ struct ContextView: View {
             HStack(alignment: .top, spacing: Theme.Spacing.sm) {
                 Image(systemName: "quote.opening")
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.accent)
+                    .foregroundStyle(Theme.Palette.secondaryText)
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs / 2) {
                     Text(item.quote.isEmpty ? item.sceneSummary : item.quote)
                         .font(Theme.Typography.caption)
@@ -404,15 +440,14 @@ struct ContextView: View {
                         }
                     }
                     .font(Theme.Typography.caption2)
-                    .foregroundStyle(Theme.Palette.secondaryText)
+                    .foregroundStyle(Theme.Palette.tertiaryText)
                 }
                 Spacer()
                 Image(systemName: "arrow.up.right.square")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Palette.secondaryText)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .omCard()
+            .omRow(minHeight: 36)
         }
         .buttonStyle(.plain)
     }
@@ -420,38 +455,25 @@ struct ContextView: View {
     private var queryEmptyState: some View {
         Text("这一类暂时没有命中。")
             .font(Theme.Typography.caption)
-            .foregroundStyle(Theme.Palette.secondaryText)
+            .foregroundStyle(Theme.Palette.tertiaryText)
             .padding(.vertical, Theme.Spacing.sm)
     }
 
     // MARK: - 复用片段
 
-    /// 分区容器：标题 + 计数徽章 + 内容；为空时给友好空状态。
+    /// 分区容器：分组标签 + 计数徽章 + 内容；为空时给克制的空状态。
     @ViewBuilder
     private func sectionContainer<Content: View>(
         title: String,
-        systemImage: String,
         count: Int,
-        emptyHint: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack(spacing: Theme.Spacing.sm) {
-                Image(systemName: systemImage)
-                    .foregroundStyle(Theme.Palette.accent)
-                Text(title)
-                    .font(Theme.Typography.cardTitle)
-                    .foregroundStyle(Theme.Palette.primaryText)
-                OMBadge("\(count)")
-                Spacer()
+                OMGroupLabel(title)
+                OMStatusBadge("\(count)", status: .neutral)
             }
-            if count == 0 {
-                Text(emptyHint)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, Theme.Spacing.sm)
-            } else {
+            if count > 0 {
                 content()
             }
         }
@@ -462,10 +484,10 @@ struct ContextView: View {
         HStack(spacing: Theme.Spacing.xs) {
             Image(systemName: icon)
                 .font(Theme.Typography.caption2)
-                .foregroundStyle(Theme.Palette.secondaryText)
+                .foregroundStyle(Theme.Palette.tertiaryText)
             Text(text)
                 .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.secondaryText)
+                .foregroundStyle(Theme.Palette.tertiaryText)
                 .lineLimit(2)
         }
     }
@@ -473,7 +495,7 @@ struct ContextView: View {
     @ViewBuilder
     private func priorityBadge(_ priority: String) -> some View {
         if !priority.isEmpty {
-            OMBadge(priorityLabel(priority), kind: priority == "high" ? .accent : .neutral)
+            OMStatusBadge(priorityLabel(priority), status: priorityStatus(priority))
         }
     }
 
@@ -483,6 +505,16 @@ struct ContextView: View {
         case "medium": return "中"
         case "low": return "低"
         default: return priority
+        }
+    }
+
+    /// 优先级映射到低饱和语义状态：高→危险、中→警告、低→中性。
+    private func priorityStatus(_ priority: String) -> OMStatusBadge.Status {
+        switch priority {
+        case "high": return .danger
+        case "medium": return .warning
+        case "low": return .neutral
+        default: return .neutral
         }
     }
 
@@ -531,6 +563,42 @@ struct ContextView: View {
 }
 
 // MARK: - 内部辅助类型
+
+/// 记忆条目行容器：左侧主内容铺满，右侧行操作仅在指针悬停时淡入。
+/// 仅承载视觉 hover 态（本地 @State），动作逻辑由调用方通过 `actions` 槽注入，不改数据流。
+/// 静止行只显标题 + 元信息；hover 才显形「标记完成 / 移除 / 合并」等操作（对齐 Linear 行密度）。
+private struct MemoryRow<Leading: View, Actions: View>: View {
+    private let minHeight: CGFloat
+    private let leading: Leading
+    private let actions: Actions
+    @State private var hovering = false
+
+    init(
+        minHeight: CGFloat = 36,
+        @ViewBuilder leading: () -> Leading,
+        @ViewBuilder actions: () -> Actions
+    ) {
+        self.minHeight = minHeight
+        self.leading = leading()
+        self.actions = actions()
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+            leading
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: Theme.Spacing.xs) {
+                actions
+            }
+            // hover 才显形：淡入并放开点击，静止时隐藏且不拦截命中。
+            .opacity(hovering ? 1 : 0)
+            .allowsHitTesting(hovering)
+        }
+        .omRow(minHeight: minHeight)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+    }
+}
 
 /// 时态桶的呈现单元：标签 + 命中数组。
 private struct TemporalBucket {
@@ -613,6 +681,7 @@ private struct ReasonSheet: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             Text(title)
                 .font(Theme.Typography.sectionTitle)
+                .tracking(Theme.Tracking.sectionTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
 
             if !prompt.isEmpty {
@@ -625,9 +694,8 @@ private struct ReasonSheet: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text("原因（可选）")
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.secondaryText)
-                TextField("不填也可以直接确认", text: $reason)
-                    .textFieldStyle(.roundedBorder)
+                    .foregroundStyle(Theme.Palette.tertiaryText)
+                OMTextField("不填也可以直接确认", text: $reason)
             }
 
             HStack {
@@ -661,6 +729,7 @@ private struct MergeTargetSheet: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             Text("合并项目")
                 .font(Theme.Typography.sectionTitle)
+                .tracking(Theme.Tracking.sectionTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
 
             Text("把「\(source.title)」合并到下面选中的项目，原项目会并入对方。")
@@ -670,10 +739,10 @@ private struct MergeTargetSheet: View {
             if candidates.isEmpty {
                 Text("没有其他项目可供合并。")
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.secondaryText)
+                    .foregroundStyle(Theme.Palette.tertiaryText)
             } else {
                 ScrollView {
-                    VStack(spacing: Theme.Spacing.xs) {
+                    VStack(spacing: 0) {
                         ForEach(candidates) { project in
                             candidateRow(project)
                         }
@@ -684,9 +753,8 @@ private struct MergeTargetSheet: View {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text("原因（可选）")
                         .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Palette.secondaryText)
-                    TextField("不填也可以直接确认", text: $reason)
-                        .textFieldStyle(.roundedBorder)
+                        .foregroundStyle(Theme.Palette.tertiaryText)
+                    OMTextField("不填也可以直接确认", text: $reason)
                 }
             }
 
@@ -727,8 +795,7 @@ private struct MergeTargetSheet: View {
                 }
                 Spacer()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .omCard()
+            .omRow(isSelected: selectedId == project.id, minHeight: 40)
         }
         .buttonStyle(.plain)
     }

@@ -99,7 +99,7 @@ public struct WaveformView: View {
         var line = Path()
         line.move(to: CGPoint(x: x, y: 0))
         line.addLine(to: CGPoint(x: x, y: size.height))
-        context.stroke(line, with: .color(Theme.Palette.accent), lineWidth: 1.5)
+        context.stroke(line, with: .color(Theme.Palette.accent), lineWidth: 1)
     }
 
     /// 占位：无数据时画一条居中淡基线。

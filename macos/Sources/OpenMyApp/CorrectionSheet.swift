@@ -51,10 +51,13 @@ struct CorrectionSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             Text("纠错")
                 .font(Theme.Typography.sectionTitle)
+                .tracking(Theme.Tracking.sectionTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
+                // 标题与首个字段之间留出一档（md + xs ≈ lg）的呼吸。
+                .padding(.bottom, Theme.Spacing.xs)
 
             field(label: "原文", text: $wrong, placeholder: "识别错的词", focusOnAppear: wrong.isEmpty)
             field(label: "改成", text: $right, placeholder: "正确的词", focusOnAppear: !wrong.isEmpty)
@@ -75,6 +78,13 @@ struct CorrectionSheet: View {
         }
         .padding(Theme.Spacing.xl)
         .frame(width: 380)
+        // 弹层表面：popover 实色底 + 1px 细描边 + 大圆角，靠底色差分层而非阴影。
+        .background(Theme.Palette.popover)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.xl)
+                .strokeBorder(Theme.Palette.border, lineWidth: 1)
+        )
     }
 
     private func field(
@@ -87,8 +97,10 @@ struct CorrectionSheet: View {
             Text(label)
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Palette.secondaryText)
+            // 纳入设计系统：muted 底 + 1px input 描边 + Radius.md 圆角。
+            // 保留 onSubmit 行为（用 style 而非 OMTextField 视图，避免吞掉回车提交）。
             TextField(placeholder, text: text)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(OMTextFieldStyle())
                 .onSubmit { if canSubmit { submit() } }
         }
     }

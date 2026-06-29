@@ -3,7 +3,9 @@ import OpenMyKit
 import UniformTypeIdentifiers
 import Charts
 
-/// 主界面：左侧日期列表（可搜索 + 当前引擎 + 重新配置），右侧日报 / 进行中的任务进度。
+/// 主界面：左侧栏（导航分区 + 日报列表 + 个人资料 / 引擎），右侧日报 / 进行中的任务进度。
+/// 一级入口（首页 / 报告 / 记忆库 / 校正词典 / 设置）都收进侧栏顶部导航分区（对齐 Linear，
+/// 侧栏即主导航）；右上工具栏只留与当前操作相关的「处理录音」主操作与「搜索」。
 /// 开始新任务有两条路：工具栏「处理录音」按钮（文件选择器）或直接把文件拖进详情区。
 struct MainView: View {
     let client: APIClient
@@ -46,6 +48,10 @@ struct MainView: View {
     @State private var showReport = false
     /// 「设置」面板是否呈现（屏幕上下文 + 个人资料 + 外观 + 引擎）。
     @State private var showSettings = false
+    /// 侧栏「首页」导航：是否强制回到首页概览。BriefingListViewModel 的 selectedDate 为
+    /// private(set) 无法清空，故用本地呈现标记覆盖详情分支——点「首页」置 true 回概览，
+    /// 任何跳转到具体日报的路径都重置回 false。纯呈现层，不动数据流与选择逻辑。
+    @State private var showingHome = false
     /// 设置面板状态机：屏幕上下文设置（加载/部分合并更新），面板呈现时按需 load。
     @State private var settingsVM: SettingsViewModel
     /// 设置面板内「转写引擎」分区复用的 onboarding 状态机（与首次配置同源 providers/select）。
@@ -74,6 +80,11 @@ struct MainView: View {
         return briefings.dates.filter { $0.date.contains(q) || $0.summary.contains(q) }
     }
 
+    /// 当前是否处于首页概览（无选中日报，或显式点了侧栏「首页」）。用于「首页」导航行高亮。
+    private var isHomeActive: Bool {
+        showingHome || briefings.selectedDate == nil
+    }
+
     var body: some View {
         NavigationSplitView {
             sidebar
@@ -84,6 +95,7 @@ struct MainView: View {
         .environment(correctionsVM)
         // 记忆库状态机注入：记忆库面板从环境读取同一份 contextVM（条目 + 查询工作台）。
         .environment(contextVM)
+        // 右上工具栏精简为「搜索」+「处理录音」（主 CTA）；记忆库 / 报告 / 校正 / 设置入口已迁到侧栏。
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -95,43 +107,12 @@ struct MainView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    showCorrections = true
-                } label: {
-                    Label("校正词典", systemImage: "character.book.closed")
-                }
-                .help("查看校正词典并新增校正")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showContext = true
-                } label: {
-                    Label("记忆库", systemImage: "brain")
-                }
-                .help("查看记忆库（待办 / 项目 / 决策）并检索证据")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    openReport()
-                } label: {
-                    Label("报告", systemImage: "chart.bar.doc.horizontal")
-                }
-                .help("查看周报 / 月报（活跃天 · 段数 · 字数 · 决策 · 待办）")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
                     showImporter = true
                 } label: {
                     Label("处理录音", systemImage: "waveform.badge.plus")
                 }
+                .omButton(.primary)
                 .help("选择录音文件开始转写")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showSettings = true
-                } label: {
-                    Label("设置", systemImage: "gearshape")
-                }
-                .help("屏幕上下文 · 个人资料 · 外观 · 转写引擎")
             }
         }
         // ⌘K 打开全局搜索浮层。用隐藏按钮承载快捷键，避免与可见控件状态耦合。
@@ -238,66 +219,102 @@ struct MainView: View {
 
     // MARK: - 侧栏
 
+    /// 侧栏：顶部导航分区（工作区入口）+ 日报列表，底部个人资料 / 引擎。
+    /// 整体走 surfacePanel 实色（比详情区 background 高一档），靠 1px 细描边分层，不用阴影。
     private var sidebar: some View {
-        List(selection: Binding(
-            get: { briefings.selectedDate },
-            set: { if let d = $0 { Task { await briefings.select(date: d) } } }
-        )) {
+        List {
+            // 工作区导航分区：一级入口都用 OMNavRow（图标 + 文字 + hover + 选中态），
+            // 「首页」回概览，其余直接触发现有 sheet 开关 / openReport()，弹层逻辑不动。
+            Section {
+                OMNavRow(icon: "house", title: "首页", isSelected: isHomeActive) {
+                    showingHome = true
+                }
+                OMNavRow(icon: "chart.bar.doc.horizontal", title: "报告") {
+                    openReport()
+                }
+                OMNavRow(icon: "brain", title: "记忆库") {
+                    showContext = true
+                }
+                OMNavRow(icon: "character.book.closed", title: "校正词典") {
+                    showCorrections = true
+                }
+                OMNavRow(icon: "gearshape", title: "设置") {
+                    showSettings = true
+                }
+            } header: {
+                OMGroupLabel("工作区")
+            }
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 1, leading: Theme.Spacing.xs, bottom: 1, trailing: Theme.Spacing.xs))
+            .listRowBackground(Color.clear)
+
+            // 日报列表分区：扁平行 + omRow hover / 选中（accent 微底），去掉系统满饱和蓝选中块。
             Section {
                 if briefings.dates.isEmpty {
                     Text("还没有日报")
                         .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Palette.secondaryText)
+                        .foregroundStyle(Theme.Palette.tertiaryText)
+                        .padding(.horizontal, Theme.Spacing.sm)
                         .padding(.vertical, Theme.Spacing.xs)
                 } else if visibleDates.isEmpty {
                     Text("没有匹配「\(search)」的日报")
                         .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Palette.secondaryText)
+                        .foregroundStyle(Theme.Palette.tertiaryText)
+                        .padding(.horizontal, Theme.Spacing.sm)
                         .padding(.vertical, Theme.Spacing.xs)
                 } else {
                     ForEach(visibleDates) { entry in
-                        sidebarRow(entry).tag(entry.date)
+                        Button {
+                            showingHome = false
+                            Task { await briefings.select(date: entry.date) }
+                        } label: {
+                            sidebarRow(entry)
+                        }
+                        .buttonStyle(.plain)
+                        .omRow(
+                            isSelected: !showingHome && entry.date == briefings.selectedDate,
+                            minHeight: Theme.RowHeight.dateList
+                        )
                     }
                 }
             } header: {
-                Text("日报")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.secondaryText)
+                OMGroupLabel("日报")
             }
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 1, leading: Theme.Spacing.xs, bottom: 1, trailing: Theme.Spacing.xs))
+            .listRowBackground(Color.clear)
         }
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background(Theme.Palette.surfacePanel)
         .searchable(text: $search, placement: .sidebar, prompt: "搜索日期或内容")
         .frame(minWidth: 240)
         .safeAreaInset(edge: .bottom) { sidebarFooter }
     }
 
-    /// 侧栏底部：当前引擎 + 重新配置入口。
+    /// 侧栏底部：个人资料 + 统计概览（克制单行）+ 当前引擎 / 重新配置。
+    /// 收敛为紧凑一组，顶部一条 borderSubtle 与列表分隔，整体 surfacePanel 实色。
     private var sidebarFooter: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             OMErrorText(briefings.errorMessage)
             profileRow
-            Divider()
             if let stats {
                 statsOverview(stats)
-                Divider()
             }
-            HStack(spacing: Theme.Spacing.sm) {
-                Image(systemName: "cpu")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.secondaryText)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("当前引擎").font(Theme.Typography.caption2).foregroundStyle(Theme.Palette.secondaryText)
-                    Text(currentEngine ?? "未配置")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Palette.primaryText)
-                        .lineLimit(1)
-                }
-                Spacer()
-                Button("重新配置", action: onReconfigure)
-                    .omButton(.ghost, size: .small)
-            }
+            engineRow
         }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.bottom, Theme.Spacing.sm)
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.top, Theme.Spacing.sm)
+        .padding(.bottom, Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Theme.Palette.surfacePanel
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(Theme.Palette.borderSubtle)
+                        .frame(height: 1)
+                }
+        )
     }
 
     /// 侧栏底部个人资料行：emoji 头像 + 昵称（纯本地 @AppStorage）。点击打开设置。
@@ -309,12 +326,12 @@ struct MainView: View {
                 ZStack {
                     Circle()
                         .fill(Theme.Palette.accent.opacity(0.12))
-                        .frame(width: 28, height: 28)
+                        .frame(width: 26, height: 26)
                     Text(profileEmoji.isEmpty ? "🙂" : profileEmoji)
-                        .font(.system(size: 15))
+                        .font(.system(size: 14))
                 }
                 Text(profileName.isEmpty ? "设置个人资料" : profileName)
-                    .font(Theme.Typography.caption)
+                    .font(Theme.Typography.label)
                     .foregroundStyle(
                         profileName.isEmpty ? Theme.Palette.secondaryText : Theme.Palette.primaryText
                     )
@@ -322,48 +339,45 @@ struct MainView: View {
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(Theme.Typography.caption2)
-                    .foregroundStyle(Theme.Palette.secondaryText)
+                    .foregroundStyle(Theme.Palette.tertiaryText)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
-    /// 侧栏底部统计概览：天 / 条 / 字三项紧凑展示。
+    /// 侧栏底部统计概览：天 / 条 / 字收敛为一行克制的三级灰小字。
     private func statsOverview(_ stats: Stats) -> some View {
-        HStack(spacing: Theme.Spacing.md) {
-            statsItem(value: "\(stats.totalDates)", label: "天")
-            statsItem(value: "\(stats.totalSegments)", label: "条")
-            statsItem(value: "\(stats.totalWords)", label: "字")
-        }
-        .frame(maxWidth: .infinity)
+        Text("\(stats.totalDates) 天 · \(stats.totalSegments) 条 · \(stats.totalWords) 字")
+            .font(Theme.Typography.caption2)
+            .foregroundStyle(Theme.Palette.tertiaryText)
+            .lineLimit(1)
     }
 
-    private func statsItem(value: String, label: String) -> some View {
-        VStack(spacing: 0) {
-            Text(value)
-                .font(Theme.Typography.cardTitle)
-                .foregroundStyle(Theme.Palette.primaryText)
-            Text(label)
-                .font(Theme.Typography.caption2)
-                .foregroundStyle(Theme.Palette.secondaryText)
+    /// 侧栏底部当前引擎行：低饱和状态点徽章 + 重新配置入口。
+    private var engineRow: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            OMStatusBadge(currentEngine ?? "未配置", status: .neutral, dot: true)
+            Spacer()
+            Button("重新配置", action: onReconfigure)
+                .omButton(.ghost, size: .small)
         }
-        .frame(maxWidth: .infinity)
     }
 
     private func sidebarRow(_ entry: DayEntry) -> some View {
         // 友好日期作主标题（今天/昨天/前天/星期X/M月D日），原 ISO 串作次行佐证。
         // today 基准取 reportToday()（选中日期 / 已有日期最大值），不依赖系统时钟。
         let friendly = FriendlyDate.format(date: entry.date, today: reportToday())
-        return VStack(alignment: .leading, spacing: Theme.Spacing.xs / 2) {
+        return VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
             HStack(spacing: Theme.Spacing.sm) {
                 Text(friendly)
-                    .font(Theme.Typography.cardTitle)
+                    .font(Theme.Typography.label)
                     .foregroundStyle(Theme.Palette.primaryText)
                 if friendly != entry.date {
+                    // ISO 日期属元数据，走三级灰（不染 accent）。
                     Text(entry.date)
                         .font(Theme.Typography.caption2)
-                        .foregroundStyle(Theme.Palette.secondaryText)
+                        .foregroundStyle(Theme.Palette.tertiaryText)
                 }
             }
             Text(entry.summary.isEmpty
@@ -373,7 +387,6 @@ struct MainView: View {
                 .foregroundStyle(Theme.Palette.secondaryText)
                 .lineLimit(1)
         }
-        .padding(.vertical, Theme.Spacing.xs / 2)
     }
 
     // MARK: - 详情区
@@ -383,7 +396,7 @@ struct MainView: View {
         ZStack {
             if job.job != nil {
                 ProgressPanelView(job: job, onDismiss: viewBriefingFromJob, onReconfigure: onReconfigure)
-            } else if let briefing = briefings.selectedBriefing {
+            } else if !showingHome, let briefing = briefings.selectedBriefing {
                 // 仅当焦点日期与当前日报一致时透传，避免切换日期后旧焦点串到别的日报。
                 BriefingDetailView(
                     briefing: briefing,
@@ -396,6 +409,8 @@ struct MainView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // 详情容器显式走 background token，让三层表面由 token 控制而非系统材质。
+        .background(Theme.Palette.background)
         .dropDestination(for: URL.self) { urls, _ in
             startJob(with: urls)
             return true
@@ -427,17 +442,17 @@ struct MainView: View {
 
     /// 无选中日报时的详情区首页：问候 + 头像昵称、最近 7 天统计、最近几天快捷入口、拖拽上传入口。
     /// 仍承载详情区的拖拽上传（drop 绑定在 detail 容器上，本视图只提供按钮入口与提示）。
+    /// 密度按 Linear 收紧：间距 lg、外边距 xl，分隔走 borderSubtle 细线。
     private var homeOverview: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                 greetingHeader
                 weeklyStatsCard
                 recentDaysSection
-                Divider()
+                Divider().overlay(Theme.Palette.borderSubtle)
                 dropPrompt
-                    .frame(maxWidth: .infinity)
             }
-            .padding(Theme.Spacing.xxl)
+            .padding(Theme.Spacing.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -453,23 +468,22 @@ struct MainView: View {
             ZStack {
                 Circle()
                     .fill(Theme.Palette.accent.opacity(0.12))
-                    .frame(width: 56, height: 56)
+                    .frame(width: 44, height: 44)
                 Text(emoji)
-                    .font(.system(size: 30))
+                    .font(.system(size: 24))
             }
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs / 2) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
                 Text(name.isEmpty ? greeting : "\(greeting)，\(name)")
                     .font(Theme.Typography.pageTitle)
+                    .tracking(Theme.Tracking.pageTitle)
                     .foregroundStyle(Theme.Palette.primaryText)
-                Text("选一天回看，或把新录音拖进来")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Palette.secondaryText)
             }
             Spacer()
         }
     }
 
     /// 最近 7 天统计卡：活跃天 / 段数 / 字数。基准「今天」用 reportToday()，不依赖系统时钟。
+    /// 单卡内三栏 OMMetric + borderSubtle 细分隔，数字收到 metric(20)。
     private var weeklyStatsCard: some View {
         let summary = ReportAggregator.aggregate(
             dates: briefings.dates, window: 7, today: reportToday()
@@ -477,30 +491,24 @@ struct MainView: View {
         return VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             Text("最近 7 天")
                 .font(Theme.Typography.sectionTitle)
+                .tracking(Theme.Tracking.sectionTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
-            HStack(spacing: Theme.Spacing.xl) {
-                overviewStat(value: "\(summary.activeDays)", label: "活跃天")
-                overviewStat(value: "\(summary.totalSegments)", label: "段")
-                overviewStat(value: "\(summary.totalWords)", label: "字")
+            HStack(spacing: 0) {
+                OMMetric(value: "\(summary.activeDays)", label: "活跃天")
+                    .frame(maxWidth: .infinity)
+                Divider().frame(height: 28).overlay(Theme.Palette.borderSubtle)
+                OMMetric(value: "\(summary.totalSegments)", label: "段")
+                    .frame(maxWidth: .infinity)
+                Divider().frame(height: 28).overlay(Theme.Palette.borderSubtle)
+                OMMetric(value: "\(summary.totalWords)", label: "字")
+                    .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
         }
         .omCard()
     }
 
-    private func overviewStat(value: String, label: String) -> some View {
-        VStack(spacing: Theme.Spacing.xs / 2) {
-            Text(value)
-                .font(Theme.Typography.pageTitle)
-                .foregroundStyle(Theme.Palette.primaryText)
-            Text(label)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.secondaryText)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
     /// 最近几天快捷入口：取已有日期里最新的至多 5 天，点击切到该天日报。
+    /// 扁平行（omRow hover）+ 行间 borderSubtle 细分隔，外层单一容器描边，不再每行套卡。
     @ViewBuilder
     private var recentDaysSection: some View {
         let recent = Array(
@@ -510,15 +518,27 @@ struct MainView: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 Text("最近")
                     .font(Theme.Typography.sectionTitle)
+                    .tracking(Theme.Tracking.sectionTitle)
                     .foregroundStyle(Theme.Palette.primaryText)
-                ForEach(recent) { entry in
-                    Button {
-                        Task { await briefings.select(date: entry.date) }
-                    } label: {
-                        recentDayRow(entry)
+                VStack(spacing: 0) {
+                    ForEach(Array(recent.enumerated()), id: \.element.id) { index, entry in
+                        if index > 0 {
+                            Divider().overlay(Theme.Palette.borderSubtle)
+                        }
+                        Button {
+                            showingHome = false
+                            Task { await briefings.select(date: entry.date) }
+                        } label: {
+                            recentDayRow(entry)
+                        }
+                        .buttonStyle(.plain)
+                        .omRow(minHeight: Theme.RowHeight.listDetail)
                     }
-                    .buttonStyle(.plain)
                 }
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.lg)
+                        .strokeBorder(Theme.Palette.borderSubtle, lineWidth: 1)
+                )
             }
         }
     }
@@ -526,9 +546,9 @@ struct MainView: View {
     private func recentDayRow(_ entry: DayEntry) -> some View {
         let friendly = FriendlyDate.format(date: entry.date, today: reportToday())
         return HStack(spacing: Theme.Spacing.md) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs / 2) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
                 Text(friendly)
-                    .font(Theme.Typography.cardTitle)
+                    .font(Theme.Typography.label)
                     .foregroundStyle(Theme.Palette.primaryText)
                 Text(entry.summary.isEmpty
                      ? "\(entry.segments) 段 · \(entry.wordCount) 字"
@@ -539,33 +559,22 @@ struct MainView: View {
             }
             Spacer()
             Image(systemName: "chevron.right")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.secondaryText)
+                .font(Theme.Typography.caption2)
+                .foregroundStyle(Theme.Palette.tertiaryText)
         }
-        .contentShape(Rectangle())
-        .omCard()
     }
 
-    /// 空状态：引导拖入录音或用按钮选择。
+    /// 空状态：引导拖入录音或用按钮选择。Linear 式克制——小图标、窄宽、居中，不铺满。
     private var dropPrompt: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            ZStack {
-                Circle()
-                    .fill(Theme.Palette.accent.opacity(0.12))
-                    .frame(width: 96, height: 96)
-                Image(systemName: "square.and.arrow.down.on.square")
-                    .font(.system(size: 40, weight: .light))
-                    .foregroundStyle(Theme.Palette.accent)
-            }
+        VStack(spacing: Theme.Spacing.md) {
+            Image(systemName: "square.and.arrow.down.on.square")
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(Theme.Palette.secondaryText)
 
-            VStack(spacing: Theme.Spacing.xs) {
-                Text("把录音拖到这里")
-                    .font(Theme.Typography.sectionTitle)
-                    .foregroundStyle(Theme.Palette.primaryText)
-                Text("自动转写、整理成当天的日报")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Palette.secondaryText)
-            }
+            Text("拖入录音")
+                .font(Theme.Typography.cardTitle)
+                .tracking(Theme.Tracking.cardTitle)
+                .foregroundStyle(Theme.Palette.primaryText)
 
             Button {
                 showImporter = true
@@ -592,12 +601,14 @@ struct MainView: View {
                     .padding(.horizontal, Theme.Spacing.md)
                     .padding(.vertical, Theme.Spacing.sm)
                     .background(Theme.Palette.warning.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
             }
 
             OMErrorText(briefings.errorMessage)
         }
-        .padding(Theme.Spacing.xxl)
+        .frame(maxWidth: 320)
+        .padding(.vertical, Theme.Spacing.xl)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - 动作
@@ -648,6 +659,8 @@ struct MainView: View {
         let succeeded = job.job.map { ["succeeded", "partial"].contains($0.status) } ?? false
         job.clear()
         lastJobTerminal = false
+        // 成功跳转到目标日报时离开首页概览（清掉「首页」覆盖标记）。
+        if succeeded { showingHome = false }
         Task {
             await briefings.loadDates()
             if succeeded, let date = targetDate {
@@ -676,6 +689,7 @@ struct MainView: View {
 
     /// 报告里点某天：切到该天日报并关闭报告面板。
     private func openDateFromReport(_ date: String) {
+        showingHome = false
         showReport = false
         Task { await briefings.select(date: date) }
     }
@@ -695,6 +709,7 @@ struct MainView: View {
 
     /// 搜索命中后：切到目标日期、记下焦点供详情区定位 + 高亮、关闭浮层。
     private func handleSearchSelect(_ focus: SearchFocus) {
+        showingHome = false
         searchFocus = focus
         showSpotlight = false
         // 命中可能落在尚未处理过任务的旧日期；正在进行的任务面板会盖住详情，先不强切。

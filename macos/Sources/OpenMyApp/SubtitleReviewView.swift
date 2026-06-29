@@ -66,7 +66,14 @@ struct SubtitleReviewView: View {
             playbackBar
         }
         .frame(width: 560, height: 620)
-        .background(Theme.Palette.cardBackground.opacity(0.001))  // 撑满 sheet 命中区
+        // sheet 表面走弹层 token：实色 popover 底 + 1px 细描边 + Radius.xl，
+        // 靠底色差与描边分层（替代旧的 0.001 撑满 hack，实色底同样撑满命中区）。
+        .background(Theme.Palette.popover)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.xl)
+                .strokeBorder(Theme.Palette.border, lineWidth: 1)
+        )
         .onAppear(perform: loadAudioIfNeeded)
         // Esc / 下滑手势 / 点浮层外关闭时也停播，对齐 Web 的 stopScenePlayback。
         .onDisappear { player.pause() }
@@ -93,9 +100,9 @@ struct SubtitleReviewView: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 HStack(spacing: Theme.Spacing.sm) {
                     Image(systemName: "waveform")
-                        .foregroundStyle(Theme.Palette.accent)
+                        .foregroundStyle(Theme.Palette.secondaryText)
                     Text("场景复核")
-                        .font(Theme.Typography.sectionTitle)
+                        .omTitle(Theme.Typography.sectionTitle, tracking: Theme.Tracking.sectionTitle)
                         .foregroundStyle(Theme.Palette.primaryText)
                 }
                 HStack(spacing: Theme.Spacing.sm) {
@@ -105,7 +112,7 @@ struct SubtitleReviewView: View {
                             .foregroundStyle(Theme.Palette.secondaryText)
                     }
                     if !scene.roleCategory.isEmpty {
-                        OMBadge(scene.roleCategory, kind: .accent)
+                        RoleBadge(role: scene.roleCategory)
                     }
                 }
                 if !scene.summary.isEmpty {
@@ -208,11 +215,8 @@ struct SubtitleReviewView: View {
             .omButton(.ghost, size: .icon)
             .help("修正这句话里的识别错误")
         }
-        .padding(Theme.Spacing.sm)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.card)
-                .fill(isActive ? Theme.Palette.accent.opacity(0.14) : Color.clear)
-        )
+        // 扁平行 hover/选中：active 句走 selectedSurface（accent 微底），选中优先级高于 hover。
+        .omRow(isSelected: isActive)
         .contextMenu {
             Button { openCorrection(for: sentence) } label: {
                 Label("纠错这句", systemImage: "pencil.line")
@@ -247,7 +251,7 @@ struct SubtitleReviewView: View {
                     togglePlay()
                 } label: {
                     Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 34))
+                        .font(.system(size: 28))
                         .foregroundStyle(Theme.Palette.accent)
                 }
                 .buttonStyle(.plain)
@@ -387,9 +391,9 @@ private struct WaveformStrip: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                // 底槽。
+                // 底槽：用 muted 轨道色，浅色下也能与卡片/弹层底分层。
                 RoundedRectangle(cornerRadius: Theme.Radius.card)
-                    .fill(Theme.Palette.cardBackground)
+                    .fill(Theme.Palette.muted)
 
                 Canvas { context, size in
                     drawBars(context: context, size: size)
@@ -443,16 +447,19 @@ private struct WaveformStrip: View {
     /// 一块按已播分界拆成两段上色：左侧（已播）强调色，右侧未播淡色。
     private func paint(context: GraphicsContext, rect: CGRect, playedX: CGFloat) {
         let path = Path(roundedRect: rect, cornerRadius: 2)
+        // 已播段用品牌 accent，未播段退到中性灰（accent 只承载"已播色"，与 WaveformView 配色一致）。
+        let playedColor = Theme.Palette.accent
+        let unplayedColor = Theme.Palette.secondaryText.opacity(0.45)
         if playedX <= rect.minX {
-            context.fill(path, with: .color(Theme.Palette.accent.opacity(0.3)))
+            context.fill(path, with: .color(unplayedColor))
         } else if playedX >= rect.maxX {
-            context.fill(path, with: .color(Theme.Palette.accent.opacity(0.85)))
+            context.fill(path, with: .color(playedColor))
         } else {
             // 分界落在块内：左半已播，右半未播。
             let leftRect = CGRect(x: rect.minX, y: rect.minY, width: playedX - rect.minX, height: rect.height)
             let rightRect = CGRect(x: playedX, y: rect.minY, width: rect.maxX - playedX, height: rect.height)
-            context.fill(Path(roundedRect: leftRect, cornerRadius: 2), with: .color(Theme.Palette.accent.opacity(0.85)))
-            context.fill(Path(roundedRect: rightRect, cornerRadius: 2), with: .color(Theme.Palette.accent.opacity(0.3)))
+            context.fill(Path(roundedRect: leftRect, cornerRadius: 2), with: .color(playedColor))
+            context.fill(Path(roundedRect: rightRect, cornerRadius: 2), with: .color(unplayedColor))
         }
     }
 

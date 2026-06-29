@@ -10,13 +10,15 @@ struct OpenMyApp: App {
     @State private var toastCenter = ToastCenter()
     /// 外观偏好（@AppStorage）：真正应用到根 Scene，让设置里的主题/强调色生效。
     @AppStorage(PreferenceKeys.appAppearance) private var appearanceRaw = AppAppearance.default.rawValue
-    @AppStorage(PreferenceKeys.accent) private var accentRaw = AccentColorChoice.default.rawValue
 
     var body: some Scene {
         WindowGroup {
             RootView(root: root)
                 .frame(minWidth: 880, minHeight: 560)
-                .tint(AccentColorChoice.parse(accentRaw).color)
+                // 单一品牌色：根 .tint 指向主题强调色（Linear 靛蓝），让所有走 .tint 的
+                // 原生控件（ProgressView 转圈、TextField 光标/选区、searchable 选中等）与
+                // 主题化 UI（按钮/选中行/徽章/进度条/波形）统一，避免首屏蓝+靛蓝双色。
+                .tint(Theme.Palette.accent)
                 .preferredColorScheme(AppAppearance.parse(appearanceRaw).colorScheme)
                 .toastHost()
                 // .environment 必须在最外层（最后应用）：toastHost 的浮层也读
@@ -85,13 +87,13 @@ struct RootView: View {
         .task { await root.bootstrap() }
     }
 
-    /// 启动连接后端时的过渡画面。
+    /// 启动连接后端时的过渡画面。Linear 式减重：品牌波形缩到 28pt、去掉脉冲动画，
+    /// 容器走 background token，弱化为克制的过渡而非视觉焦点。
     private var loadingView: some View {
-        VStack(spacing: Theme.Spacing.lg) {
+        VStack(spacing: Theme.Spacing.md) {
             Image(systemName: "waveform")
-                .font(.system(size: 44, weight: .light))
+                .font(.system(size: 28, weight: .light))
                 .foregroundStyle(Theme.Palette.accent)
-                .symbolEffect(.pulse)
             ProgressView()
                 .controlSize(.small)
             Text("正在连接 OpenMy…")
@@ -99,6 +101,7 @@ struct RootView: View {
                 .foregroundStyle(Theme.Palette.secondaryText)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.Palette.background)
     }
 }
 
@@ -115,16 +118,6 @@ extension AppAppearance {
     }
 }
 
-extension AccentColorChoice {
-    /// 映射到强调色，供根 Scene .tint 使用。
-    var color: Color {
-        switch self {
-        case .blue: return .blue
-        case .purple: return .purple
-        case .pink: return .pink
-        case .orange: return .orange
-        case .green: return .green
-        case .graphite: return .gray
-        }
-    }
-}
+// 强调色不再单独可选：全 app 统一使用 Theme.Palette.accent（Linear 靛蓝）作为唯一品牌色，
+// 根 .tint 已指向它，无需再把 AccentColorChoice 映射成 SwiftUI Color。
+// AccentColorChoice 仍保留在 OpenMyKit 仅供持久化键兼容。

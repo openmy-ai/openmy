@@ -26,7 +26,8 @@ struct ReportView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+            // 提密度：区块间距 xl→lg、外层留白 xxl→lg，贴近 Linear 的紧凑节奏。
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                 header
 
                 if let summary = currentSummary {
@@ -44,7 +45,7 @@ struct ReportView: View {
                     skeletonHint
                 }
             }
-            .padding(Theme.Spacing.xxl)
+            .padding(Theme.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -60,39 +61,70 @@ struct ReportView: View {
     // MARK: - 头部
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             Text("报告")
                 .font(Theme.Typography.pageTitle)
+                .tracking(Theme.Tracking.pageTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
 
-            Picker("窗口", selection: $window) {
-                ForEach(ReportWindow.allCases) { w in
-                    Text(w.label).tag(w)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 320)
+            windowPicker
         }
         .omSection()
+    }
+
+    /// 周/月切换：克制的自定义分段控件，替代原生 `.segmented`。
+    /// `muted` 胶囊轨道 + 两段透明文本，选中段叠 `card` 底 + `accent` 文字，
+    /// 未选走 `secondaryText`；按内容收窄、左对齐，不铺满。
+    private var windowPicker: some View {
+        HStack(spacing: Theme.Spacing.xxs) {
+            ForEach(ReportWindow.allCases) { w in
+                let selected = window == w
+                Button {
+                    window = w
+                } label: {
+                    Text(w.label)
+                        .font(Theme.Typography.label)
+                        .foregroundStyle(selected ? Theme.Palette.accent : Theme.Palette.secondaryText)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .frame(height: 26)
+                        .background(selected ? Theme.Palette.card : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(Theme.Spacing.xxs)
+        .background(Theme.Palette.muted)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
     }
 
     // MARK: - 统计卡
 
+    /// 密度收紧：三项指标并入单一带边容器，用 `borderSubtle` 细竖线分隔，
+    /// 取代三张各自描边的卡片，纵向留白收到 `sm`。
     private func metricCards(_ summary: ReportSummary) -> some View {
-        HStack(spacing: Theme.Spacing.md) {
-            metricCard("\(summary.activeDays)", "活跃天数")
-            metricCard("\(summary.totalSegments)", "录音段数")
-            metricCard("\(summary.totalWords)", "总字数")
+        HStack(spacing: 0) {
+            metricCell("\(summary.activeDays)", "活跃天数")
+            metricDivider
+            metricCell("\(summary.totalSegments)", "录音段数")
+            metricDivider
+            metricCell("\(summary.totalWords)", "总字数")
         }
+        .omCard()
         .omSection()
     }
 
-    private func metricCard(_ value: String, _ label: String) -> some View {
+    private func metricCell(_ value: String, _ label: String) -> some View {
         OMMetric(value: value, label: label)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, Theme.Spacing.md)
-            .omCard()
+            .padding(.vertical, Theme.Spacing.sm)
+    }
+
+    /// 指标之间的极细分隔竖线。
+    private var metricDivider: some View {
+        Rectangle()
+            .fill(Theme.Palette.borderSubtle)
+            .frame(width: 1, height: 32)
     }
 
     // MARK: - 每日活跃度柱状图
@@ -102,7 +134,7 @@ struct ReportView: View {
             if summary.perDay.isEmpty {
                 Text("窗口内还没有记录")
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.secondaryText)
+                    .foregroundStyle(Theme.Palette.tertiaryText)
             } else {
                 Chart(summary.perDay, id: \.date) { day in
                     BarMark(
@@ -110,16 +142,23 @@ struct ReportView: View {
                         y: .value("段数", day.segments)
                     )
                     .foregroundStyle(Theme.Palette.accent)
-                    .cornerRadius(Theme.Radius.card / 2)
+                    .cornerRadius(3)
                 }
+                // X 轴：去网格线，仅留 caption2 + tertiary 轴标签。
                 .chartXAxis {
                     AxisMarks(values: .automatic) { _ in
                         AxisValueLabel()
-                            .font(Theme.Typography.caption)
+                            .font(Theme.Typography.caption2)
+                            .foregroundStyle(Theme.Palette.tertiaryText)
                     }
                 }
+                // Y 轴：去默认网格线，仅保留 caption2 + tertiary 数值标签。
                 .chartYAxis {
-                    AxisMarks(position: .leading)
+                    AxisMarks(position: .leading) { _ in
+                        AxisValueLabel()
+                            .font(Theme.Typography.caption2)
+                            .foregroundStyle(Theme.Palette.tertiaryText)
+                    }
                 }
                 // 点击图表落到最近的柱子，回调对应日期。
                 .chartOverlay { proxy in
@@ -136,7 +175,7 @@ struct ReportView: View {
 
                 Text("点击柱子查看当天日报")
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.secondaryText)
+                    .foregroundStyle(Theme.Palette.tertiaryText)
             }
         }
     }
@@ -169,11 +208,12 @@ struct ReportView: View {
         return Group {
             if !viewModel.activeProjects.isEmpty {
                 ReportSectionCard(title: "活跃项目", systemImage: "folder") {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                    VStack(alignment: .leading, spacing: 0) {
                         ForEach(items, id: \.title) { item in
                             HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                                // 列表标记走灰阶，accent 留给图表柱子。
                                 Circle()
-                                    .fill(Theme.Palette.accent)
+                                    .fill(Theme.Palette.secondaryText)
                                     .frame(width: 6, height: 6)
                                     .padding(.top, 5)
                                 Text(item.title)
@@ -181,12 +221,14 @@ struct ReportView: View {
                                     .foregroundStyle(Theme.Palette.primaryText)
                                     .fixedSize(horizontal: false, vertical: true)
                                 Spacer(minLength: Theme.Spacing.sm)
+                                // 出现天数是元数据计数，统一中性徽章不染 accent。
                                 if item.days > 0 {
-                                    OMBadge("出现 \(item.days) 天", kind: .accent)
+                                    OMStatusBadge("出现 \(item.days) 天")
                                 } else {
-                                    OMBadge("本窗口未出现", kind: .neutral)
+                                    OMStatusBadge("本窗口未出现")
                                 }
                             }
+                            .omRow(minHeight: 32)
                         }
                     }
                 }
@@ -259,36 +301,35 @@ struct ReportView: View {
     // MARK: - 空态 / 骨架
 
     /// 数据已就绪但窗口内无任何记录时的提示。
+    /// 紧凑居中：小号中性图标 + 主文 + 三级说明，去掉大卡片与铺满留白。
+    /// 注：规范建议附「处理录音」CTA，但本视图无对应回调，按硬约束不新增数据流，故省略。
     private var emptyHint: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+        VStack(spacing: Theme.Spacing.md) {
             Image(systemName: "tray")
-                .font(.title)
+                .font(.system(size: 20))
                 .foregroundStyle(Theme.Palette.secondaryText)
             Text("\(window.label)内还没有记录")
                 .font(Theme.Typography.cardTitle)
+                .tracking(Theme.Tracking.cardTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
-            Text("处理更多录音后，这里会显示活跃度、决策与待办的汇总。")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Theme.Spacing.lg)
-        .omCard()
-        .omSection()
+        .frame(maxWidth: 320)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, Theme.Spacing.xxl)
     }
 
     /// 聚合尚未算出（viewModel 未 load）时的骨架提示。
     private var skeletonHint: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             ForEach(0..<3, id: \.self) { _ in
-                RoundedRectangle(cornerRadius: Theme.Radius.card)
-                    .fill(Theme.Palette.cardBackground)
-                    .frame(height: 56)
+                // 占位用 muted 底（浅色也可见），高度收到 44。
+                RoundedRectangle(cornerRadius: Theme.Radius.lg)
+                    .fill(Theme.Palette.muted)
+                    .frame(height: 44)
             }
             Text("正在汇总报告…")
                 .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.secondaryText)
+                .foregroundStyle(Theme.Palette.tertiaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .omSection()
@@ -302,13 +343,14 @@ struct ReportView: View {
     }
 
     private func bullets(_ items: [String], marker: BulletMarker) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(items, id: \.self) { item in
                 HStack(alignment: .top, spacing: Theme.Spacing.sm) {
                     switch marker {
                     case .dot:
+                        // 列表标记走灰阶，accent 留给图表柱子。
                         Circle()
-                            .fill(Theme.Palette.accent)
+                            .fill(Theme.Palette.secondaryText)
                             .frame(width: 6, height: 6)
                             .padding(.top, 6)
                     case .checkbox:
@@ -323,6 +365,7 @@ struct ReportView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                 }
+                .omRow(minHeight: 32)
             }
         }
     }
@@ -347,29 +390,30 @@ private enum ReportWindow: String, CaseIterable, Identifiable {
 
 // MARK: - 区块卡片容器
 
-/// 带强调色标题条的区块卡片：图标 + 标题在上，内容在卡片内。
-/// 与 BriefingDetailView 的 SectionCard 同款样式，此处独立私有避免跨文件耦合。
+/// 区块卡片：中性图标 + 区块标题在上，内容收进统一描边卡片。
+/// 标题对齐 `OMSectionHeader` 风格（15 semibold + 负字距），图标去 accent 走灰阶；
+/// 内容用 `.omCard()`（card 底 + 1px border + Radius.lg），与全 app 卡片一致。
+/// 此处独立私有避免跨文件耦合。
 private struct ReportSectionCard<Content: View>: View {
     let title: String
     let systemImage: String
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             HStack(spacing: Theme.Spacing.sm) {
                 Image(systemName: systemImage)
                     .font(.subheadline)
-                    .foregroundStyle(Theme.Palette.accent)
+                    .foregroundStyle(Theme.Palette.secondaryText)
                 Text(title)
                     .font(Theme.Typography.sectionTitle)
+                    .tracking(Theme.Tracking.sectionTitle)
                     .foregroundStyle(Theme.Palette.primaryText)
             }
 
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(Theme.Spacing.lg)
-                .background(Theme.Palette.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.container))
+                .omCard()
         }
         .omSection()
     }

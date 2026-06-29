@@ -1,19 +1,27 @@
 import SwiftUI
 import OpenMyKit
 
-/// 单条 Toast 气泡。深色半透明胶囊，底部居中浮层用。
+/// 单条 Toast 气泡。实色弹层表面 + 1px 描边分层，底部居中浮层用，深浅模式自适应。
 struct ToastBubble: View {
     let message: ToastMessage
 
     var body: some View {
         Text(message.text)
             .font(Theme.Typography.body)
-            .foregroundStyle(.white)
+            .foregroundStyle(Theme.Palette.primaryText)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.md)
-            .background(Color.black.opacity(0.82))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.container))
-            .shadow(radius: 8, y: 2)
+            .background(Theme.Palette.popover)
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.md)
+                    .strokeBorder(Theme.Palette.border, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
+            .shadow(color: .black.opacity(0.22), radius: 6, y: 2)
+            // 上限约 360，过长文案换行而非横铺整窗。
+            .frame(maxWidth: 360)
     }
 }
 

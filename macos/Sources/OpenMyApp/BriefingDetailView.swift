@@ -51,7 +51,7 @@ struct BriefingDetailView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+                VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     header
 
                     if !briefing.summary.isEmpty {
@@ -97,7 +97,7 @@ struct BriefingDetailView: View {
 
                     transcriptSection
                 }
-                .padding(Theme.Spacing.xxl)
+                .padding(Theme.Spacing.xl)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             // 进入时加载头部统计/时段热度所需的逐段转写与 meta（不展开原始记录区块）。
@@ -206,7 +206,7 @@ struct BriefingDetailView: View {
                                 HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
                                     Text(seg.time)
                                         .font(Theme.Typography.caption)
-                                        .foregroundStyle(Theme.Palette.accent)
+                                        .foregroundStyle(Theme.Palette.secondaryText)
                                         .monospacedDigit()
                                     Spacer(minLength: 0)
                                     Button { openCorrection(for: seg) } label: {
@@ -222,7 +222,7 @@ struct BriefingDetailView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                                     .textSelection(.enabled)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .omRow()
                             .id(transcriptRowID(seg.time, index))
                             // 右键也能进纠错，与小按钮等价。
                             .contextMenu {
@@ -256,11 +256,11 @@ struct BriefingDetailView: View {
     /// 可回放场景区块：每个场景一张卡片，含播放原声内联播放器 + 字幕复核入口。
     private var scenesBlock: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Divider()
+            Divider().overlay(Theme.Palette.borderSubtle)
             HStack(spacing: Theme.Spacing.sm) {
                 Image(systemName: "waveform")
                     .font(.subheadline)
-                    .foregroundStyle(Theme.Palette.accent)
+                    .foregroundStyle(Theme.Palette.secondaryText)
                 Text("场景原声")
                     .font(Theme.Typography.cardTitle)
                     .foregroundStyle(Theme.Palette.primaryText)
@@ -361,7 +361,7 @@ struct BriefingDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             Text(briefing.date)
-                .font(Theme.Typography.pageTitle)
+                .omTitle(Theme.Typography.pageTitle, tracking: Theme.Tracking.pageTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
 
             HStack(spacing: Theme.Spacing.md) {
@@ -379,7 +379,7 @@ struct BriefingDetailView: View {
     private func metricCard(_ value: String, _ label: String) -> some View {
         OMMetric(value: value, label: label)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, Theme.Spacing.md)
+            .padding(.vertical, Theme.Spacing.sm)
             .omCard()
     }
 
@@ -396,8 +396,9 @@ struct BriefingDetailView: View {
                             .frame(width: 8, height: 8)
                             .padding(.top, Theme.Spacing.xs)
                         if index < briefing.timeBlocks.count - 1 {
+                            // 节点保留 accent，连接竖线退到中性描边（accent 只承载时间线节点）。
                             Rectangle()
-                                .fill(Theme.Palette.accent.opacity(0.25))
+                                .fill(Theme.Palette.border)
                                 .frame(width: 2)
                                 .frame(maxHeight: .infinity)
                         }
@@ -446,18 +447,16 @@ struct BriefingDetailView: View {
         .chartXScale(domain: -0.5...23.5)
         .chartXAxis {
             AxisMarks(values: [0.0, 6.0, 12.0, 18.0, 23.0]) { value in
-                AxisGridLine()
                 AxisValueLabel {
                     if let hour = value.as(Double.self) {
                         Text(String(format: "%02d", Int(hour)))
-                            .font(Theme.Typography.caption)
+                            .font(Theme.Typography.caption2)
+                            .foregroundStyle(Theme.Palette.tertiaryText)
                     }
                 }
             }
         }
-        .chartYAxis {
-            AxisMarks(position: .leading)
-        }
+        .chartYAxis(.hidden)
         .frame(height: 160)
         .frame(maxWidth: .infinity)
     }
@@ -501,7 +500,7 @@ struct BriefingDetailView: View {
                             if !entry.time.isEmpty {
                                 Text(entry.time)
                                     .font(Theme.Typography.caption)
-                                    .foregroundStyle(Theme.Palette.accent)
+                                    .foregroundStyle(Theme.Palette.secondaryText)
                                     .monospacedDigit()
                             }
                             if !entry.project.isEmpty {
@@ -528,7 +527,7 @@ struct BriefingDetailView: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             ForEach(briefing.insights, id: \.topic) { insight in
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    OMBadge(insight.topic, kind: .accent)
+                    OMBadge(insight.topic, kind: .neutral)
                     Text(insight.content)
                         .font(Theme.Typography.body)
                         .foregroundStyle(Theme.Palette.primaryText)
@@ -553,7 +552,7 @@ struct BriefingDetailView: View {
                     switch marker {
                     case .dot:
                         Circle()
-                            .fill(Theme.Palette.accent)
+                            .fill(Theme.Palette.secondaryText)
                             .frame(width: 6, height: 6)
                             .padding(.top, 6)
                     case .checkbox:
@@ -587,29 +586,30 @@ private struct CorrectionTarget: Identifiable, Equatable {
 
 /// 场景角色徽章：把原始 role.category 归一到 RoleColorKey，按类目取色。
 /// 原始文案照常展示，仅底色/前景色随角色类别变化，便于一眼区分对话对象。
-private struct RoleBadge: View {
+/// 内置（internal）以便日报详情与字幕复核共用同一套角色配色。
+struct RoleBadge: View {
     let role: String
 
     var body: some View {
         let key = RoleColorKey.from(role)
         let color = RoleBadge.color(for: key)
         Text(role)
-            .font(.caption2)
+            .font(Theme.Typography.caption2)
             .padding(.horizontal, Theme.Spacing.sm)
-            .padding(.vertical, Theme.Spacing.xs / 2)
+            .padding(.vertical, Theme.Spacing.xxs)
             .foregroundStyle(color)
-            .background(color.opacity(0.18))
+            .background(color.opacity(0.14))
             .clipShape(Capsule())
     }
 
     /// 角色类别 → 展示色。rawValue 稳定，便于映射。
     static func color(for key: RoleColorKey) -> Color {
         switch key {
-        case .ai: return .blue
-        case .merchant: return .orange
-        case .pet: return .pink
-        case .self: return .purple
-        case .interpersonal: return .green
+        case .ai: return Theme.Palette.accent              // 原 .blue：归一到唯一品牌靛蓝
+        case .merchant: return Theme.Palette.warning       // 原 .orange：低饱和琥珀
+        case .pet: return .pink                            // 无对应 Palette token，保留系统色以区分角色
+        case .self: return .purple                         // 无对应 Palette token，保留系统色以区分角色
+        case .interpersonal: return Theme.Palette.success  // 原 .green
         case .uncertain: return Theme.Palette.secondaryText
         case .other: return Theme.Palette.secondaryText
         }
@@ -625,21 +625,22 @@ private struct SectionCard<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            // 区块标题：对齐 OMSectionHeader 排版（15 semibold + 负字距），
+            // 保留 de-accent 的区块图标（OMSectionHeader 无图标槽，故内联匹配其样式）。
             HStack(spacing: Theme.Spacing.sm) {
                 Image(systemName: systemImage)
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.Palette.accent)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.Palette.secondaryText)
                 Text(title)
-                    .font(Theme.Typography.sectionTitle)
+                    .omTitle(Theme.Typography.sectionTitle, tracking: Theme.Tracking.sectionTitle)
                     .foregroundStyle(Theme.Palette.primaryText)
+                Spacer(minLength: 0)
             }
 
+            // 内容直接接在标题下：去掉 radius-14 实底块，避免浅色下白上白零分层。
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(Theme.Spacing.lg)
-                .background(Theme.Palette.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.container))
         }
         .omSection()
     }
@@ -667,7 +668,7 @@ private struct SceneRowView: View {
             HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
                 Text(timeLabel)
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.accent)
+                    .foregroundStyle(Theme.Palette.secondaryText)
                     .monospacedDigit()
                 if !scene.roleCategory.isEmpty {
                     RoleBadge(role: scene.roleCategory)
@@ -712,9 +713,7 @@ private struct SceneRowView: View {
 
             OMErrorText(playerModel.errorMessage)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Theme.Spacing.md)
-        .omCard()
+        .omRow()
         // 折叠转写 / 离开日报详情时停播，避免被移除后 AVPlayer 还在出声。
         .onDisappear { playerModel.pause() }
     }

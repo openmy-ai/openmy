@@ -23,8 +23,8 @@ struct SpotlightView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            // 半透明背景蒙层：点击空白关闭。
-            Color.black.opacity(0.32)
+            // 半透明背景蒙层：点击空白关闭（对齐规范遮罩 0.5）。
+            Color.black.opacity(0.5)
                 .ignoresSafeArea()
                 .onTapGesture { onClose() }
 
@@ -46,27 +46,28 @@ struct SpotlightView: View {
     private var panel: some View {
         VStack(spacing: 0) {
             searchField
-            Divider()
+            Divider().overlay(Theme.Palette.border)
             content
         }
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.container))
+        // 实色弹层表面替代毛玻璃：靠底色差 + 1px 描边分层，阴影压到弹层级（radius 8 / y 2）。
+        .background(Theme.Palette.popover)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: Theme.Radius.container)
-                .strokeBorder(Theme.Palette.secondaryText.opacity(0.15), lineWidth: 1)
+            RoundedRectangle(cornerRadius: Theme.Radius.panel)
+                .strokeBorder(Theme.Palette.border, lineWidth: 1)
         }
-        .shadow(radius: 24, y: 8)
+        .shadow(color: .black.opacity(0.22), radius: 8, y: 2)
     }
 
     private var searchField: some View {
         HStack(spacing: Theme.Spacing.md) {
             Image(systemName: "magnifyingglass")
-                .font(Theme.Typography.sectionTitle)
+                .font(Theme.Typography.bodyLarge)
                 .foregroundStyle(Theme.Palette.secondaryText)
 
             TextField("搜索所有记录", text: $viewModel.query)
                 .textFieldStyle(.plain)
-                .font(Theme.Typography.sectionTitle)
+                .font(Theme.Typography.bodyLarge)
                 .foregroundStyle(Theme.Palette.primaryText)
                 .focused($searchFocused)
                 .onSubmit { submitSelection() }
@@ -78,14 +79,14 @@ struct SpotlightView: View {
                     searchFocused = true
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(Theme.Palette.secondaryText)
+                        .foregroundStyle(Theme.Palette.tertiaryText)
                 }
                 .omButton(.ghost, size: .icon)
                 .help("清空")
             }
         }
         .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.vertical, Theme.Spacing.lg)
+        .padding(.vertical, Theme.Spacing.md)
     }
 
     // MARK: - 内容区（空提示 / 空结果 / 结果列表）
@@ -95,7 +96,7 @@ struct SpotlightView: View {
         let trimmed = viewModel.query.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             if recentDates.isEmpty {
-                stateHint(icon: "text.magnifyingglass", title: "输入关键词搜索所有记录", subtitle: "在全部日报的逐段转写里查找")
+                stateHint(title: "搜索所有记录")
             } else {
                 recentList
             }
@@ -107,9 +108,9 @@ struct SpotlightView: View {
                 OMErrorText("搜索失败：\(error)")
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, Theme.Spacing.xxl)
+            .padding(.vertical, Theme.Spacing.lg)
         } else if viewModel.results.isEmpty {
-            stateHint(icon: "questionmark.circle", title: "没有找到「\(trimmed)」", subtitle: "换个关键词试试")
+            stateHint(title: "没有找到「\(trimmed)」")
         } else {
             resultList
         }
@@ -118,19 +119,19 @@ struct SpotlightView: View {
     /// 空查询时的最近记录快捷入口（最多 5 天），对齐 Web spotlight。
     private var recentList: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("最近记录")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.secondaryText)
-                .padding(.horizontal, Theme.Spacing.lg)
-                .padding(.top, Theme.Spacing.md)
+            OMGroupLabel("最近记录")
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.top, Theme.Spacing.sm)
             ForEach(recentDates.prefix(5)) { entry in
                 Button {
                     onSelect(SearchFocus(date: entry.date, time: "", query: ""))
                 } label: {
                     HStack(spacing: Theme.Spacing.md) {
+                        // 前导图标为装饰，走灰阶不染 accent。
                         Image(systemName: "calendar")
-                            .foregroundStyle(Theme.Palette.accent)
-                        VStack(alignment: .leading, spacing: 0) {
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Palette.secondaryText)
+                        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
                             Text(entry.date)
                                 .font(Theme.Typography.cardTitle)
                                 .foregroundStyle(Theme.Palette.primaryText)
@@ -142,41 +143,41 @@ struct SpotlightView: View {
                             }
                         }
                         Spacer()
+                        // 计数为元数据，走最弱灰阶。
                         Text("\(entry.segments) 段")
                             .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Palette.secondaryText)
+                            .foregroundStyle(Theme.Palette.tertiaryText)
+                            .monospacedDigit()
                     }
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .padding(.vertical, Theme.Spacing.md)
-                    .contentShape(Rectangle())
+                    .omRow(minHeight: Theme.RowHeight.listDetail)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.bottom, Theme.Spacing.md)
+        .padding(.horizontal, Theme.Spacing.sm)
+        .padding(.bottom, Theme.Spacing.sm)
     }
 
-    /// 空提示 / 空结果共用的居中占位。
-    private func stateHint(icon: String, title: String, subtitle: String) -> some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            Image(systemName: icon)
-                .font(.system(size: 32, weight: .light))
-                .foregroundStyle(Theme.Palette.secondaryText)
+    /// 空提示 / 空结果共用的居中占位：去大图标，仅留两级灰阶说明 + 收紧留白。
+    private func stateHint(title: String, subtitle: String = "") -> some View {
+        VStack(spacing: Theme.Spacing.xs) {
             Text(title)
-                .font(Theme.Typography.cardTitle)
-                .foregroundStyle(Theme.Palette.primaryText)
-            Text(subtitle)
-                .font(Theme.Typography.caption)
+                .font(Theme.Typography.body)
                 .foregroundStyle(Theme.Palette.secondaryText)
+            if !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Palette.tertiaryText)
+            }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, Theme.Spacing.xxl)
+        .padding(.vertical, Theme.Spacing.lg)
     }
 
     private var resultList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: Theme.Spacing.lg, pinnedViews: [.sectionHeaders]) {
+                LazyVStack(alignment: .leading, spacing: Theme.Spacing.xxs, pinnedViews: [.sectionHeaders]) {
                     ForEach(viewModel.groupedByDate, id: \.date) { group in
                         Section {
                             ForEach(group.results) { result in
@@ -188,7 +189,8 @@ struct SpotlightView: View {
                         }
                     }
                 }
-                .padding(Theme.Spacing.md)
+                .padding(.horizontal, Theme.Spacing.sm)
+                .padding(.vertical, Theme.Spacing.sm)
             }
             // 选中项变化时滚动到可见区，配合方向键导航。
             .onChange(of: viewModel.selectedResult?.id) { _, newID in
@@ -203,50 +205,43 @@ struct SpotlightView: View {
 
     private func dateHeader(_ date: String, count: Int) -> some View {
         HStack(spacing: Theme.Spacing.sm) {
+            // 分组头日期为元数据，走最弱灰阶 + 微正字距，贴近 Linear 分组标签。
             Text(date)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.secondaryText)
+                .font(Theme.Typography.caption2)
+                .tracking(0.3)
+                .foregroundStyle(Theme.Palette.tertiaryText)
             OMBadge("\(count) 条", kind: .neutral)
             Spacer()
         }
-        .padding(.horizontal, Theme.Spacing.sm)
+        .padding(.horizontal, Theme.Spacing.md)
         .padding(.vertical, Theme.Spacing.xs)
-        .background(.regularMaterial)
+        // 钉住的分组头需不透明底，走弹层表面色而非毛玻璃。
+        .background(Theme.Palette.popover)
     }
 
     // MARK: - 单条命中
 
     private func resultRow(_ result: SearchResult) -> some View {
         let isSelected = viewModel.selectedResult?.id == result.id
+        // 选中态走中性 selectedSurface（不再蓝染整行），accent 仅保留在命中文字高亮上。
         return HStack(alignment: .top, spacing: Theme.Spacing.md) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs / 2) {
-                highlightedContext(result.context)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Palette.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .multilineTextAlignment(.leading)
-            }
+            highlightedContext(result.context)
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Palette.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
 
             Spacer(minLength: Theme.Spacing.md)
 
-            VStack(alignment: .trailing, spacing: Theme.Spacing.xs) {
-                if !result.time.isEmpty {
-                    Text(result.time)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Palette.accent)
-                        .monospacedDigit()
-                }
-                OMBadge(result.date, kind: .neutral)
+            // 时间戳为元数据，走最弱灰阶；行尾冗余日期徽章删除（分组头已带日期）。
+            if !result.time.isEmpty {
+                Text(result.time)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Palette.tertiaryText)
+                    .monospacedDigit()
             }
         }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.sm)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.card)
-                .fill(isSelected ? Theme.Palette.accent.opacity(0.16) : Color.clear)
-        )
-        .contentShape(Rectangle())
+        .omRow(isSelected: isSelected, minHeight: 36)
         .onTapGesture { select(result) }
     }
 

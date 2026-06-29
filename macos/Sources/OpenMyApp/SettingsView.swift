@@ -1,9 +1,9 @@
 import SwiftUI
 import OpenMyKit
 
-/// 设置面板：以 `.sheet` 呈现，分四个分区（TabView）把原本散落的偏好收进常驻设置。
+/// 设置面板：以 `.sheet` 呈现，分四个分区把原本散落的偏好收进常驻设置。
 ///
-/// 分区：
+/// 分区导航改用左侧栏（`OMNavRow`，对齐 Linear「侧栏即主导航」），右侧为内容区：
 /// - 转写引擎：复用 `OnboardingViewModel` 展示当前引擎与可选引擎，可切换（select），
 ///   等于把首次配置（onboarding）收进常驻设置，随时改引擎而不必走「重新配置」回退。
 /// - 屏幕上下文：用传入的 `SettingsViewModel` 展示参与模式开关与排除项编辑，
@@ -45,27 +45,24 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
-            TabView(selection: $tab) {
-                EngineSettingsSection(onboarding: onboarding, toastCenter: toastCenter)
-                    .tabItem { Label("转写引擎", systemImage: "cpu") }
-                    .tag(Tab.engine)
-
-                ScreenContextSection(settings: settings, toastCenter: toastCenter)
-                    .tabItem { Label("屏幕上下文", systemImage: "rectangle.on.rectangle") }
-                    .tag(Tab.screen)
-
-                AppearanceSection()
-                    .tabItem { Label("外观", systemImage: "paintbrush") }
-                    .tag(Tab.appearance)
-
-                ProfileSection()
-                    .tabItem { Label("个人资料", systemImage: "person.crop.circle") }
-                    .tag(Tab.profile)
+            Divider().overlay(Theme.Palette.borderSubtle)
+            HStack(spacing: 0) {
+                sidebar
+                Divider().overlay(Theme.Palette.borderSubtle)
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         // 弹性上限而非固定尺寸：让外层 sheet 的 ZStack 蒙层撑满父窗口、本面板居中（issue #14）。
-        .frame(maxWidth: 520, maxHeight: 560)
+        .frame(maxWidth: 560, maxHeight: 560)
+        // 弹层表面：popover 实色底 + 1px 描边 + 圆角，靠底色差分层；弹层级允许阴影。
+        .background(Theme.Palette.popover)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.xl)
+                .strokeBorder(Theme.Palette.border, lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.28), radius: 16, y: 4)
         .task {
             if onboarding.state == nil { await onboarding.load() }
             if settings.settings == nil { await settings.load() }
@@ -75,23 +72,95 @@ struct SettingsView: View {
     // MARK: - 头部
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
-            Text("设置")
-                .font(Theme.Typography.sectionTitle)
-                .foregroundStyle(Theme.Palette.primaryText)
-            Spacer()
+        OMSectionHeader("设置") {
             Button("完成", action: onClose)
                 .omButton(.ghost)
                 .keyboardShortcut(.cancelAction)
         }
-        .padding(Theme.Spacing.lg)
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.top, Theme.Spacing.lg)
+    }
+
+    // MARK: - 左侧栏导航
+
+    /// 侧栏：surfacePanel 实色底，4 个分区用 `OMNavRow`（hover + 选中态）。
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+            OMNavRow(icon: "cpu", title: "转写引擎", isSelected: tab == .engine) { tab = .engine }
+            OMNavRow(icon: "rectangle.on.rectangle", title: "屏幕上下文", isSelected: tab == .screen) { tab = .screen }
+            OMNavRow(icon: "paintbrush", title: "外观", isSelected: tab == .appearance) { tab = .appearance }
+            OMNavRow(icon: "person.crop.circle", title: "个人资料", isSelected: tab == .profile) { tab = .profile }
+            Spacer(minLength: 0)
+        }
+        .padding(Theme.Spacing.sm)
+        .frame(width: 196)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Theme.Palette.surfacePanel)
+    }
+
+    // MARK: - 内容区
+
+    @ViewBuilder
+    private var content: some View {
+        switch tab {
+        case .engine:
+            EngineSettingsSection(onboarding: onboarding, toastCenter: toastCenter)
+        case .screen:
+            ScreenContextSection(settings: settings, toastCenter: toastCenter)
+        case .appearance:
+            AppearanceSection()
+        case .profile:
+            ProfileSection()
+        }
+    }
+}
+
+// MARK: - 自定义胶囊分段控件
+
+/// 替换原生 `.pickerStyle(.segmented)`：`muted` 底容器 + 段按钮，
+/// 选中段 `card` 底 + accent 文字 + 细描边（高 26、圆角 6），贴合 Linear 克制风格。
+private struct OMSegmented<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(Value, String)]
+    var disabled: Bool = false
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.xxs) {
+            ForEach(options.indices, id: \.self) { index in
+                let option = options[index]
+                let isSelected = selection == option.0
+                Button {
+                    if selection != option.0 { selection = option.0 }
+                } label: {
+                    Text(option.1)
+                        .font(Theme.Typography.label)
+                        .foregroundStyle(isSelected ? Theme.Palette.accent : Theme.Palette.secondaryText)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 26)
+                        .background(isSelected ? Theme.Palette.card : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                                .strokeBorder(isSelected ? Theme.Palette.borderSubtle : Color.clear, lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(Theme.Spacing.xxs)
+        .background(Theme.Palette.muted)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
+        .opacity(disabled ? 0.5 : 1)
+        .disabled(disabled)
+        .animation(.easeOut(duration: 0.12), value: selection)
     }
 }
 
 // MARK: - 转写引擎区
 
 /// 转写引擎分区：复用 `OnboardingViewModel` 列出可选引擎并切换。
-/// 与 OnboardingView 同源数据，但这里不触发完成回调——切换后停留在设置面板。
+/// 与 OnboardingView 同源数据，行也共用 `EngineChoiceRow`；这里不触发完成回调——切换后停留在设置面板。
 private struct EngineSettingsSection: View {
     @Bindable var onboarding: OnboardingViewModel
     let toastCenter: ToastCenter
@@ -99,22 +168,30 @@ private struct EngineSettingsSection: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                Text("转写引擎决定录音如何转成文字。本地引擎免密钥，云端引擎更快但需要先配置密钥。")
+                OMSectionHeader("转写引擎")
+                Text("本地引擎免密钥；云端更快，但需要密钥。")
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.secondaryText)
+                    .foregroundStyle(Theme.Palette.tertiaryText)
 
                 if onboarding.providers.isEmpty {
                     Text("正在读取引擎…")
                         .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Palette.secondaryText)
+                        .foregroundStyle(Theme.Palette.tertiaryText)
                         .padding(.vertical, Theme.Spacing.md)
                 } else {
-                    ForEach(onboarding.providers) { provider in
-                        EngineRow(provider: provider, isWorking: onboarding.isWorking) {
-                            Task {
-                                await onboarding.select(provider.name)
-                                if onboarding.errorMessage == nil {
-                                    toastCenter.show("已切换到 \(provider.label)")
+                    VStack(spacing: Theme.Spacing.sm) {
+                        ForEach(onboarding.providers) { provider in
+                            EngineChoiceRow(
+                                provider: provider,
+                                isWorking: onboarding.isWorking,
+                                activeLabel: "当前",
+                                selectLabel: "切换"
+                            ) {
+                                Task {
+                                    await onboarding.select(provider.name)
+                                    if onboarding.errorMessage == nil {
+                                        toastCenter.show("已切换到 \(provider.label)")
+                                    }
                                 }
                             }
                         }
@@ -125,76 +202,6 @@ private struct EngineSettingsSection: View {
             }
             .padding(Theme.Spacing.lg)
         }
-    }
-}
-
-/// 单个引擎行：名称 + 推荐 / 本地云端徽章 + 描述 + 选择按钮。
-/// 选中态用强调色描边；未就绪（云端缺密钥）置灰不可选。
-private struct EngineRow: View {
-    let provider: ProviderChoice
-    let isWorking: Bool
-    let onSelect: () -> Void
-
-    private var selectable: Bool { !isWorking && !provider.isActive && provider.ready }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.md) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                titleLine
-                Text(provider.description)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.secondaryText)
-                keyHint
-            }
-            Spacer(minLength: Theme.Spacing.md)
-            selectButton
-        }
-        .omCard()
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.card)
-                .strokeBorder(
-                    provider.isActive ? Theme.Palette.accent : Color.clear,
-                    lineWidth: provider.isActive ? 1.5 : 0
-                )
-        )
-        .opacity(provider.ready ? 1 : 0.6)
-    }
-
-    private var titleLine: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            Text(provider.label)
-                .font(Theme.Typography.cardTitle)
-                .foregroundStyle(Theme.Palette.primaryText)
-            if provider.isRecommended {
-                OMBadge("推荐", kind: .accent)
-            }
-            OMBadge(provider.type == "local" ? "本地" : "云端", kind: .neutral)
-        }
-    }
-
-    @ViewBuilder
-    private var keyHint: some View {
-        if provider.needsApiKey && !provider.ready {
-            Label("需要先配置 API Key 才能使用", systemImage: "key.fill")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.warning)
-        } else if provider.needsApiKey {
-            Label("需要 API Key", systemImage: "key")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.secondaryText)
-        }
-    }
-
-    private var selectButton: some View {
-        Button(action: onSelect) {
-            if provider.isActive {
-                Label("当前", systemImage: "checkmark")
-            } else {
-                Text("切换")
-            }
-        }
-        .omButton(provider.isActive ? .ghost : .primary, size: .small)
-        .disabled(!selectable)
     }
 }
 
@@ -209,22 +216,23 @@ private struct ScreenContextSection: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                Text("屏幕上下文会在你工作时记录看到的内容，转成文字补进当天上下文。完整模式保留截图，仅摘要只留文字概要。")
+                OMSectionHeader("屏幕上下文")
+                Text("工作时记录屏幕内容，补进当天上下文。")
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.secondaryText)
+                    .foregroundStyle(Theme.Palette.tertiaryText)
 
                 if let current = settings.settings {
                     modePicker(current)
-                    Divider()
+                    Divider().overlay(Theme.Palette.borderSubtle)
                     exclusions(current)
                 } else if settings.isLoading {
                     Text("正在读取设置…")
                         .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Palette.secondaryText)
+                        .foregroundStyle(Theme.Palette.tertiaryText)
                 } else {
                     Text("暂时读不到屏幕上下文设置。")
                         .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Palette.secondaryText)
+                        .foregroundStyle(Theme.Palette.tertiaryText)
                 }
 
                 OMErrorText(settings.errorMessage)
@@ -238,37 +246,39 @@ private struct ScreenContextSection: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
             Text("参与模式")
                 .font(Theme.Typography.cardTitle)
+                .tracking(Theme.Tracking.cardTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
 
-            Picker("参与模式", selection: Binding(
-                get: { current.mode },
-                set: { newMode in
-                    guard newMode != current.mode else { return }
-                    Task {
-                        let ok = await settings.setMode(newMode)
-                        if ok { toastCenter.show("已更新屏幕上下文模式") }
+            OMSegmented(
+                selection: Binding(
+                    get: { current.mode },
+                    set: { newMode in
+                        guard newMode != current.mode else { return }
+                        Task {
+                            let ok = await settings.setMode(newMode)
+                            if ok { toastCenter.show("已更新屏幕上下文模式") }
+                        }
                     }
-                }
-            )) {
-                Text("关闭").tag(ScreenContextSettings.Mode.off)
-                Text("仅摘要").tag(ScreenContextSettings.Mode.summaryOnly)
-                Text("完整").tag(ScreenContextSettings.Mode.full)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .disabled(settings.isLoading)
+                ),
+                options: [
+                    (ScreenContextSettings.Mode.off, "关闭"),
+                    (ScreenContextSettings.Mode.summaryOnly, "仅摘要"),
+                    (ScreenContextSettings.Mode.full, "完整"),
+                ],
+                disabled: settings.isLoading
+            )
 
             Text(modeHint(current.mode))
                 .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.secondaryText)
+                .foregroundStyle(Theme.Palette.tertiaryText)
         }
     }
 
     private func modeHint(_ mode: ScreenContextSettings.Mode) -> String {
         switch mode {
-        case .off: return "已关闭，不记录任何屏幕内容。"
-        case .summaryOnly: return "只保留文字概要，不保存截图。"
-        case .full: return "保留截图与文字，上下文最完整。"
+        case .off: return "不记录屏幕内容"
+        case .summaryOnly: return "只存文字概要，不留截图"
+        case .full: return "保留截图与文字"
         }
     }
 
@@ -278,10 +288,11 @@ private struct ScreenContextSection: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             Text("排除项")
                 .font(Theme.Typography.cardTitle)
+                .tracking(Theme.Tracking.cardTitle)
                 .foregroundStyle(Theme.Palette.primaryText)
-            Text("命中的应用、网站或窗口标题不会被记录。每行一个。")
+            Text("匹配到的不记录，每行一个。")
                 .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Palette.secondaryText)
+                .foregroundStyle(Theme.Palette.tertiaryText)
 
             ExclusionEditor(
                 title: "排除应用",
@@ -335,6 +346,8 @@ private struct ExclusionEditor: View {
     @State private var text: String
     /// 上次提交对应的规范化数组，用于判断是否真的改了。
     @State private var committed: [String]
+    /// 仅驱动聚焦环视觉（不参与数据流）。
+    @FocusState private var focused: Bool
 
     init(
         title: String,
@@ -358,24 +371,40 @@ private struct ExclusionEditor: View {
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Palette.secondaryText)
 
+            // 纳入设计系统：muted 底 + 1px input 描边 + Radius.md，聚焦时换 accent 边 + 2px 聚焦环。
             TextEditor(text: $text)
-                .font(.system(.body, design: .monospaced))
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Palette.primaryText)
+                .scrollContentBackground(.hidden)
+                .focused($focused)
                 .frame(height: 72)
-                .padding(Theme.Spacing.xs)
-                .background(Theme.Palette.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card))
+                .padding(.horizontal, Theme.Spacing.sm)
+                .padding(.vertical, Theme.Spacing.xs)
+                .background(Theme.Palette.muted)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.md)
+                        .strokeBorder(focused ? Theme.Palette.accent : Theme.Palette.input, lineWidth: 1)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.md + 1)
+                        .stroke(Theme.Palette.ring, lineWidth: focused ? 2 : 0)
+                        .padding(-1.5)
+                )
                 .disabled(disabled)
                 .overlay(alignment: .topLeading) {
                     if text.isEmpty {
                         Text(placeholder)
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundStyle(Theme.Palette.secondaryText)
-                            .padding(Theme.Spacing.sm)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Palette.tertiaryText)
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.vertical, Theme.Spacing.sm)
                             .allowsHitTesting(false)
                     }
                 }
                 .onChange(of: text) { _, _ in /* 仅本地编辑，提交在失焦时 */ }
                 .onSubmit { commit() }
+                .animation(.easeOut(duration: 0.12), value: focused)
 
             HStack {
                 Spacer()
@@ -414,81 +443,32 @@ private struct ExclusionEditor: View {
 /// 外观分区：主题（跟随系统 / 浅色 / 深色）分段控件 + 强调色选择。纯本地偏好（@AppStorage）。
 private struct AppearanceSection: View {
     @AppStorage(PreferenceKeys.appAppearance) private var appearanceRaw = AppAppearance.default.rawValue
-    @AppStorage(PreferenceKeys.accent) private var accentRaw = AccentColorChoice.default.rawValue
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                OMSectionHeader("外观")
+
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     Text("主题")
                         .font(Theme.Typography.cardTitle)
+                        .tracking(Theme.Tracking.cardTitle)
                         .foregroundStyle(Theme.Palette.primaryText)
-                    Picker("主题", selection: $appearanceRaw) {
-                        Text("跟随系统").tag(AppAppearance.system.rawValue)
-                        Text("浅色").tag(AppAppearance.light.rawValue)
-                        Text("深色").tag(AppAppearance.dark.rawValue)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    OMSegmented(
+                        selection: $appearanceRaw,
+                        options: [
+                            (AppAppearance.system.rawValue, "跟随系统"),
+                            (AppAppearance.light.rawValue, "浅色"),
+                            (AppAppearance.dark.rawValue, "深色"),
+                        ]
+                    )
                 }
 
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("强调色")
-                        .font(Theme.Typography.cardTitle)
-                        .foregroundStyle(Theme.Palette.primaryText)
-                    accentSwatches
-                }
+                // 强调色选择器已移除（spec §5.4.2）：全 app 统一使用单一品牌色
+                // Theme.Palette.accent（Linear 靛蓝），不再提供多强调色切换，避免与
+                // 主题化 UI 产生双色不一致。AccentColorChoice 持久化键保留以兼容旧数据。
             }
             .padding(Theme.Spacing.lg)
-        }
-    }
-
-    // 强调色色板：每个选项一个圆点，选中态加描边。
-    private var accentSwatches: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            ForEach(AccentColorChoice.allCases, id: \.self) { choice in
-                let selected = AccentColorChoice.parse(accentRaw) == choice
-                Button {
-                    accentRaw = choice.rawValue
-                } label: {
-                    Circle()
-                        .fill(color(for: choice))
-                        .frame(width: 26, height: 26)
-                        .overlay(
-                            Circle()
-                                .strokeBorder(
-                                    Theme.Palette.primaryText.opacity(selected ? 0.8 : 0),
-                                    lineWidth: selected ? 2 : 0
-                                )
-                        )
-                        .padding(2)
-                }
-                .buttonStyle(.plain)
-                .help(label(for: choice))
-            }
-            Spacer()
-        }
-    }
-
-    private func color(for choice: AccentColorChoice) -> Color {
-        switch choice {
-        case .blue: return .blue
-        case .purple: return .purple
-        case .pink: return .pink
-        case .orange: return .orange
-        case .green: return .green
-        case .graphite: return .gray
-        }
-    }
-
-    private func label(for choice: AccentColorChoice) -> String {
-        switch choice {
-        case .blue: return "蓝色"
-        case .purple: return "紫色"
-        case .pink: return "粉色"
-        case .orange: return "橙色"
-        case .green: return "绿色"
-        case .graphite: return "石墨色"
         }
     }
 }
@@ -505,18 +485,21 @@ private struct ProfileSection: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                OMSectionHeader("个人资料")
+
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     Text("昵称")
                         .font(Theme.Typography.cardTitle)
+                        .tracking(Theme.Tracking.cardTitle)
                         .foregroundStyle(Theme.Palette.primaryText)
-                    TextField("怎么称呼你", text: $name)
-                        .textFieldStyle(.roundedBorder)
+                    OMTextField("怎么称呼你", text: $name)
                 }
 
                 VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                     Text("头像")
                         .font(Theme.Typography.cardTitle)
+                        .tracking(Theme.Tracking.cardTitle)
                         .foregroundStyle(Theme.Palette.primaryText)
                     emojiGrid
                 }
@@ -525,7 +508,7 @@ private struct ProfileSection: View {
         }
     }
 
-    // emoji 网格：选中态加强调色背景圈。
+    // emoji 网格：选中态加强调色背景圈 + 描边。
     private var emojiGrid: some View {
         LazyVGrid(
             columns: Array(repeating: GridItem(.flexible(), spacing: Theme.Spacing.sm), count: 5),
@@ -541,7 +524,7 @@ private struct ProfileSection: View {
                         .frame(width: 44, height: 44)
                         .background(
                             Circle()
-                                .fill(selected ? Theme.Palette.accent.opacity(0.18) : Color.clear)
+                                .fill(selected ? Theme.Palette.selectedSurface : Color.clear)
                         )
                         .overlay(
                             Circle()
