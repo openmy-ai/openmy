@@ -345,8 +345,11 @@ def main_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser | N
         _show_main_menu()
         return 0
 
+    from openmy.commands.auto import cmd_auto
+
     commands = {
         "agent": cmd_agent,
+        "auto": cmd_auto,
         "briefing": cmd_briefing,
         "clean": cmd_clean,
         "context": cmd_context,

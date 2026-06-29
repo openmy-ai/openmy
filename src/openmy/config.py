@@ -307,7 +307,10 @@ STT_VAD_ENABLED = True
 STT_WORD_TIMESTAMPS_ENABLED = False
 STT_ALIGN_ENABLED = False
 STT_DIARIZATION_ENABLED = False
-STT_ENRICH_MODE = "recommended"
+# 默认关闭 WhisperX 精标层（对齐/说话人分离）：它依赖从 HuggingFace 下模型，
+# 在国内网络下会卡住重试再降级；funasr 本身已带时间戳，对齐纯属负担。
+# 想用的人显式设 OPENMY_STT_ENRICH_MODE=recommended/force。
+STT_ENRICH_MODE = "off"
 
 
 def get_stt_vad_enabled() -> bool:

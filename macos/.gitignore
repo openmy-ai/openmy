@@ -1,0 +1,6 @@
+.build/
+build/
+.swiftpm/
+*.xcodeproj
+DerivedData/
+CODEX_*.md
