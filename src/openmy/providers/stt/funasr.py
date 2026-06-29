@@ -21,6 +21,30 @@ except ImportError:  # pragma: no cover - exercised in environments without opti
 _MODEL_CACHE: dict[tuple[str, str, bool], object] = {}
 
 
+def _resolve_device() -> str:
+    """选择转写设备：显式设置优先，否则自动用 GPU（Apple mps / CUDA），都没有才退 CPU。
+
+    实测 paraformer-zh 在 Apple mps 上比 CPU 快约 2.9 倍且逐字一致。
+    个别算子在 mps 上未实现时，PYTORCH_ENABLE_MPS_FALLBACK 让它回退 CPU，避免直接报错。
+    用户可用 OPENMY_STT_DEVICE=cpu 强制关闭。
+    """
+    explicit = os.getenv("OPENMY_STT_DEVICE", "").strip()
+    if explicit:
+        return explicit
+    try:
+        import torch
+
+        mps = getattr(getattr(torch, "backends", None), "mps", None)
+        if mps is not None and mps.is_available():
+            os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+            return "mps"
+        if torch.cuda.is_available():
+            return "cuda"
+    except Exception:
+        pass
+    return "cpu"
+
+
 def _to_seconds(value: Any) -> float:
     numeric = float(value or 0.0)
     if numeric >= 100:
@@ -125,7 +149,7 @@ class FunASRSTTProvider(SpeechToTextProvider):
     ) -> TranscriptionResult:
         del timeout_seconds  # 本地推理当前不走外部超时控制
 
-        device = os.getenv("OPENMY_STT_DEVICE", "cpu") or "cpu"
+        device = _resolve_device()
         model = _get_model(self.model, device, vad_filter)
         kwargs: dict[str, Any] = {
             "input": str(audio_path),

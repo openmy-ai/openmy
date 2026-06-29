@@ -67,6 +67,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_watch = sub.add_parser("watch", help=_help_text("监控录音文件夹", "Watch an audio folder for new recordings."))
     p_watch.add_argument("directory", nargs="?", help=_help_text("监控目录；不传就用已配置的录音固定目录", "Directory to watch. Defaults to the configured audio source folder."))
 
+    p_auto = sub.add_parser("auto", help=_help_text("设备自动入口：插上 DJI Mic 就自动整理", "Auto inlet: plug in a DJI Mic and recordings get processed automatically."))
+    p_auto.add_argument(
+        "auto_action",
+        nargs="?",
+        default="run",
+        choices=["run", "scan", "install", "uninstall", "status"],
+        help=_help_text(
+            "run=前台守护，install/uninstall=后台开关，status=查看状态",
+            "run for foreground daemon, install/uninstall to toggle the background service, status to inspect.",
+        ),
+    )
+
     p_feedback = sub.add_parser("feedback", help=_help_text("管理本地反馈记录", "Manage local feedback tracking."))
     p_feedback.add_argument("--show", action="store_true", help=_help_text("查看当前本地反馈记录", "Show the current local feedback record."))
     p_feedback.add_argument("--opt-in", action="store_true", help=_help_text("开启本地反馈记录", "Enable local feedback tracking."))
