@@ -20,3 +20,8 @@ data/
 !data/.gitkeep
 .omx/
 .gstack/
+
+# 工具缓存与设计镜像
+.azir/
+.playwright-mcp/
+design-system/
