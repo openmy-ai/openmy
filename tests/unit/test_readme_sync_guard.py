@@ -10,7 +10,7 @@ def test_readme_sync_guard_allows_non_readme_change() -> None:
 
 
 def test_readme_sync_guard_requires_all_translations() -> None:
-    ok, message = validate_changed_files({"README.md", "README.en.md", "README.fr.md"})
+    ok, message = validate_changed_files({"README.md", "README.zh-CN.md", "README.fr.md"})
     assert ok is False
     assert "README.it.md" in message
     assert "README.ja.md" in message
@@ -19,7 +19,7 @@ def test_readme_sync_guard_requires_all_translations() -> None:
 
 def test_readme_sync_guard_passes_when_every_variant_changes() -> None:
     ok, message = validate_changed_files(
-        {"README.md", "README.en.md", "README.fr.md", "README.it.md", "README.ja.md", "README.ko.md"}
+        {"README.md", "README.zh-CN.md", "README.fr.md", "README.it.md", "README.ja.md", "README.ko.md"}
     )
     assert ok is True
     assert "一起更新" in message

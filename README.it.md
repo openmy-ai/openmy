@@ -11,7 +11,7 @@ OpenMy organizza audio già salvato, contesto dello schermo e avanzamento quotid
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![Tests](https://img.shields.io/badge/tests-527%20passed-brightgreen?style=flat-square)]()
 
-**Lingue:** [中文](README.md) · [English](README.en.md) · [한국어](README.ko.md) · [Français](README.fr.md) · **Italiano** · [日本語](README.ja.md)
+[English](README.md) · [中文](README.zh-CN.md) · [한국어](README.ko.md) · [Français](README.fr.md) · Italiano · [日本語](README.ja.md)
 
 </div>
 
@@ -236,8 +236,8 @@ python3 -m pytest tests/ -v
 
 ```text
 openmy/
-├── README.md                          # Chinese landing page
-├── README.en.md                       # English landing page
+├── README.md                          # English landing page
+├── README.zh-CN.md                    # Chinese landing page
 ├── pyproject.toml                     # packaging, dependencies, CLI entrypoints
 ├── .github/                           # CI, templates, dependency update config
 ├── docs/

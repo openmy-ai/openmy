@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - README.md
-      - README.en.md
+      - README.zh-CN.md
       - README.fr.md
       - README.it.md
       - README.ja.md
@@ -14,7 +14,7 @@ on:
       - main
     paths:
       - README.md
-      - README.en.md
+      - README.zh-CN.md
       - README.fr.md
       - README.it.md
       - README.ja.md

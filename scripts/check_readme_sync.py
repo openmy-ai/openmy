@@ -6,7 +6,7 @@ import subprocess
 
 CANONICAL_README = "README.md"
 TRANSLATED_READMES = [
-    "README.en.md",
+    "README.zh-CN.md",
     "README.fr.md",
     "README.it.md",
     "README.ja.md",
