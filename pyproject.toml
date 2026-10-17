@@ -38,7 +38,7 @@ transcription-enrich = [
     "whisperx>=3.8.5",
 ]
 transcription-zh = [
-    "funasr>=1.2.6",
+    "funasr>=1.3.1",
     "modelscope>=1.19.2",
     "huggingface_hub>=0.30.0",
 ]
